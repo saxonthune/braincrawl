@@ -22,21 +22,16 @@ The separation is by **storage kind**, not by feature:
 
 ## Identity — the shared spine
 
-Both layers point at a **canonical internal id** (OpenAlex `W…` by default). Identity
-is its own concern, not a feature of either layer:
+Both layers point at a **canonical id** — a braincrawl-minted GUID. Every external id
+(doi, isbn, oclc, pmid, OpenAlex `W…`, …) is an alias of that GUID. Identity is its
+own concern, resolved by braincrawl on the consumer's behalf; see Id Resolution
+(`doc02.01.02`) for how external ids converge onto one GUID.
 
-- An **alias multimap** holds `canonical_id → {namespace, value}[]` (doi, isbn, oclc,
-  pmid, s2_corpus, …). The discriminated `{namespace, value}` union exists only as
-  resolver input and alias rows — it never enters the graph.
-- **KV** is the flat resolver projection: `namespace:value → canonical_id`, the hot
-  cache for id resolution.
-- Resolution: an external id hits KV; on miss, the work is fetched from a provider
-  that resolves that id type, OpenAlex's `ids` block (the crosswalk hub) yields the
-  canonical `W…`, and every alias in that block is written back to KV. One cold
-  resolve warms all of a work's id types.
-
-The citation graph and `payloads` rows store **canonical ids only**. A `dst_id` with
-no backing `works` row is a **stub** — a known identifier with no metadata yet.
+The backing store lives in the metadata DB: an **alias multimap**
+(`canonical_id → {namespace, value}[]`) and a flat **KV** resolver projection
+(`namespace:value → canonical_id`). The citation graph and `payloads` rows store
+**canonical ids only**. A `dst_id` with no backing `works` row is a **stub** — a known
+identifier with no metadata yet.
 
 ## What describes the blobs
 
