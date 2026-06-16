@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 braincrawl-core = { workspace = true }
-braincrawl-blob-fs = { path = "../../crates/adapters/blob-fs" }
-braincrawl-store-sqlite = { path = "../../crates/adapters/store-sqlite" }
-braincrawl-store-mem = { path = "../../crates/adapters/store-mem" }
-braincrawl-resolver-kv = { path = "../../crates/adapters/resolver-kv" }
+braincrawl-blob-fs = { path = "../../crates/backends/blob-fs" }
+braincrawl-store-sqlite = { path = "../../crates/backends/store-sqlite" }
+braincrawl-store-mem = { path = "../../crates/backends/store-mem" }
+braincrawl-resolver-kv = { path = "../../crates/backends/resolver-kv" }

@@ -1,0 +1,105 @@
+# braincrawl store API — brief sketch (host doc: doc02.01.03)
+# Every {id} is `namespace:value` (e.g. doi:10.1126/x, openalex:W1234, guid:...).
+# Any namespace resolves to one canonical GUID internally (doc02.01.02).
+openapi: 3.1.0
+info:
+  title: braincrawl store API
+  version: "0"
+
+paths:
+  /works:
+    put:                       # upsert a work from a provider record
+      summary: put_work — idempotent; extracts aliases from the record, resolves/mints GUID
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/WorkRecord" } } }
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/Resolved" } } } }
+
+  /works/{id}:
+    get:
+      summary: get_work — merged view across provider assertions, with provenance
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "200": { content: { application/json: { schema: { $ref: "#/components/schemas/WorkView" } } } }
+        "404": { description: unknown id }
+
+  /works/{id}/content/{kind}:   # kind = abstract | fulltext
+    put:
+      summary: put_content
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/ContentPut" } } }
+      responses: { "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ContentRef" } } } } }
+    get:
+      summary: get_content — rights-gated
+      responses:
+        "200": { description: bytes (rights=open) }
+        "302": { description: redirect to OA url (rights=link_only) }
+        "202": { description: materialization pending }
+        "451": { description: restricted — never persisted }
+        "404": { description: absent }
+
+  /edges:
+    put:
+      summary: put_edges — each item is a provider assertion; deduped on (src,dst,relation); endpoints may become stubs
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { edges: { type: array, items: { $ref: "#/components/schemas/EdgeAssertion" } } } } } }
+      responses: { "200": { description: "{ written: N }" } }
+
+  /works/{id}/edges:
+    get:
+      summary: get_edges
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [forward, backward] } }   # forward=references(out), backward=cited_by(in)
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit,  in: query, schema: { type: integer } }
+      responses: { "200": { description: "{ edges: [...], next_cursor }" } }
+
+  /works/have:
+    post:
+      summary: have — which ids are already present (accumulation check)
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: string } } } } } }
+      responses: { "200": { description: "{ present: [id, ...] }" } }
+
+components:
+  schemas:
+    Alias:        { type: object, properties: { namespace: { type: string }, value: { type: string } }, required: [namespace, value] }
+    Resolved:     { type: object, properties: { canonical_id: { type: string } } }
+    WorkRecord:   # the provider record; aliases is the id block, never stripped
+      type: object
+      required: [source, aliases]
+      properties:
+        source:   { type: string }                         # openalex | crossref | s2 | pubmed | ...
+        kind:     { type: string, default: work }          # work | author | venue | concept | topic
+        aliases:  { type: array, items: { $ref: "#/components/schemas/Alias" } }
+        attrs:    { type: object, additionalProperties: true }   # literal fields, stored verbatim as one assertion
+    WorkView:
+      type: object
+      properties:
+        canonical_id: { type: string }
+        kind:         { type: string }
+        attrs:        { type: object, additionalProperties: true }   # merged
+        provenance:   { type: object, additionalProperties: true }   # per-field winning source
+        aliases:      { type: array, items: { $ref: "#/components/schemas/Alias" } }
+    ContentPut:
+      type: object
+      required: [rights, source, fetched_at]
+      properties:
+        bytes:      { type: string, format: byte }   # for rights=open
+        url:        { type: string }                 # for rights=link_only
+        mime:       { type: string }
+        rights:     { type: string, enum: [open, link_only, restricted] }
+        source:     { type: string }
+        fetched_at: { type: string, format: date-time }
+    ContentRef:   { type: object, properties: { version: { type: integer }, r2_key: { type: string } } }
+    EdgeAssertion:
+      type: object
+      required: [src, dst, relation, source]
+      properties:
+        src:      { type: string }   # any id
+        dst:      { type: string }   # any id; unknown -> stub
+        relation: { type: string }   # cites | authored_by | published_in | has_concept | ...
+        source:   { type: string }
+        attrs:    { type: object, additionalProperties: true }   # sparse: intent, context, is_influential, ref_index
+        fetched_at: { type: string, format: date-time }

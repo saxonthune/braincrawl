@@ -8,6 +8,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 braincrawl-core = { workspace = true }
-braincrawl-blob-r2 = { path = "../../crates/adapters/blob-r2" }
-braincrawl-store-d1 = { path = "../../crates/adapters/store-d1" }
-braincrawl-resolver-kv = { path = "../../crates/adapters/resolver-kv" }
+braincrawl-blob-r2 = { path = "../../crates/backends/blob-r2" }
+braincrawl-store-d1 = { path = "../../crates/backends/store-d1" }
+braincrawl-resolver-kv = { path = "../../crates/backends/resolver-kv" }

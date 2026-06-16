@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use braincrawl_core::{
-    ports::BlobStore,
+    traits::BlobStore,
     types::{DomainError, StoredBlob},
 };
 

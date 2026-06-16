@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use braincrawl_core::{
-    ports::{MetadataStore, PayloadsRepo},
+    traits::{MetadataStore, PayloadsRepo},
     types::{DomainError, Kind, PayloadDescriptor, WorkId},
 };
 

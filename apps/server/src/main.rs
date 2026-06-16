@@ -1,11 +1,11 @@
-// Native composition root. Wires local adapters and serves core use-cases over HTTP (later task).
+// Native entry point. Wires local backends and serves core use-cases over HTTP (later task).
 //
-// Adapters wired here:
+// Backends wired here:
 //   FsBlobStore    — blob storage on local filesystem
 //   SqliteStore    — PayloadsRepo + MetadataStore via local SQLite
 //   MemStore       — in-memory fallback (tests / dev)
 //   KvResolver     — id resolution (stub; local KV in a later task)
 
 fn main() {
-    println!("braincrawl-server: native composition root (stub)");
+    println!("braincrawl-server: native entry point (stub)");
 }
