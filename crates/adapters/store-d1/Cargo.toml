@@ -1,0 +1,8 @@
+[package]
+name = "braincrawl-store-d1"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+braincrawl-core = { workspace = true }
+async-trait = { workspace = true }

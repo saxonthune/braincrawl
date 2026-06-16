@@ -1,0 +1,8 @@
+[package]
+name = "braincrawl-resolver-kv"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+braincrawl-core = { workspace = true }
+async-trait = { workspace = true }

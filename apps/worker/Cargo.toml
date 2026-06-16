@@ -1,0 +1,13 @@
+[package]
+name = "braincrawl-worker"
+edition.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+braincrawl-core = { workspace = true }
+braincrawl-blob-r2 = { path = "../../crates/adapters/blob-r2" }
+braincrawl-store-d1 = { path = "../../crates/adapters/store-d1" }
+braincrawl-resolver-kv = { path = "../../crates/adapters/resolver-kv" }

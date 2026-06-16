@@ -1,0 +1,28 @@
+# Wrangler configuration for braincrawl-worker (doc02.02.00).
+# Live binding IDs are filled in when deploying; this file declares intent only.
+
+name = "braincrawl-worker"
+main = "src/lib.rs"
+compatibility_date = "2024-01-01"
+
+# [[r2_buckets]]
+# binding = "BLOB_BUCKET"
+# bucket_name = "<your-r2-bucket>"
+
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "<your-d1-database>"
+# database_id = "<your-d1-database-id>"
+
+# [[kv_namespaces]]
+# binding = "ID_RESOLVER_KV"
+# id = "<your-kv-namespace-id>"
+
+# [durable_objects]
+# bindings = [
+#   { name = "WORK_DO", class_name = "WorkDurableObject" }
+# ]
+
+# [[queues.consumers]]
+# queue = "<your-queue-name>"
+# max_batch_size = 10

@@ -1,0 +1,8 @@
+[package]
+name = "braincrawl-core"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }

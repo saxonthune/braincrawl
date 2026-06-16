@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/core",
+  "crates/sql",
+  "crates/adapters/blob-r2",
+  "crates/adapters/blob-fs",
+  "crates/adapters/blob-mem",
+  "crates/adapters/store-d1",
+  "crates/adapters/store-sqlite",
+  "crates/adapters/store-mem",
+  "crates/adapters/resolver-kv",
+  "apps/worker",
+  "apps/server",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.dependencies]
+braincrawl-core = { path = "crates/core", package = "braincrawl-core" }
+async-trait = "0.1"
+thiserror = "2"
