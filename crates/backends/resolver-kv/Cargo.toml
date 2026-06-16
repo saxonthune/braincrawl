@@ -3,6 +3,11 @@ name = "braincrawl-resolver-kv"
 edition.workspace = true
 version.workspace = true
 
+[features]
+# Enable real KV implementation using workers-rs (wasm32 only).
+cloudflare = ["dep:worker"]
+
 [dependencies]
 braincrawl-core = { workspace = true }
 async-trait = { workspace = true }
+worker = { workspace = true, optional = true }

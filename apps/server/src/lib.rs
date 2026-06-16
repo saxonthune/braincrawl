@@ -1,0 +1,343 @@
+//! Shared wiring for the braincrawl native server.
+//!
+//! Exposed so that integration tests in `tests/` can call [`make_app`] without
+//! duplicating the store-construction logic.
+//!
+//! ## Note on `!Send` futures
+//!
+//! The backend traits use `#[async_trait(?Send)]`, which boxes futures without a
+//! `Send` bound.  Axum requires `Send` handler futures.  To bridge this, every
+//! handler wraps its store call in [`run_blocking`]: the future is created and
+//! driven to completion on a blocking thread via `Handle::block_on`, so it never
+//! crosses a thread boundary.
+
+use std::sync::Arc;
+
+use std::collections::HashMap;
+
+use axum::{
+    body::Bytes,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
+    routing::{get, post, put},
+    Json, Router,
+};
+use braincrawl_blob_fs::FsBlobStore;
+use braincrawl_coord_local::{LocalCoordinator, SystemClock, UuidGen};
+use braincrawl_core::{
+    traits::IdResolver,
+    types::{
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput,
+        PayloadKind, Rights, WorkRecord,
+    },
+    usecases::Store,
+};
+use braincrawl_store_sqlite::SqliteStore;
+use serde::Deserialize;
+
+// ─── !Send bridge ─────────────────────────────────────────────────────────────
+
+/// Drive a `!Send` future on the blocking thread pool.
+///
+/// `async_trait(?Send)` boxes futures without a `Send` bound; this helper
+/// lets us produce those futures inside a `spawn_blocking` closure so they
+/// never cross thread boundaries, satisfying axum's `Send` requirement.
+async fn run_blocking<F, Fut, T>(make: F) -> T
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = T>,
+    T: Send + 'static,
+{
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || handle.block_on(make()))
+        .await
+        .expect("blocking task panicked")
+}
+
+// ─── NoopResolver ─────────────────────────────────────────────────────────────
+
+/// `IdResolver` that always returns `None` (the resolver cache is unused in Phase 2).
+pub struct NoopResolver;
+
+#[async_trait::async_trait(?Send)]
+impl IdResolver for NoopResolver {
+    async fn resolve(
+        &self,
+        _ns: &str,
+        _val: &str,
+    ) -> Result<Option<CanonicalId>, DomainError> {
+        Ok(None)
+    }
+    async fn remember(
+        &self,
+        _id: &CanonicalId,
+        _ns: &str,
+        _val: &str,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+}
+
+// ─── LocalStore ───────────────────────────────────────────────────────────────
+
+pub type LocalStore = Store<
+    SqliteStore,
+    FsBlobStore,
+    SqliteStore,
+    NoopResolver,
+    LocalCoordinator,
+    SystemClock,
+    UuidGen,
+>;
+
+/// Construct the local `Store` from a SQLite path and blob root directory.
+pub fn make_store(db_path: &str, blob_root: &str) -> Result<LocalStore, String> {
+    let meta = SqliteStore::open(db_path).map_err(|e| e.to_string())?;
+    let payloads = SqliteStore::open(db_path).map_err(|e| e.to_string())?;
+    let blob = FsBlobStore::new(blob_root);
+    Ok(Store {
+        meta,
+        blob,
+        payloads,
+        resolver: NoopResolver,
+        coord: LocalCoordinator,
+        clock: SystemClock,
+        id_gen: UuidGen,
+    })
+}
+
+// ─── Request types ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct HaveRequest {
+    pub ids: Vec<String>,
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+fn parse_alias(id_str: &str) -> Option<Alias> {
+    let pos = id_str.find(':')?;
+    Some(Alias {
+        namespace: id_str[..pos].to_string(),
+        value: id_str[pos + 1..].to_string(),
+    })
+}
+
+fn parse_payload_kind(s: &str) -> Option<PayloadKind> {
+    match s {
+        "abstract" => Some(PayloadKind::Abstract),
+        "fulltext" => Some(PayloadKind::Fulltext),
+        _ => None,
+    }
+}
+
+fn parse_rights(s: &str) -> Option<Rights> {
+    match s {
+        "open" => Some(Rights::Open),
+        "link_only" => Some(Rights::LinkOnly),
+        "restricted" => Some(Rights::Restricted),
+        _ => None,
+    }
+}
+
+fn domain_status(e: &DomainError) -> StatusCode {
+    match e {
+        DomainError::NotFound => StatusCode::NOT_FOUND,
+        DomainError::RightsViolation(_) => StatusCode::from_u16(451).unwrap(),
+        DomainError::Conflict => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+// ─── Handlers ─────────────────────────────────────────────────────────────────
+
+/// PUT /works
+async fn handler_put_work(
+    State(store): State<Arc<LocalStore>>,
+    Json(record): Json<WorkRecord>,
+) -> impl IntoResponse {
+    let result = run_blocking(move || async move { store.put_work(record).await }).await;
+    match result {
+        Ok(id) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"id": format!("guid:{}", id.0)})),
+        )
+            .into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// PUT /edges
+async fn handler_put_edges(
+    State(store): State<Arc<LocalStore>>,
+    Json(edges): Json<Vec<EdgeInput>>,
+) -> impl IntoResponse {
+    let result = run_blocking(move || async move { store.put_edges(edges).await }).await;
+    match result {
+        Ok(count) => (StatusCode::OK, Json(serde_json::json!({"count": count}))).into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// POST /works/have
+async fn handler_have(
+    State(store): State<Arc<LocalStore>>,
+    Json(req): Json<HaveRequest>,
+) -> impl IntoResponse {
+    let aliases: Vec<Alias> = req.ids.iter().filter_map(|s| parse_alias(s)).collect();
+    let result = run_blocking(move || async move { store.have(aliases).await }).await;
+    match result {
+        Ok(present) => {
+            let ids: Vec<String> = present
+                .iter()
+                .map(|a| format!("{}:{}", a.namespace, a.value))
+                .collect();
+            Json(ids).into_response()
+        }
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// GET /works/*path  — dispatches to get_work / get_content / get_edges.
+///
+/// Alias values may contain `/` (e.g. DOI "10.99/smoke"), so we cannot use
+/// axum `:param` (single-segment).  A wildcard `*path` captures the full tail
+/// and we dispatch by structural suffix.
+async fn handler_works_get(
+    State(store): State<Arc<LocalStore>>,
+    Path(path): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Response {
+    // /works/*path/edges
+    if let Some(id_str) = path.strip_suffix("/edges") {
+        let a = match parse_alias(id_str) {
+            Some(a) => a,
+            None => return (StatusCode::BAD_REQUEST, "invalid id").into_response(),
+        };
+        let dir = match params.get("dir").map(|s| s.as_str()) {
+            Some("forward") => EdgeDir::Forward,
+            Some("backward") => EdgeDir::Backward,
+            _ => return (StatusCode::BAD_REQUEST, "dir must be forward or backward").into_response(),
+        };
+        let cursor = params.get("cursor").cloned();
+        let limit = params
+            .get("limit")
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(20)
+            .min(200);
+        let result =
+            run_blocking(move || async move { store.get_edges(a, dir, cursor, limit).await })
+                .await;
+        return match result {
+            Ok((edges, cursor)) => {
+                Json(serde_json::json!({ "edges": edges, "cursor": cursor })).into_response()
+            }
+            Err(e) => (domain_status(&e), e.to_string()).into_response(),
+        };
+    }
+
+    // /works/*path/content/{kind}
+    if let Some(pos) = path.rfind("/content/") {
+        let id_str = &path[..pos];
+        let kind_str = &path[pos + "/content/".len()..];
+        let a = match parse_alias(id_str) {
+            Some(a) => a,
+            None => return (StatusCode::BAD_REQUEST, "invalid id").into_response(),
+        };
+        let kind = match parse_payload_kind(kind_str) {
+            Some(k) => k,
+            None => return (StatusCode::BAD_REQUEST, "invalid kind").into_response(),
+        };
+        let _ = body; // not used for GET
+        let result =
+            run_blocking(move || async move { store.get_content(a, kind).await }).await;
+        return match result {
+            Ok(ContentOutcome::Bytes { bytes, mime, content_hash: _ }) => {
+                let headers = [(axum::http::header::CONTENT_TYPE, mime)];
+                (StatusCode::OK, headers, bytes).into_response()
+            }
+            Ok(ContentOutcome::RedirectUrl(url)) => Redirect::to(&url).into_response(),
+            Ok(ContentOutcome::Pending) => StatusCode::ACCEPTED.into_response(),
+            Ok(ContentOutcome::Restricted) => StatusCode::from_u16(451).unwrap().into_response(),
+            Ok(ContentOutcome::Absent) => StatusCode::NOT_FOUND.into_response(),
+            Err(e) => (domain_status(&e), e.to_string()).into_response(),
+        };
+    }
+
+    // /works/*id  — plain GET work
+    let a = match parse_alias(&path) {
+        Some(a) => a,
+        None => return (StatusCode::BAD_REQUEST, "expected namespace:value").into_response(),
+    };
+    let result = run_blocking(move || async move { store.get_work(a).await }).await;
+    match result {
+        Ok(Some(view)) => Json(view).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// PUT /works/*path  — dispatches to put_content (only sub-resource PUT).
+async fn handler_works_put(
+    State(store): State<Arc<LocalStore>>,
+    Path(path): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Response {
+    // /works/*path/content/{kind}
+    if let Some(pos) = path.rfind("/content/") {
+        let id_str = &path[..pos];
+        let kind_str = &path[pos + "/content/".len()..];
+        let a = match parse_alias(id_str) {
+            Some(a) => a,
+            None => return (StatusCode::BAD_REQUEST, "invalid id").into_response(),
+        };
+        let kind = match parse_payload_kind(kind_str) {
+            Some(k) => k,
+            None => return (StatusCode::BAD_REQUEST, "invalid kind").into_response(),
+        };
+        let mime = match params.get("mime").cloned() {
+            Some(m) => m,
+            None => return (StatusCode::BAD_REQUEST, "missing mime").into_response(),
+        };
+        let rights = match params.get("rights").and_then(|s| parse_rights(s)) {
+            Some(r) => r,
+            None => return (StatusCode::BAD_REQUEST, "invalid rights").into_response(),
+        };
+        let source = params.get("source").cloned();
+        let source_url = params.get("source_url").cloned();
+        let fetched_at = params
+            .get("fetched_at")
+            .cloned()
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+        let bytes = body.to_vec();
+        let result = run_blocking(move || async move {
+            store
+                .put_content(a, kind, bytes, rights, mime, source, source_url, fetched_at)
+                .await
+        })
+        .await;
+        return match result {
+            Ok(_) => StatusCode::OK.into_response(),
+            Err(e) => (domain_status(&e), e.to_string()).into_response(),
+        };
+    }
+
+    StatusCode::NOT_FOUND.into_response()
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+
+/// Build the axum router wired to the given store.
+pub fn make_app(store: Arc<LocalStore>) -> Router {
+    Router::new()
+        // Exact static routes first so they win over wildcards.
+        .route("/works/have", post(handler_have))
+        .route("/works", put(handler_put_work))
+        .route("/edges", put(handler_put_edges))
+        // Wildcard routes capture alias values that contain `/` (e.g. DOIs).
+        .route("/works/*path", get(handler_works_get).put(handler_works_put))
+        .with_state(store)
+}

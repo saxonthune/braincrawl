@@ -3,6 +3,14 @@ name = "braincrawl-store-d1"
 edition.workspace = true
 version.workspace = true
 
+[features]
+# Enable real D1 implementation using workers-rs (wasm32 only).
+cloudflare = ["dep:worker"]
+
 [dependencies]
 braincrawl-core = { workspace = true }
+braincrawl-sql = { workspace = true }
 async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+worker = { workspace = true, features = ["d1"], optional = true }

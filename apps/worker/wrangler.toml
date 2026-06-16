@@ -1,28 +1,34 @@
 # Wrangler configuration for braincrawl-worker (doc02.02.00).
-# Live binding IDs are filled in when deploying; this file declares intent only.
+# Concrete IDs are filled in at deploy time; this file declares binding intent only.
 
 name = "braincrawl-worker"
-main = "src/lib.rs"
+main = "build/worker/shim.mjs"
 compatibility_date = "2024-01-01"
 
-# [[r2_buckets]]
-# binding = "BLOB_BUCKET"
-# bucket_name = "<your-r2-bucket>"
+[build]
+command = "cargo install -q worker-build && worker-build --release"
 
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "<your-d1-database>"
-# database_id = "<your-d1-database-id>"
+[[r2_buckets]]
+binding = "BLOB_BUCKET"
+bucket_name = "braincrawl-blobs"
+# preview_bucket_name = "braincrawl-blobs-preview"   # fill for wrangler dev
 
-# [[kv_namespaces]]
-# binding = "ID_RESOLVER_KV"
-# id = "<your-kv-namespace-id>"
+[[d1_databases]]
+binding = "DB"
+database_name = "braincrawl-db"
+database_id = "placeholder-fill-at-deploy"
+migrations_dir = "../../migrations"
 
-# [durable_objects]
-# bindings = [
-#   { name = "WORK_DO", class_name = "WorkDurableObject" }
-# ]
+[[kv_namespaces]]
+binding = "ID_RESOLVER_KV"
+id = "placeholder-fill-at-deploy"
+# preview_id = "placeholder-fill-for-dev"   # fill for wrangler dev
 
-# [[queues.consumers]]
-# queue = "<your-queue-name>"
-# max_batch_size = 10
+[durable_objects]
+bindings = [
+  { name = "WORK_DO", class_name = "WorkDurableObject" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["WorkDurableObject"]

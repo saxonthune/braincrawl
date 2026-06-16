@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 
-use crate::types::{DomainError, Kind, PayloadDescriptor, StoredBlob, WorkId};
+use crate::types::{
+    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, NodeKind, PayloadDescriptor, PayloadKind,
+    StoredBlob,
+};
 
 /// Opaque key → bytes. Knows nothing of `kind`/`version`.
 #[async_trait(?Send)]
@@ -14,27 +17,115 @@ pub trait BlobStore {
 pub trait PayloadsRepo {
     async fn current_payload(
         &self,
-        id: &WorkId,
-        kind: Kind,
+        id: &CanonicalId,
+        kind: PayloadKind,
     ) -> Result<Option<PayloadDescriptor>, DomainError>;
-    async fn next_version(&self, id: &WorkId, kind: Kind) -> Result<u32, DomainError>;
+    async fn next_version(&self, id: &CanonicalId, kind: PayloadKind) -> Result<u32, DomainError>;
     async fn record(&self, descriptor: &PayloadDescriptor) -> Result<(), DomainError>;
 }
 
-/// The queryable graph facts; expands in a later task.
+/// The queryable graph facts.
 #[async_trait(?Send)]
 pub trait MetadataStore {
-    async fn upsert_stub(&self, id: &WorkId) -> Result<(), DomainError>;
-    async fn edges_out(&self, id: &WorkId) -> Result<Vec<WorkId>, DomainError>;
+    async fn get_alias(&self, alias: &Alias) -> Result<Option<CanonicalId>, DomainError>;
+
+    /// Get-or-create on the UNIQUE(namespace,value) constraint.
+    /// INSERT … ON CONFLICT DO NOTHING then SELECT; returns the winner's id.
+    async fn get_or_create_alias(
+        &self,
+        alias: &Alias,
+        candidate: &CanonicalId,
+    ) -> Result<CanonicalId, DomainError>;
+
+    async fn mint_node(
+        &self,
+        id: &CanonicalId,
+        kind: NodeKind,
+        created_at: &str,
+    ) -> Result<(), DomainError>;
+
+    async fn upsert_node_assertion(
+        &self,
+        id: &CanonicalId,
+        source: &str,
+        attrs: &serde_json::Value,
+        fetched_at: &str,
+    ) -> Result<(), DomainError>;
+
+    /// Follow the `merged_into` chain to the live representative (path-compressed).
+    async fn resolve_live(&self, id: &CanonicalId) -> Result<CanonicalId, DomainError>;
+
+    /// Repoint alias/node_assertion/edge/edge_assertion/payloads, fold PK collisions,
+    /// tombstone the loser.
+    async fn merge(
+        &self,
+        survivor: &CanonicalId,
+        loser: &CanonicalId,
+    ) -> Result<(), DomainError>;
+
+    /// Returns (kind, [(source, attrs, fetched_at)], aliases) for read-time merge.
+    async fn read_node(
+        &self,
+        id: &CanonicalId,
+    ) -> Result<
+        Option<(NodeKind, Vec<(String, serde_json::Value, String)>, Vec<Alias>)>,
+        DomainError,
+    >;
+
+    async fn put_edge(
+        &self,
+        src: &CanonicalId,
+        dst: &CanonicalId,
+        relation: &str,
+        source: &str,
+        attrs: Option<&serde_json::Value>,
+        fetched_at: &str,
+    ) -> Result<(), DomainError>;
+
+    async fn read_edges(
+        &self,
+        id: &CanonicalId,
+        dir: EdgeDir,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<EdgeView>, Option<String>), DomainError>;
+
+    /// Returns which of the given aliases are already known (for `have` queries).
+    async fn present_aliases(&self, aliases: &[Alias]) -> Result<Vec<Alias>, DomainError>;
 }
 
+/// KV projection cache for id resolution.
 #[async_trait(?Send)]
 pub trait IdResolver {
-    async fn resolve(&self, namespace: &str, value: &str) -> Result<Option<WorkId>, DomainError>;
+    async fn resolve(
+        &self,
+        namespace: &str,
+        value: &str,
+    ) -> Result<Option<CanonicalId>, DomainError>;
     async fn remember(
         &self,
-        canonical: &WorkId,
+        canonical: &CanonicalId,
         namespace: &str,
         value: &str,
     ) -> Result<(), DomainError>;
 }
+
+/// Provides the current wall-clock time as an RFC 3339 string.
+pub trait Clock {
+    fn now_rfc3339(&self) -> String;
+}
+
+/// Mints new braincrawl GUIDs.
+pub trait IdGen {
+    fn new_guid(&self) -> CanonicalId;
+}
+
+/// Per-work single-writer seam (doc02.01.02 §Concurrency, doc02.02.00).
+/// A no-op impl is trivially writable.
+#[async_trait(?Send)]
+pub trait Coordinator {
+    async fn with_lock(&self, key: &str) -> Result<LockGuard, DomainError>;
+}
+
+/// Returned by `Coordinator::with_lock`; dropping releases the lock.
+pub struct LockGuard;

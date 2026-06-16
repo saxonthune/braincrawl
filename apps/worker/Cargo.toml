@@ -8,6 +8,17 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 braincrawl-core = { workspace = true }
-braincrawl-blob-r2 = { path = "../../crates/backends/blob-r2" }
-braincrawl-store-d1 = { path = "../../crates/backends/store-d1" }
-braincrawl-resolver-kv = { path = "../../crates/backends/resolver-kv" }
+braincrawl-sql = { workspace = true }
+braincrawl-blob-r2 = { path = "../../crates/backends/blob-r2", features = ["cloudflare"] }
+braincrawl-store-d1 = { path = "../../crates/backends/store-d1", features = ["cloudflare"] }
+braincrawl-resolver-kv = { path = "../../crates/backends/resolver-kv", features = ["cloudflare"] }
+worker = { version = "0.4", features = ["d1"] }
+# wasm-bindgen must be a direct dep: #[durable_object] generates ::wasm_bindgen::... paths.
+wasm-bindgen = "0.2"
+# getrandom with js feature required for uuid::new_v4() on wasm32.
+getrandom = { workspace = true, features = ["js"] }
+# uuid needs `js` feature for wasm32 randomness (changed from getrandom in v1.10+).
+uuid = { version = "1", features = ["v4", "js"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }

@@ -3,6 +3,11 @@ name = "braincrawl-blob-r2"
 edition.workspace = true
 version.workspace = true
 
+[features]
+# Enable real R2 implementation using workers-rs (wasm32 only).
+cloudflare = ["dep:worker"]
+
 [dependencies]
 braincrawl-core = { workspace = true }
 async-trait = { workspace = true }
+worker = { workspace = true, optional = true }
