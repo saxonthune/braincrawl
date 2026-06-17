@@ -51,7 +51,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc02.01.00 | `01-core/00-index.md` | The platform-agnostic knowledge-graph engine, decomposed into the three goals layers — corpus (identity + payloads), neutral metadata graph, and per-consumer projection graphs. | architecture, core, layers | — | — | — |
 | doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — Layer 1 is raw bytes in a blob store keyed by canonical id, Layer 2 is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.04 | — |
 | doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one canonical GUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
-| doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a canonical GUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05 | openapi.yaml |
+| doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a canonical GUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.00, doc02.06.01.01 | openapi.yaml |
 
 ### Cloudflare
 
@@ -67,6 +67,15 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 
 | doc02.03.00 | `03-skill/00-index.md` | The agent-facing surface — how a consuming agent drives the graph API. Builds coverage once via the corpus/metadata layers, then applies decisiveness as a query-time lens over a consumer projection. | architecture, skill, agent, consumer | — | — | — |
 
+### CLI
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc02.06.00 | `06-cli/00-index.md` | The braincrawl script — a single monolithic CLI whose subcommands route between the metadata server and external providers. Results persist to the metadata server by default; --skip-push opts out. | cli, script, braincrawl, routing, providers | doc02.01.03 | — | — |
+| doc02.06.01.00 | `06-cli/01-providers/00-index.md` | The provider-fork namespaces — each talks straight to one external API, bypassing routing. One provider today: OpenAlex. | cli, providers, fork, external | doc02.06 | — | — |
+| doc02.06.01.01 | `06-cli/01-providers/01-openalex.md` | The braincrawl openalex namespace — a deliberate fork to the OpenAlex API exposing six read-only base verbs (get, search, find, autocomplete, cited-by, refs). Trimmed structured output, push-to-store by default. | cli, providers, openalex, fork, verbs, citations | doc02.06.01, doc02.01.03 | — | — |
+
 ## Tag Index
 
 Quick lookup for file-path→doc mapping:
@@ -78,6 +87,9 @@ Quick lookup for file-path→doc mapping:
 | `api` | doc02.01.03 |
 | `architecture` | doc02.00, doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03, doc02.02.00, doc02.03.00, doc02.04, doc02.05 |
 | `auth` | doc02.05 |
+| `braincrawl` | doc02.06.00 |
+| `citations` | doc02.06.01.01 |
+| `cli` | doc02.06.00, doc02.06.01.00, doc02.06.01.01 |
 | `cloudflare` | doc02.02.00, doc02.04 |
 | `consumer` | doc02.03.00 |
 | `contract` | doc02.01.03 |
@@ -85,6 +97,8 @@ Quick lookup for file-path→doc mapping:
 | `core` | doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03 |
 | `deployment` | doc02.02.00 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
+| `external` | doc02.06.01.00 |
+| `fork` | doc02.06.01.00, doc02.06.01.01 |
 | `id-resolution` | doc02.01.02 |
 | `identity` | doc02.01.02 |
 | `index` | doc00.00 |
@@ -93,11 +107,15 @@ Quick lookup for file-path→doc mapping:
 | `maintenance` | doc00.02 |
 | `meta` | doc00.00, doc00.01 |
 | `monorepo` | doc02.00, doc02.04 |
+| `openalex` | doc02.06.01.01 |
 | `overview` | doc02.00 |
 | `philosophy` | doc00.02 |
+| `providers` | doc02.06.00, doc02.06.01.00, doc02.06.01.01 |
 | `retrieval` | doc00.04 |
+| `routing` | doc02.06.00 |
 | `runtime` | doc02.04 |
 | `rust` | doc02.04 |
+| `script` | doc02.06.00 |
 | `security` | doc02.05 |
 | `separation` | doc02.01.01, doc02.04 |
 | `skill` | doc02.03.00 |
@@ -107,3 +125,4 @@ Quick lookup for file-path→doc mapping:
 | `token` | doc02.05 |
 | `traits-and-backends` | doc02.04 |
 | `union-find` | doc02.01.02 |
+| `verbs` | doc02.06.01.01 |
