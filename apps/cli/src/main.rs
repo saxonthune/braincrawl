@@ -1,4 +1,4 @@
-use braincrawl_cli::cli::{Cli, GraphCmd, Namespace, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
+use braincrawl_cli::cli::{Cli, CrossrefCmd, GraphCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
 use braincrawl_cli::fetch_content;
@@ -13,6 +13,9 @@ use braincrawl_cli::semanticscholar::mapping::{
 };
 use braincrawl_cli::semanticscholar::verbs as s2_verbs;
 use braincrawl_cli::semanticscholar::{PushBatch as S2PushBatch, PushSummary as S2PushSummary};
+use braincrawl_cli::refs_backfill::crossref::CrossrefClient;
+use braincrawl_cli::refs_backfill::mapping::{doi_edges, extract_doi_from_work};
+use braincrawl_cli::refs_backfill::opencitations::OpenCitationsClient;
 use braincrawl_cli::store_client::StoreClient;
 use clap::Parser;
 
@@ -137,6 +140,111 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 report_s2_push_summary(&summary);
                 if !summary.errors.is_empty() {
                     std::process::exit(1);
+                }
+            }
+        }
+        Namespace::Crossref(cr) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let cr_client = CrossrefClient::new(config.crossref_mailto.clone());
+            match cr.cmd {
+                CrossrefCmd::Refs { id } => {
+                    let Some(work) = store.get_work(&id)? else {
+                        return Err(format!("work not found in store: {id}").into());
+                    };
+                    let Some(citing_doi) = extract_doi_from_work(&work) else {
+                        return Err(format!(
+                            "no DOI known for {id} — Crossref/OpenCitations are DOI-keyed"
+                        )
+                        .into());
+                    };
+                    let (cited_dois, skipped) = cr_client.get_references(&citing_doi)?;
+                    let edges = doi_edges(&citing_doi, &cited_dois, "crossref");
+                    let count = cited_dois.len() as u64;
+                    let results: Vec<serde_json::Value> = cited_dois
+                        .iter()
+                        .map(|d| serde_json::json!({"id": format!("doi:{d}")}))
+                        .collect();
+                    let envelope = Envelope {
+                        query: QueryMeta {
+                            entity: Some("crossref:refs".to_string()),
+                            resolved_filter: Some(format!("doi:{citing_doi}")),
+                            url: None,
+                        },
+                        count,
+                        returned: results.len(),
+                        truncated: false,
+                        next_cursor: None,
+                        results,
+                    };
+                    render(&envelope, &opts);
+                    if !opts.skip_push {
+                        match store.put_edges(&edges) {
+                            Ok(n) => eprintln!(
+                                "push: {} edge(s) stored, {} reference(s) skipped (no DOI)",
+                                n, skipped
+                            ),
+                            Err(e) => {
+                                eprintln!("push error: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    } else {
+                        eprintln!(
+                            "skip-push: {} edge(s) found, {} reference(s) skipped (no DOI)",
+                            edges.len(),
+                            skipped
+                        );
+                    }
+                }
+            }
+        }
+        Namespace::Opencitations(oc) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let oc_client = OpenCitationsClient::new();
+            match oc.cmd {
+                OpencitationsCmd::Refs { id } => {
+                    let Some(work) = store.get_work(&id)? else {
+                        return Err(format!("work not found in store: {id}").into());
+                    };
+                    let Some(citing_doi) = extract_doi_from_work(&work) else {
+                        return Err(format!(
+                            "no DOI known for {id} — Crossref/OpenCitations are DOI-keyed"
+                        )
+                        .into());
+                    };
+                    let cited_dois = oc_client.get_references(&citing_doi)?;
+                    let edges = doi_edges(&citing_doi, &cited_dois, "opencitations");
+                    let count = cited_dois.len() as u64;
+                    let results: Vec<serde_json::Value> = cited_dois
+                        .iter()
+                        .map(|d| serde_json::json!({"id": format!("doi:{d}")}))
+                        .collect();
+                    let envelope = Envelope {
+                        query: QueryMeta {
+                            entity: Some("opencitations:refs".to_string()),
+                            resolved_filter: Some(format!("doi:{citing_doi}")),
+                            url: None,
+                        },
+                        count,
+                        returned: results.len(),
+                        truncated: false,
+                        next_cursor: None,
+                        results,
+                    };
+                    render(&envelope, &opts);
+                    if !opts.skip_push {
+                        match store.put_edges(&edges) {
+                            Ok(n) => eprintln!("push: {} edge(s) stored", n),
+                            Err(e) => {
+                                eprintln!("push error: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    } else {
+                        eprintln!("skip-push: {} edge(s) found", edges.len());
+                    }
                 }
             }
         }

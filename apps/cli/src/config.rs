@@ -7,6 +7,7 @@ pub struct Config {
     pub semanticscholar_api_key: Option<String>,
     pub auth_token: Option<String>,
     pub unpaywall_email: Option<String>,
+    pub crossref_mailto: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -16,6 +17,7 @@ struct ConfigFile {
     semanticscholar_api_key: Option<String>,
     auth_token: Option<String>,
     unpaywall_email: Option<String>,
+    crossref_mailto: Option<String>,
 }
 
 impl Config {
@@ -40,6 +42,9 @@ impl Config {
             unpaywall_email: std::env::var("BRAINCRAWL_UNPAYWALL_EMAIL")
                 .ok()
                 .or_else(|| file.unpaywall_email),
+            crossref_mailto: std::env::var("BRAINCRAWL_CROSSREF_MAILTO")
+                .ok()
+                .or_else(|| file.crossref_mailto),
         }
     }
 

@@ -46,6 +46,10 @@ pub enum Namespace {
     Openalex(OpenalexArgs),
     #[command(about = "Query the Semantic Scholar graph API")]
     Semanticscholar(SemanticscholarArgs),
+    #[command(about = "Backfill backward references from Crossref's deposited reference list")]
+    Crossref(CrossrefArgs),
+    #[command(about = "Backfill backward references from the OpenCitations COCI index")]
+    Opencitations(OpencitationsArgs),
     #[command(name = "fetch-content", about = "Acquire a work's fulltext artifact from the open web into the store")]
     FetchContent(FetchContentArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
@@ -169,6 +173,36 @@ pub enum SemanticscholarCmd {
     /// List papers referenced by the given paper
     Refs {
         /// Paper ID (doi:…/arxiv:…/corpusid:…/s2:…/40-char hex)
+        id: String,
+    },
+}
+
+#[derive(Args)]
+pub struct CrossrefArgs {
+    #[command(subcommand)]
+    pub cmd: CrossrefCmd,
+}
+
+#[derive(Subcommand)]
+pub enum CrossrefCmd {
+    /// List works the given work references (via Crossref deposited reference list)
+    Refs {
+        /// Work id in ns:value form (resolved to its DOI)
+        id: String,
+    },
+}
+
+#[derive(Args)]
+pub struct OpencitationsArgs {
+    #[command(subcommand)]
+    pub cmd: OpencitationsCmd,
+}
+
+#[derive(Subcommand)]
+pub enum OpencitationsCmd {
+    /// List works the given work references (via OpenCitations COCI index)
+    Refs {
+        /// Work id in ns:value form (resolved to its DOI)
         id: String,
     },
 }
