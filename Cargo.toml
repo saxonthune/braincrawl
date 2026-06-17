@@ -15,6 +15,7 @@ members = [
   "crates/backends/coord-local",
   "apps/worker",
   "apps/server",
+  "apps/cli",
 ]
 # Exclude apps/worker from default builds; it only targets wasm32-unknown-unknown.
 # Build it explicitly: cargo build -p braincrawl-worker --target wasm32-unknown-unknown
@@ -32,6 +33,7 @@ default-members = [
   "crates/backends/resolver-mem",
   "crates/backends/coord-local",
   "apps/server",
+  "apps/cli",
 ]
 
 [workspace.package]
