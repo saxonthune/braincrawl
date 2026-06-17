@@ -373,6 +373,15 @@ async fn handler_works_put(
     StatusCode::NOT_FOUND.into_response()
 }
 
+/// GET /stats
+async fn handler_stats(State(store): State<Arc<LocalStore>>) -> impl IntoResponse {
+    let result = run_blocking(move || async move { store.stats().await }).await;
+    match result {
+        Ok(stats) => Json(stats).into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
 /// POST /graph/neighborhood
 async fn handler_neighborhood(
     State(store): State<Arc<LocalStore>>,
@@ -406,6 +415,7 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
         .route("/works", put(handler_put_work))
         .route("/edges", put(handler_put_edges))
         .route("/graph/neighborhood", post(handler_neighborhood))
+        .route("/stats", get(handler_stats))
         // Wildcard routes capture alias values that contain `/` (e.g. DOIs).
         .route("/works/*path", get(handler_works_get).put(handler_works_put))
         .layer(axum::middleware::from_fn_with_state(auth, gate))

@@ -46,6 +46,8 @@ pub enum Namespace {
     Openalex(OpenalexArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
+    #[command(about = "Show aggregate statistics about the metadata network")]
+    Stats,
 }
 
 #[derive(Args)]

@@ -165,6 +165,75 @@ async fn test_content_roundtrip() {
 }
 
 #[tokio::test]
+async fn test_stats_endpoint() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    // Empty store: everything zero.
+    let res = client.get(format!("{base}/stats")).send().await.unwrap();
+    assert_eq!(res.status(), 200, "GET /stats should return 200");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["works"], 0);
+    assert_eq!(body["edges_total"], 0);
+
+    // One described work (carries an assertion from source "openalex").
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "openalex",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.1/described"}],
+            "attrs": {"title": "Described"}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // An edge to an unknown dst mints a stub work (no assertion).
+    client
+        .put(format!("{base}/edges"))
+        .json(&serde_json::json!([{
+            "src": {"namespace": "doi", "value": "10.1/described"},
+            "dst": {"namespace": "doi", "value": "10.1/stub"},
+            "relation": "cites",
+            "source": "openalex",
+            "attrs": null,
+            "fetched_at": "2024-01-01T00:00:00Z"
+        }]))
+        .send()
+        .await
+        .unwrap();
+
+    let res = client.get(format!("{base}/stats")).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+
+    assert_eq!(body["works"], 2, "described work + stub");
+    assert_eq!(body["works_described"], 1);
+    assert_eq!(body["works_stub"], 1);
+    assert_eq!(body["nodes_total"], 2);
+    assert_eq!(body["tombstones"], 0);
+    assert_eq!(body["edges_total"], 1);
+
+    // Grouped breakdowns are arrays of {key, count}.
+    let kinds = body["nodes_by_kind"].as_array().unwrap();
+    assert_eq!(kinds[0]["key"], "work");
+    assert_eq!(kinds[0]["count"], 2);
+
+    let rels = body["edges_by_relation"].as_array().unwrap();
+    assert_eq!(rels[0]["key"], "cites");
+    assert_eq!(rels[0]["count"], 1);
+
+    let sources = body["assertions_by_source"].as_array().unwrap();
+    assert_eq!(sources[0]["key"], "openalex");
+    assert_eq!(sources[0]["count"], 1);
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn test_neighborhood_endpoint() {
     let dir = tempfile::tempdir().unwrap();
     let (base, handle) = start_server(dir.path()).await;

@@ -1,4 +1,4 @@
-use braincrawl_sql::{alias, edge, edge_assertion, migrations, node, node_assertion, payload};
+use braincrawl_sql::{alias, edge, edge_assertion, migrations, node, node_assertion, payload, stats};
 use braincrawl_sql::{alias_pair_list, in_list};
 use rusqlite::{params, Connection};
 
@@ -57,6 +57,15 @@ fn all_queries_prepare() {
         ("payload::MERGE_DEMOTE_LOSER_CURRENT", payload::MERGE_DEMOTE_LOSER_CURRENT),
         ("payload::MERGE_REPOINT", payload::MERGE_REPOINT),
         ("payload::MERGE_DELETE_LOSER", payload::MERGE_DELETE_LOSER),
+        // stats
+        ("stats::WORKS", stats::WORKS),
+        ("stats::WORKS_DESCRIBED", stats::WORKS_DESCRIBED),
+        ("stats::NODES_TOTAL", stats::NODES_TOTAL),
+        ("stats::TOMBSTONES", stats::TOMBSTONES),
+        ("stats::EDGES_TOTAL", stats::EDGES_TOTAL),
+        ("stats::NODES_BY_KIND", stats::NODES_BY_KIND),
+        ("stats::EDGES_BY_RELATION", stats::EDGES_BY_RELATION),
+        ("stats::ASSERTIONS_BY_SOURCE", stats::ASSERTIONS_BY_SOURCE),
     ];
 
     // Variable-arity builders — test with n = 1 and n = 3.

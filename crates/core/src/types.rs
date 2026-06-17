@@ -119,6 +119,40 @@ pub struct Neighborhood {
     pub truncated: bool,
 }
 
+/// A single named count, e.g. `{ key: "work", count: 42 }`.
+/// Used for the grouped breakdowns in [`GraphStats`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Tally {
+    pub key: String,
+    pub count: u64,
+}
+
+/// Aggregate counts over the whole metadata network.
+///
+/// "Live" everywhere means `merged_into IS NULL` — tombstones are excluded
+/// from the headline counts and reported separately.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GraphStats {
+    /// Live work nodes — the headline "how many works" number.
+    pub works: u64,
+    /// Live works with at least one assertion (fetched metadata).
+    pub works_described: u64,
+    /// Live works with zero assertions — cited-only frontier stubs.
+    pub works_stub: u64,
+    /// All live nodes regardless of kind.
+    pub nodes_total: u64,
+    /// Live node counts by kind, descending by count.
+    pub nodes_by_kind: Vec<Tally>,
+    /// Tombstones (nodes merged into a survivor).
+    pub tombstones: u64,
+    /// Total deduped edges.
+    pub edges_total: u64,
+    /// Edge counts by relation, descending by count.
+    pub edges_by_relation: Vec<Tally>,
+    /// Node-assertion counts by provider source, descending by count.
+    pub assertions_by_source: Vec<Tally>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EdgeDir {
     Forward,

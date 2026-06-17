@@ -350,6 +350,49 @@ pub mod payload {
         DELETE FROM payloads WHERE canonical_id = ?";
 }
 
+// ── stats ─────────────────────────────────────────────────────────────────
+
+/// Aggregate-count queries backing the `MetadataStore::stats` summary.
+/// All exclude tombstones (`merged_into IS NOT NULL`) except where noted.
+/// None take parameters. Grouped queries are ordered count desc, key asc.
+pub mod stats {
+    /// Live work nodes. Returns column `count`. Params: none.
+    pub const WORKS: &str = "\
+        SELECT COUNT(*) AS count FROM node WHERE kind = 'work' AND merged_into IS NULL";
+
+    /// Live works with at least one assertion. Returns column `count`. Params: none.
+    pub const WORKS_DESCRIBED: &str = "\
+        SELECT COUNT(DISTINCT na.canonical_id) AS count FROM node_assertion na \
+        JOIN node n ON n.canonical_id = na.canonical_id \
+        WHERE n.kind = 'work' AND n.merged_into IS NULL";
+
+    /// All live nodes. Returns column `count`. Params: none.
+    pub const NODES_TOTAL: &str = "\
+        SELECT COUNT(*) AS count FROM node WHERE merged_into IS NULL";
+
+    /// Tombstones (merged nodes). Returns column `count`. Params: none.
+    pub const TOMBSTONES: &str = "\
+        SELECT COUNT(*) AS count FROM node WHERE merged_into IS NOT NULL";
+
+    /// Total deduped edges. Returns column `count`. Params: none.
+    pub const EDGES_TOTAL: &str = "SELECT COUNT(*) AS count FROM edge";
+
+    /// Live node counts by kind. Returns columns `(key, count)`. Params: none.
+    pub const NODES_BY_KIND: &str = "\
+        SELECT kind AS key, COUNT(*) AS count FROM node WHERE merged_into IS NULL \
+        GROUP BY kind ORDER BY COUNT(*) DESC, kind ASC";
+
+    /// Edge counts by relation. Returns columns `(key, count)`. Params: none.
+    pub const EDGES_BY_RELATION: &str = "\
+        SELECT relation AS key, COUNT(*) AS count FROM edge \
+        GROUP BY relation ORDER BY COUNT(*) DESC, relation ASC";
+
+    /// Node-assertion counts by source. Returns columns `(key, count)`. Params: none.
+    pub const ASSERTIONS_BY_SOURCE: &str = "\
+        SELECT source AS key, COUNT(*) AS count FROM node_assertion \
+        GROUP BY source ORDER BY COUNT(*) DESC, source ASC";
+}
+
 // ── variable-arity helpers ────────────────────────────────────────────────
 
 /// Build a `(?, ?, …)` placeholder string with `n` slots.

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
 use crate::types::{
-    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, NodeKind, PayloadDescriptor, PayloadKind,
-    StoredBlob,
+    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor,
+    PayloadKind, StoredBlob,
 };
 
 /// Opaque key → bytes. Knows nothing of `kind`/`version`.
@@ -92,6 +92,9 @@ pub trait MetadataStore {
 
     /// Returns which of the given aliases are already known (for `have` queries).
     async fn present_aliases(&self, aliases: &[Alias]) -> Result<Vec<Alias>, DomainError>;
+
+    /// Aggregate counts over the whole network (works, nodes, edges, sources).
+    async fn stats(&self) -> Result<GraphStats, DomainError>;
 }
 
 /// KV projection cache for id resolution.

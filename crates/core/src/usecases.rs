@@ -36,9 +36,9 @@
 use crate::{
     traits::{BlobStore, Clock, Coordinator, IdGen, IdResolver, MetadataStore, PayloadsRepo},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, Neighborhood,
-        NeighborhoodEdge, NeighborhoodNode, NodeKind, PayloadDescriptor, PayloadKind, Rights,
-        WorkRecord, WorkView,
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, GraphStats,
+        Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, PayloadDescriptor, PayloadKind,
+        Rights, WorkRecord, WorkView,
     },
 };
 
@@ -459,6 +459,11 @@ where
             edges: closed_edges,
             truncated,
         })
+    }
+
+    /// Aggregate counts over the whole metadata network.
+    pub async fn stats(&self) -> Result<GraphStats, DomainError> {
+        self.meta.stats().await
     }
 
     // -----------------------------------------------------------------------

@@ -19,8 +19,10 @@
 use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, PayloadsRepo},
-    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, NodeKind, PayloadDescriptor, PayloadKind, Rights},
+    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor, PayloadKind, Rights},
 };
+#[cfg(feature = "cloudflare")]
+use braincrawl_core::types::Tally;
 
 // ── shared helpers (no worker deps) ──────────────────────────────────────────
 
@@ -131,6 +133,9 @@ impl MetadataStore for D1Store {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
     async fn present_aliases(&self, _aliases: &[Alias]) -> Result<Vec<Alias>, DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
+    async fn stats(&self) -> Result<GraphStats, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
 }
@@ -615,5 +620,75 @@ impl MetadataStore for D1Store {
             .into_iter()
             .map(|r| Alias { namespace: r.namespace, value: r.value })
             .collect())
+    }
+
+    async fn stats(&self) -> Result<GraphStats, DomainError> {
+        #[derive(serde::Deserialize)]
+        struct CountRow { count: i64 }
+        #[derive(serde::Deserialize)]
+        struct TallyRow { key: String, count: i64 }
+
+        use braincrawl_sql::stats as q;
+
+        // One D1 batch keeps all eight reads on a single round-trip, in order.
+        let results = self
+            .db
+            .batch(vec![
+                prep(&self.db, q::WORKS, &[])?,
+                prep(&self.db, q::WORKS_DESCRIBED, &[])?,
+                prep(&self.db, q::NODES_TOTAL, &[])?,
+                prep(&self.db, q::TOMBSTONES, &[])?,
+                prep(&self.db, q::EDGES_TOTAL, &[])?,
+                prep(&self.db, q::NODES_BY_KIND, &[])?,
+                prep(&self.db, q::EDGES_BY_RELATION, &[])?,
+                prep(&self.db, q::ASSERTIONS_BY_SOURCE, &[])?,
+            ])
+            .await
+            .map_err(be)?;
+        let mut iter = results.into_iter();
+
+        let mut count = |label: &str| -> Result<u64, DomainError> {
+            let row = iter
+                .next()
+                .ok_or_else(|| DomainError::Backend(format!("stats: missing result for {label}")))?
+                .results::<CountRow>()
+                .map_err(be)?
+                .into_iter()
+                .next()
+                .ok_or_else(|| DomainError::Backend(format!("stats: empty result for {label}")))?;
+            Ok(row.count as u64)
+        };
+        let works = count("works")?;
+        let works_described = count("works_described")?;
+        let nodes_total = count("nodes_total")?;
+        let tombstones = count("tombstones")?;
+        let edges_total = count("edges_total")?;
+
+        let mut tally = |label: &str| -> Result<Vec<Tally>, DomainError> {
+            let rows = iter
+                .next()
+                .ok_or_else(|| DomainError::Backend(format!("stats: missing result for {label}")))?
+                .results::<TallyRow>()
+                .map_err(be)?;
+            Ok(rows
+                .into_iter()
+                .map(|r| Tally { key: r.key, count: r.count as u64 })
+                .collect())
+        };
+        let nodes_by_kind = tally("nodes_by_kind")?;
+        let edges_by_relation = tally("edges_by_relation")?;
+        let assertions_by_source = tally("assertions_by_source")?;
+
+        Ok(GraphStats {
+            works,
+            works_described,
+            works_stub: works.saturating_sub(works_described),
+            nodes_total,
+            nodes_by_kind,
+            tombstones,
+            edges_total,
+            edges_by_relation,
+            assertions_by_source,
+        })
     }
 }

@@ -108,6 +108,18 @@ impl StoreClient {
         Ok(resp.json()?)
     }
 
+    /// GET /stats — returns aggregate network statistics as JSON.
+    pub fn stats(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/stats", self.base_url);
+        let resp = self.apply_auth(self.http.get(&url)).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(resp.json()?)
+    }
+
     /// GET /works/{alias} — returns the work JSON, or `None` on 404.
     /// `alias` should be in `ns:value` form.
     pub fn get_work(&self, alias: &str) -> Result<Option<serde_json::Value>> {

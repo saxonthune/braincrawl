@@ -12,8 +12,8 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, PayloadsRepo},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, NodeKind, PayloadDescriptor,
-        PayloadKind, Rights,
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor,
+        PayloadKind, Rights, Tally,
     },
 };
 use rusqlite::{params, Connection};
@@ -652,5 +652,55 @@ impl MetadataStore for SqliteStore {
             .filter_map(|r| r.ok())
             .collect();
         Ok(result)
+    }
+
+    async fn stats(&self) -> Result<GraphStats, DomainError> {
+        let conn = self.conn.lock().unwrap();
+
+        // Scalar count helper — runs a single COUNT(*) query.
+        let count = |sql: &str| -> Result<u64, DomainError> {
+            let n: i64 = conn.query_row(sql, [], |row| row.get(0)).map_err(be)?;
+            Ok(n as u64)
+        };
+
+        // Grouped tally helper — `SELECT <key>, COUNT(*) ... GROUP BY <key>`,
+        // already ordered count desc then key asc for determinism.
+        let tally = |sql: &str| -> Result<Vec<Tally>, DomainError> {
+            let mut stmt = conn.prepare(sql).map_err(be)?;
+            let rows: Vec<Tally> = stmt
+                .query_map([], |row| {
+                    Ok(Tally {
+                        key: row.get::<_, String>(0)?,
+                        count: row.get::<_, i64>(1)? as u64,
+                    })
+                })
+                .map_err(be)?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(rows)
+        };
+
+        use braincrawl_sql::stats as q;
+        let works = count(q::WORKS)?;
+        let works_described = count(q::WORKS_DESCRIBED)?;
+        let nodes_total = count(q::NODES_TOTAL)?;
+        let tombstones = count(q::TOMBSTONES)?;
+        let edges_total = count(q::EDGES_TOTAL)?;
+
+        let nodes_by_kind = tally(q::NODES_BY_KIND)?;
+        let edges_by_relation = tally(q::EDGES_BY_RELATION)?;
+        let assertions_by_source = tally(q::ASSERTIONS_BY_SOURCE)?;
+
+        Ok(GraphStats {
+            works,
+            works_described,
+            works_stub: works.saturating_sub(works_described),
+            nodes_total,
+            nodes_by_kind,
+            tombstones,
+            edges_total,
+            edges_by_relation,
+            assertions_by_source,
+        })
     }
 }

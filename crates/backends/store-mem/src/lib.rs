@@ -12,8 +12,8 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, PayloadsRepo},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, NodeKind, PayloadDescriptor,
-        PayloadKind,
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor,
+        PayloadKind, Tally,
     },
 };
 
@@ -499,5 +499,78 @@ impl MetadataStore for MemStore {
             .cloned()
             .collect();
         Ok(present)
+    }
+
+    async fn stats(&self) -> Result<GraphStats, DomainError> {
+        let inner = self.inner.borrow();
+
+        // Sort a (key → count) map into Tally rows: count desc, then key asc.
+        let into_tallies = |map: HashMap<String, u64>| -> Vec<Tally> {
+            let mut rows: Vec<Tally> = map
+                .into_iter()
+                .map(|(key, count)| Tally { key, count })
+                .collect();
+            rows.sort_by(|a, b| b.count.cmp(&a.count).then(a.key.cmp(&b.key)));
+            rows
+        };
+
+        let kind_str = |k: &NodeKind| match k {
+            NodeKind::Work => "work",
+            NodeKind::Author => "author",
+            NodeKind::Venue => "venue",
+            NodeKind::Concept => "concept",
+            NodeKind::Topic => "topic",
+        };
+
+        let mut nodes_total = 0u64;
+        let mut tombstones = 0u64;
+        let mut works = 0u64;
+        let mut nodes_by_kind: HashMap<String, u64> = HashMap::new();
+        for row in inner.nodes.values() {
+            if row.merged_into.is_some() {
+                tombstones += 1;
+                continue;
+            }
+            nodes_total += 1;
+            *nodes_by_kind.entry(kind_str(&row.kind).to_string()).or_insert(0) += 1;
+            if row.kind == NodeKind::Work {
+                works += 1;
+            }
+        }
+
+        // Works with at least one assertion, restricted to live work nodes.
+        let mut described: std::collections::HashSet<&String> = std::collections::HashSet::new();
+        for (id, _source) in inner.node_assertions.keys() {
+            match inner.nodes.get(id) {
+                Some(row) if row.merged_into.is_none() && row.kind == NodeKind::Work => {
+                    described.insert(id);
+                }
+                _ => {}
+            }
+        }
+        let works_described = described.len() as u64;
+
+        let mut edges_by_relation: HashMap<String, u64> = HashMap::new();
+        for (_src, _dst, relation) in inner.edges.keys() {
+            *edges_by_relation.entry(relation.clone()).or_insert(0) += 1;
+        }
+        let edges_total = inner.edges.len() as u64;
+
+        let mut assertions_by_source: HashMap<String, u64> = HashMap::new();
+        for (_id, source) in inner.node_assertions.keys() {
+            *assertions_by_source.entry(source.clone()).or_insert(0) += 1;
+        }
+
+        Ok(GraphStats {
+            works,
+            works_described,
+            works_stub: works.saturating_sub(works_described),
+            nodes_total,
+            nodes_by_kind: into_tallies(nodes_by_kind),
+            tombstones,
+            edges_total,
+            edges_by_relation: into_tallies(edges_by_relation),
+            assertions_by_source: into_tallies(assertions_by_source),
+        })
     }
 }

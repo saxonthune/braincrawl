@@ -1,4 +1,5 @@
 use braincrawl_cli::cli::{Cli, GraphCmd, Namespace, OpenalexCmd, OutputOpts, StoreCmd};
+use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
 use braincrawl_cli::openalex::client::OpenAlexClient;
 use braincrawl_cli::openalex::mapping::{to_edges, to_work_record};
@@ -76,6 +77,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Namespace::Stats => {
+            let client = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let value = client.stats()?;
+            render_stats(&value, &opts);
+        }
         Namespace::Openalex(oa) => {
             let oa_client = OpenAlexClient::new(config.openalex_api_key);
             let store = StoreClient::new(&config.server_url)
@@ -132,6 +139,45 @@ fn render_neighborhood(value: &serde_json::Value, opts: &OutputOpts) {
     } else {
         println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
     }
+}
+
+fn render_stats(value: &serde_json::Value, opts: &OutputOpts) {
+    if opts.json {
+        println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+        return;
+    }
+
+    let n = |key: &str| value[key].as_u64().unwrap_or(0);
+
+    // Render a grouped breakdown as indented `key  count` lines, count desc.
+    let tally = |out: &mut String, label: &str, key: &str| {
+        let empty = vec![];
+        let rows = value[key].as_array().unwrap_or(&empty);
+        let _ = writeln!(out, "{label}:");
+        if rows.is_empty() {
+            let _ = writeln!(out, "  (none)");
+        }
+        for row in rows {
+            let k = row["key"].as_str().unwrap_or("");
+            let c = row["count"].as_u64().unwrap_or(0);
+            let _ = writeln!(out, "  {k:<16} {c}");
+        }
+    };
+
+    let mut out = String::new();
+    let _ = writeln!(out, "works:            {}", n("works"));
+    let _ = writeln!(out, "  described:      {}", n("works_described"));
+    let _ = writeln!(out, "  stubs:          {}", n("works_stub"));
+    let _ = writeln!(out, "nodes (live):     {}", n("nodes_total"));
+    let _ = writeln!(out, "tombstones:       {}", n("tombstones"));
+    let _ = writeln!(out, "edges:            {}", n("edges_total"));
+    let _ = writeln!(out);
+    tally(&mut out, "nodes by kind", "nodes_by_kind");
+    let _ = writeln!(out);
+    tally(&mut out, "edges by relation", "edges_by_relation");
+    let _ = writeln!(out);
+    tally(&mut out, "assertions by source", "assertions_by_source");
+    print!("{out}");
 }
 
 fn push_batch_to_store(store: &StoreClient, batch: &PushBatch) -> PushSummary {
