@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use braincrawl_server_lib::{make_app, make_store};
+use braincrawl_auth::SharedSecret;
+use braincrawl_server_lib::{make_app, make_store, AuthConfig};
 use tokio::net::TcpListener;
 
 async fn start_server(dir: &std::path::Path) -> (String, tokio::task::JoinHandle<()>) {
@@ -11,7 +12,11 @@ async fn start_server(dir: &std::path::Path) -> (String, tokio::task::JoinHandle
     std::fs::create_dir_all(dir.join("blobs")).unwrap();
 
     let store = Arc::new(make_store(&db_path, &blob_root).expect("store"));
-    let app = make_app(store);
+    let auth = Arc::new(AuthConfig {
+        disabled: true,
+        allowlist: SharedSecret::new("", ""),
+    });
+    let app = make_app(store, auth);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

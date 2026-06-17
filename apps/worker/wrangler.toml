@@ -24,6 +24,13 @@ binding = "ID_RESOLVER_KV"
 id = "placeholder-fill-at-deploy"
 # preview_id = "placeholder-fill-for-dev"   # fill for wrangler dev
 
+# AUTH_KV: declared intent for a future multi-token allowlist (SHA-256(token) → {tenant,status}).
+# Not wired in this task; the current gate uses the AUTH_TOKEN shared secret only.
+# Provision the shared secret via: wrangler secret put AUTH_TOKEN
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "placeholder-fill-at-deploy"
+
 [durable_objects]
 bindings = [
   { name = "WORK_DO", class_name = "WorkDurableObject" }

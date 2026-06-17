@@ -6,6 +6,9 @@ info:
   title: braincrawl store API
   version: "0"
 
+security:
+  - bearerAuth: []
+
 paths:
   /works:
     put:                       # upsert a work from a provider record
@@ -63,6 +66,8 @@ paths:
       responses: { "200": { description: "{ present: [id, ...] }" } }
 
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
   schemas:
     Alias:        { type: object, properties: { namespace: { type: string }, value: { type: string } }, required: [namespace, value] }
     Resolved:     { type: object, properties: { canonical_id: { type: string } } }

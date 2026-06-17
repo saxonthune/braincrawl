@@ -1,0 +1,7 @@
+[package]
+name = "braincrawl-auth"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+sha2 = { workspace = true }

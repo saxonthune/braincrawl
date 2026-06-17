@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/core",
   "crates/sql",
+  "crates/auth",
   "crates/backends/blob-r2",
   "crates/backends/blob-fs",
   "crates/backends/blob-mem",
@@ -20,6 +21,7 @@ members = [
 default-members = [
   "crates/core",
   "crates/sql",
+  "crates/auth",
   "crates/backends/blob-r2",
   "crates/backends/blob-fs",
   "crates/backends/blob-mem",
@@ -39,6 +41,8 @@ version = "0.1.0"
 [workspace.dependencies]
 braincrawl-core = { path = "crates/core", package = "braincrawl-core" }
 braincrawl-sql = { path = "crates/sql", package = "braincrawl-sql" }
+braincrawl-auth = { path = "crates/auth", package = "braincrawl-auth" }
+sha2 = "0.10"
 async-trait = "0.1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

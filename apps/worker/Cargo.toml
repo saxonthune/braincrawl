@@ -8,6 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 braincrawl-core = { workspace = true }
+braincrawl-auth = { workspace = true }
 braincrawl-sql = { workspace = true }
 braincrawl-blob-r2 = { path = "../../crates/backends/blob-r2", features = ["cloudflare"] }
 braincrawl-store-d1 = { path = "../../crates/backends/store-d1", features = ["cloudflare"] }

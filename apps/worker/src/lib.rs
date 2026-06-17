@@ -386,6 +386,22 @@ async fn handle_put_content(
 
 #[event(fetch)]
 async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+    // ── Auth gate ─────────────────────────────────────────────────────────────
+    let secret = match env.secret("AUTH_TOKEN") {
+        Ok(s) => s.to_string(),
+        Err(_) => return Response::error("auth not configured", 500),
+    };
+    let allowlist = braincrawl_auth::SharedSecret::new(&secret, "default");
+    let auth_header: Option<String> = req.headers().get("Authorization").ok().flatten();
+    match braincrawl_auth::authorize(&allowlist, auth_header.as_deref()) {
+        braincrawl_auth::AuthOutcome::Authenticated(_) => {}
+        braincrawl_auth::AuthOutcome::Unauthenticated => {
+            return Response::error("unauthorized", 401)
+        }
+        braincrawl_auth::AuthOutcome::Forbidden => return Response::error("forbidden", 403),
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     let store = build_store(&env)?;
     let url = req.url()?;
     let path = url.path();

@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 braincrawl-core = { workspace = true }
+braincrawl-auth = { workspace = true }
 braincrawl-blob-fs = { path = "../../crates/backends/blob-fs" }
 braincrawl-store-sqlite = { path = "../../crates/backends/store-sqlite" }
 braincrawl-coord-local = { path = "../../crates/backends/coord-local" }

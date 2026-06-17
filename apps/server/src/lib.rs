@@ -17,12 +17,14 @@ use std::collections::HashMap;
 
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
+    middleware::Next,
     response::{IntoResponse, Redirect, Response},
     routing::{get, post, put},
     Json, Router,
 };
+use braincrawl_auth::{AuthOutcome, SharedSecret};
 use braincrawl_blob_fs::FsBlobStore;
 use braincrawl_coord_local::{LocalCoordinator, SystemClock, UuidGen};
 use braincrawl_core::{
@@ -105,6 +107,41 @@ pub fn make_store(db_path: &str, blob_root: &str) -> Result<LocalStore, String> 
         clock: SystemClock,
         id_gen: UuidGen,
     })
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+/// Authentication configuration passed explicitly into [`make_app`].
+///
+/// Constructed by `main` from env vars; tests construct it directly so
+/// behaviour is deterministic without env state.
+pub struct AuthConfig {
+    pub disabled: bool,
+    pub allowlist: SharedSecret,
+}
+
+async fn gate(
+    State(cfg): State<Arc<AuthConfig>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if cfg.disabled {
+        return next.run(request).await;
+    }
+    let hdr = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_owned());
+    match braincrawl_auth::authorize(&cfg.allowlist, hdr.as_deref()) {
+        AuthOutcome::Authenticated(tenant) => {
+            let mut request = request;
+            request.extensions_mut().insert(tenant);
+            next.run(request).await
+        }
+        AuthOutcome::Unauthenticated => StatusCode::UNAUTHORIZED.into_response(),
+        AuthOutcome::Forbidden => StatusCode::FORBIDDEN.into_response(),
+    }
 }
 
 // ─── Request types ────────────────────────────────────────────────────────────
@@ -330,8 +367,8 @@ async fn handler_works_put(
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
-/// Build the axum router wired to the given store.
-pub fn make_app(store: Arc<LocalStore>) -> Router {
+/// Build the axum router wired to the given store and auth config.
+pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
     Router::new()
         // Exact static routes first so they win over wildcards.
         .route("/works/have", post(handler_have))
@@ -339,5 +376,6 @@ pub fn make_app(store: Arc<LocalStore>) -> Router {
         .route("/edges", put(handler_put_edges))
         // Wildcard routes capture alias values that contain `/` (e.g. DOIs).
         .route("/works/*path", get(handler_works_get).put(handler_works_put))
+        .layer(axum::middleware::from_fn_with_state(auth, gate))
         .with_state(store)
 }
