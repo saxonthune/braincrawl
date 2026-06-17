@@ -115,6 +115,7 @@ RUN_TASKS=() CHAINS=() RECENT_TOP=()
 BK_ATTENTION=() BK_QUESTIONABLE=() BK_READY=() BK_SUCCESS=() CRASHED=()
 PENDING=() DRAFTS=() EPICS=() STALE=()
 ARCHIVED=() ARCHIVED_TOP=()
+declare -A CHAIN_MEMBER=()
 N_RUNNING=0 N_SUCCESS=0 N_READY=0 N_QUESTIONABLE=0 N_ATTENTION=0
 N_PENDING=0 N_CRASHED=0 N_CHAINS=0 N_DRAFTS=0 N_EPICS=0 N_STALE=0 N_ARCHIVED=0
 LAST_FETCH_EPOCH=0
@@ -132,6 +133,7 @@ parse_records() {
   BK_ATTENTION=() BK_QUESTIONABLE=() BK_READY=() BK_SUCCESS=() CRASHED=()
   PENDING=() DRAFTS=() EPICS=() STALE=()
   ARCHIVED=() ARCHIVED_TOP=()
+  CHAIN_MEMBER=()
   N_RUNNING=0 N_SUCCESS=0 N_READY=0 N_QUESTIONABLE=0 N_ATTENTION=0
   N_PENDING=0 N_CRASHED=0 N_CHAINS=0 N_DRAFTS=0 N_EPICS=0 N_STALE=0 N_ARCHIVED=0
 
@@ -175,7 +177,7 @@ parse_records() {
             recent_raw+=("$(printf '0\t%s\t%s\t%s\t%s' "$SM_OVERALL_SUCCESS" "chain:${name}" "$NONE" "$NONE")")
             N_SUCCESS=$((N_SUCCESS+1)) ;;
           *)
-            CHAINS+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$cstatus" "$done_n" "$total" "$current" "$cw" "$cb")")
+            CHAINS+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$cstatus" "$done_n" "$total" "$current" "$phases" "$cw" "$cb")")
             N_CHAINS=$((N_CHAINS+1)) ;;
         esac ;;
       epic)
@@ -205,6 +207,28 @@ parse_records() {
     mapfile -t ARCHIVED     < <(printf '%s\n' "${archived_raw[@]}" | sort -t$'\t' -k1,1n)
     mapfile -t ARCHIVED_TOP < <(printf '%s\n' "${ARCHIVED[@]}" | head -3)
   fi
+
+  # Build chain-member set (all phases of active chains) and filter PENDING to
+  # exclude chain phases — they belong to the chains block, not the flat list.
+  local _cm_phases _ph_slug
+  local -a _ph_arr=() _pending_show=()
+  if [[ ${#CHAINS[@]} -gt 0 ]]; then
+    local _ce
+    for _ce in "${CHAINS[@]}"; do
+      _cm_phases=""
+      IFS=$'\t' read -r _ _ _ _ _ _cm_phases _ _ <<< "$_ce"
+      IFS=',' read -ra _ph_arr <<< "$_cm_phases"
+      for _ph_slug in "${_ph_arr[@]}"; do
+        [[ -n "$_ph_slug" ]] && CHAIN_MEMBER["$_ph_slug"]=1
+      done
+    done
+  fi
+  local _ps
+  for _ps in "${PENDING[@]}"; do
+    [[ -n "${CHAIN_MEMBER[$_ps]:-}" ]] || _pending_show+=("$_ps")
+  done
+  PENDING=("${_pending_show[@]+"${_pending_show[@]}"}")
+  N_PENDING=${#PENDING[@]}
 }
 
 # ── Render layer (fast tick, cache-only) ─────────────────────────────────────
@@ -225,7 +249,7 @@ render_overview() {
   spin="${SPIN[$SPIN_I]}"
   sw=$(( COLS - 26 )); (( sw < 8 )) && sw=8
 
-  if (( N_RUNNING > 0 || N_CHAINS > 0 )); then
+  if (( N_RUNNING > 0 )); then
     printf ' %sActive%s%s\n' "$BOLD" "$RESET" "$EL"
     # One compact line per task: spinner, slug (fixed width so the right-side
     # items sit close in, not at the screen edge), elapsed, commits, branch —
@@ -239,21 +263,15 @@ render_overview() {
       printf '  %s%s%s %-*s %s%7s%s  %s%sc  %s%s%s\n' \
         "$YELLOW" "$spin" "$RESET" \
         "$aslugw" "$(truncate "$slug" "$aslugw")" \
-        "$CYAN" "$(elapsed_str "$live")" "$RESET" \
+        "$CYAN" "$(age_ago "$live")" "$RESET" \
         "$DIM" "$commits" "$(truncate "$branch" "$bw")" "$RESET" "$EL"
     done
-    local name cstatus done_n total current cw cb bar col mark
-    for e in "${CHAINS[@]}"; do
-      IFS=$'\t' read -r name cstatus done_n total current cw cb <<< "$e"
-      col="$YELLOW"; mark=""
-      [[ "$cstatus" == failed ]] && col="$RED"
-      [[ "$cstatus" == waiting ]] && mark="$PAUSE "
-      bar="$(progress_bar "$done_n" "$total" 8)"
-      printf '  %s%s%s %s%s%s %d/%d  %s%s%s%s%s\n' \
-        "$BOLD" "$(truncate "$name" "$sw")" "$RESET" \
-        "$col" "$bar" "$RESET" "$done_n" "$total" \
-        "$DIM" "$mark" "$(truncate "$current" 24)" "$RESET" "$EL"
-    done
+    printf '%s\n' "$EL"
+  fi
+
+  if (( N_CHAINS > 0 )); then
+    printf ' %sChains%s%s\n' "$BOLD" "$RESET" "$EL"
+    render_chains
     printf '%s\n' "$EL"
   fi
 
@@ -327,8 +345,8 @@ render_active() {
       IFS=$'\t' read -r slug commits branch worktree age <<< "$e"
       live=$(( age + delta ))
       printf '  %s%s%s %s%s%s%s\n' "$YELLOW" "$spin" "$RESET" "$BOLD" "$slug" "$RESET" "$EL"
-      printf '      %selapsed%s %s · %scommits%s %s · %sbranch%s %s%s\n' \
-        "$DIM" "$RESET" "$(elapsed_str "$live")" \
+      printf '      %slast seen%s %s · %scommits%s %s · %sbranch%s %s%s\n' \
+        "$DIM" "$RESET" "$(age_ago "$live")" \
         "$DIM" "$RESET" "$commits" \
         "$DIM" "$RESET" "$branch" "$EL"
       [[ "$worktree" != "$NONE" ]] && printf '      %sworktree%s %s%s\n' "$DIM" "$RESET" "$worktree" "$EL"
@@ -338,15 +356,32 @@ render_active() {
 
   if (( N_CHAINS > 0 )); then
     printf ' %sChains%s%s\n' "$BOLD" "$RESET" "$EL"
-    local e name cstatus done_n total current cw cb bar col
+    local e name cstatus done_n total current phases cw cb col
+    local -a ph_arr=()
+    local i ph ph_start
     for e in "${CHAINS[@]}"; do
-      IFS=$'\t' read -r name cstatus done_n total current cw cb <<< "$e"
+      IFS=$'\t' read -r name cstatus done_n total current phases cw cb <<< "$e"
       col="$YELLOW"; [[ "$cstatus" == failed ]] && col="$RED"
-      bar="$(progress_bar "$done_n" "$total" 12)"
-      printf '  %s%s%s %s%s%s %d/%d  %s%s%s%s\n' \
-        "$BOLD" "$name" "$RESET" "$col" "$bar" "$RESET" "$done_n" "$total" "$DIM" "$cstatus" "$RESET" "$EL"
-      [[ "$current" != "$NONE" ]] && printf '      %s%s%s%s\n' "$DIM" "$current" "$RESET" "$EL"
+      case "$cstatus" in
+        running)
+          printf '  %s%s%s  %srunning%s  phase %d/%d: %s%s\n' \
+            "$BOLD" "$name" "$RESET" \
+            "$col" "$RESET" "$(( done_n + 1 ))" "$total" "$(truncate "$current" 30)" "$EL" ;;
+        failed)
+          printf '  %s%s%s  %sfailed at phase %d/%d: %s%s%s\n' \
+            "$BOLD" "$name" "$RESET" \
+            "$col" "$(( done_n + 1 ))" "$total" "$(truncate "$current" 30)" "$RESET" "$EL" ;;
+        waiting)
+          printf '  %s%s%s  %swaiting%s  %s%s%s\n' \
+            "$BOLD" "$name" "$RESET" "$col" "$RESET" "$DIM" "$(truncate "$current" 40)" "$EL" ;;
+      esac
       [[ "$cw" != "$NONE" ]] && printf '      %sworktree%s %s%s\n' "$DIM" "$RESET" "$cw" "$EL"
+      IFS=',' read -ra ph_arr <<< "$phases"
+      if [[ "$cstatus" == "waiting" ]]; then ph_start=0; else ph_start=$(( done_n + 1 )); fi
+      for (( i = ph_start; i < ${#ph_arr[@]}; i++ )); do
+        ph="${ph_arr[$i]}"
+        [[ -n "$ph" ]] && printf '      %squeued%s  %s%s\n' "$DIM" "$RESET" "$ph" "$EL"
+      done
     done
   fi
   return 0
@@ -372,6 +407,46 @@ render_archived_rows() {
       "$DIM" "$(age_ago "$age")" "$cdisp" "$RESET" "$EL"
   done
   return 0
+}
+
+render_chains() {
+  [[ ${#CHAINS[@]} -eq 0 ]] && return
+  local e name cstatus done_n total current phases cw cb col
+  local -a ph_arr=()
+  local i ph ph_start nw
+  nw=$(( COLS - 44 )); (( nw < 10 )) && nw=10
+  for e in "${CHAINS[@]}"; do
+    IFS=$'\t' read -r name cstatus done_n total current phases cw cb <<< "$e"
+    col="$YELLOW"
+    [[ "$cstatus" == "failed" ]] && col="$RED"
+    case "$cstatus" in
+      running)
+        printf '  %s%s%s  %srunning%s  phase %d/%d: %s%s\n' \
+          "$BOLD" "$(truncate "$name" 24)" "$RESET" \
+          "$col" "$RESET" "$(( done_n + 1 ))" "$total" \
+          "$(truncate "$current" "$nw")" "$EL" ;;
+      failed)
+        printf '  %s%s%s  %sfailed at phase %d/%d: %s%s%s\n' \
+          "$BOLD" "$(truncate "$name" 24)" "$RESET" \
+          "$col" "$(( done_n + 1 ))" "$total" \
+          "$(truncate "$current" "$nw")" "$RESET" "$EL" ;;
+      waiting)
+        printf '  %s%s%s  %swaiting%s  %s%s%s\n' \
+          "$BOLD" "$(truncate "$name" 24)" "$RESET" \
+          "$col" "$RESET" "$DIM" "$(truncate "$current" "$nw")" "$EL" ;;
+    esac
+    # Indented upcoming phases (done phases hidden, current phase named above)
+    IFS=',' read -ra ph_arr <<< "$phases"
+    if [[ "$cstatus" == "waiting" ]]; then
+      ph_start=0
+    else
+      ph_start=$(( done_n + 1 ))
+    fi
+    for (( i = ph_start; i < ${#ph_arr[@]}; i++ )); do
+      ph="${ph_arr[$i]}"
+      [[ -n "$ph" ]] && printf '    %squeued%s  %s%s\n' "$DIM" "$RESET" "$ph" "$EL"
+    done
+  done
 }
 
 render_done_bucket() {
