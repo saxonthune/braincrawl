@@ -26,29 +26,40 @@ metadata.** Hydrate L3 from the store at read time so it never drifts from the g
 > maintain it as a flat artifact in your repo (this skill's main job). When server-side
 > collections land, the same artifact migrates up.
 
-## 1. Run the server locally
+## 1. Use the one shared server (don't start your own)
 
-The native dev server persists L1/L2 to a local SQLite file + a blob directory.
+There is **one** braincrawl server per machine. It owns the accumulating L1/L2 corpus
+(a stable SQLite file + blob dir under `~/.local/share/braincrawl/`). Every consumer
+repo points at it so coverage compounds — a second project launching its own binary would
+fork the corpus into a per-repo DB and defeat the whole accumulation thesis.
+
+**First thing, every session: check it's up.** It exposes an unauthenticated liveness
+probe at `GET /health`:
 
 ```bash
-# from the braincrawl repo
-cargo build --bin braincrawl-server --bin braincrawl
-
-# run it (auth disabled = dev only)
-BRAINCRAWL_AUTH_DISABLED=1 \
-BRAINCRAWL_DB=$HOME/.local/share/braincrawl/braincrawl.db \
-BRAINCRAWL_BLOB_ROOT=$HOME/.local/share/braincrawl/blobs \
-BRAINCRAWL_BIND=127.0.0.1:8787 \
-  ./target/debug/braincrawl-server
+curl -fsS http://127.0.0.1:8787/health && echo   # → {"service":"braincrawl","status":"ok"}
 ```
 
-Server env vars: `BRAINCRAWL_DB` (default `braincrawl.db`), `BRAINCRAWL_BLOB_ROOT`
-(default `blobs`), `BRAINCRAWL_BIND` (default `0.0.0.0:8787`), and auth —
-`BRAINCRAWL_AUTH_TOKEN=<secret>` **or** `BRAINCRAWL_AUTH_DISABLED=1`.
+- **200 / `status: ok`** → use it (go to §2). Don't start anything.
+- **connection refused / no response** → the server is down. **Do not silently launch a
+  binary from another repo.** Tell the user to start it from the braincrawl repo:
 
-Pick a **stable** DB path (e.g. under `~/.local/share/braincrawl/`) — that file *is*
-your accumulating corpus. Point every project's research at the same server so coverage
-compounds. Keep it running in the background while you work.
+  ```bash
+  # run from the braincrawl repo (the server's home)
+  just server-start     # build-if-needed + launch in background, auth disabled (localhost)
+  just server-status    # up/down + /health
+  just server-stop
+  ```
+
+  The `just` recipes wrap `scripts/braincrawl-server.sh` (a pidfile-managed
+  start/stop/status/restart/logs). Lifecycle is **manual** — start it when you sit down to
+  research, stop it when done. The script defaults to a stable DB path and binds
+  `127.0.0.1:8787` with auth disabled (localhost dev). Override via `BRAINCRAWL_BIND`,
+  `BRAINCRAWL_DB`, `BRAINCRAWL_BLOB_ROOT`, or set `BRAINCRAWL_AUTH_TOKEN` to require a bearer.
+
+Underlying server env vars (if you bypass the script): `BRAINCRAWL_DB` (default
+`braincrawl.db`), `BRAINCRAWL_BLOB_ROOT` (default `blobs`), `BRAINCRAWL_BIND` (default
+`0.0.0.0:8787`), and auth — `BRAINCRAWL_AUTH_TOKEN=<secret>` **or** `BRAINCRAWL_AUTH_DISABLED=1`.
 
 ## 2. Point the CLI at the server
 
@@ -179,8 +190,10 @@ Maintenance loop, each research session:
 
 | Task | Command |
 |---|---|
-| Build server + CLI | `cargo build --bin braincrawl-server --bin braincrawl` |
-| Run server (dev) | `BRAINCRAWL_AUTH_DISABLED=1 BRAINCRAWL_DB=… ./target/debug/braincrawl-server` |
+| **Check server is up** | `curl -fsS http://127.0.0.1:8787/health` |
+| Start server (braincrawl repo) | `just server-start` |
+| Server up/down + health | `just server-status` |
+| Stop server | `just server-stop` |
 | Find landmark | `braincrawl --text openalex search works "<query>"` |
 | Forward snowball | `braincrawl --text --all openalex cited-by <Wid>` |
 | Backward refs | `braincrawl --text openalex refs <Wid>` |

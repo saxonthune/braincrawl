@@ -382,6 +382,14 @@ async fn handler_stats(State(store): State<Arc<LocalStore>>) -> impl IntoRespons
     }
 }
 
+/// GET /health — unauthenticated liveness probe.
+///
+/// Sits outside the auth gate so consumers can check the shared server is up
+/// without a token. Returns 200 with a small JSON body.
+async fn handler_health() -> impl IntoResponse {
+    Json(serde_json::json!({"status": "ok", "service": "braincrawl"}))
+}
+
 /// POST /graph/neighborhood
 async fn handler_neighborhood(
     State(store): State<Arc<LocalStore>>,
@@ -409,7 +417,7 @@ async fn handler_neighborhood(
 
 /// Build the axum router wired to the given store and auth config.
 pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
-    Router::new()
+    let authed = Router::new()
         // Exact static routes first so they win over wildcards.
         .route("/works/have", post(handler_have))
         .route("/works", put(handler_put_work))
@@ -419,5 +427,9 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
         // Wildcard routes capture alias values that contain `/` (e.g. DOIs).
         .route("/works/*path", get(handler_works_get).put(handler_works_put))
         .layer(axum::middleware::from_fn_with_state(auth, gate))
-        .with_state(store)
+        .with_state(store);
+
+    // `/health` is merged outside the auth layer: an unauthenticated liveness
+    // probe so consumers can detect the shared server without a token.
+    Router::new().route("/health", get(handler_health)).merge(authed)
 }

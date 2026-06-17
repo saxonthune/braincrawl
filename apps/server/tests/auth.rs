@@ -105,6 +105,25 @@ async fn test_correct_token_returns_200() {
 }
 
 #[tokio::test]
+async fn test_health_bypasses_auth() {
+    let dir = tempfile::tempdir().unwrap();
+    // Auth is ENABLED, yet /health must answer without a bearer token.
+    let (base, handle) = start_server_with_auth(dir.path(), auth_enabled()).await;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("{base}/health"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), 200, "/health should bypass the auth gate");
+    let json: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(json["status"], "ok");
+    handle.abort();
+}
+
+#[tokio::test]
 async fn test_disabled_auth_bypasses_gate() {
     let dir = tempfile::tempdir().unwrap();
     let (base, handle) = start_server_with_auth(dir.path(), auth_disabled()).await;
