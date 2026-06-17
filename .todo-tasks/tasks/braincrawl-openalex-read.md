@@ -13,6 +13,19 @@ The upstream contract (endpoints, filter keys, ID forms, pagination, rate limits
 is the `openalex-reference` skill at `.claude/skills/openalex-reference/reference.md`
 — read it; do not guess filter keys.
 
+## Preconditions (already on trunk)
+
+The foundation crate `apps/cli` is already merged to trunk — read the live code, do
+not re-create it. It provides: `apps/cli/src/cli.rs` (`Cli`, `Namespace`,
+`GlobalArgs`→`OutputOpts`), `apps/cli/src/config.rs` (`Config` with `server_url`,
+`openalex_api_key`), `apps/cli/src/output.rs` (`Envelope`, `QueryMeta`, `render`),
+`apps/cli/src/store_client.rs` (`StoreClient`). The crate is in `Cargo.toml`
+`members`/`default-members`.
+
+This phase is **context-only** and does NOT call `StoreClient`, so the server's
+bearer-auth gate is irrelevant here — do not add auth handling. (Auth lands in the
+push phase.)
+
 ## Do NOT
 
 - Do NOT push anything to the metadata server in this phase. No `StoreClient` calls.

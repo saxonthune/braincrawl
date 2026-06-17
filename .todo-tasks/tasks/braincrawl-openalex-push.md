@@ -8,6 +8,15 @@ currently discarded. This phase maps those records onto the store's node model a
 persists them via the foundation `StoreClient`, alongside the context return.
 `--skip-push` suppresses persistence. Entities without a node kind stay context-only.
 
+## Preconditions (already on trunk)
+
+The foundation crate `apps/cli` (`Config`, `StoreClient`, `Envelope`) and the read
+phase's `openalex` module (`PushBatch`, `Entity`, verbs) are on trunk — read live
+code. **The server enforces bearer auth** (`crates/auth`, `make_app(store, auth)`):
+the gate reads `Authorization: Bearer <token>` unless `AuthConfig.disabled`. The
+current `StoreClient` sends NO auth header and `Config` has no token, so push WILL
+`401` against an enabled server. Wiring auth is part of this phase (step 0 below).
+
 ## Do NOT
 
 - Do NOT resolve or merge identity in the CLI. Emit aliases and let the server's
@@ -24,6 +33,19 @@ persists them via the foundation `StoreClient`, alongside the context return.
   error on stderr, exit non-zero. The fork's job is to show upstream data.
 
 ## Plan
+
+### 0. Auth wiring (`src/config.rs` + `src/store_client.rs`)
+
+The server requires `Authorization: Bearer <token>` unless auth is disabled. Wire it:
+- `Config`: add `auth_token: Option<String>` resolved from `BRAINCRAWL_AUTH_TOKEN`
+  (env) and the config file, same precedence as the existing fields.
+- `StoreClient`: hold an optional token (e.g. `StoreClient::new(base_url)` unchanged +
+  `with_token(Option<String>)` builder, or a new ctor) and attach
+  `.bearer_auth(token)` to every request (`put_work`, `put_edges`, `have`, `get_work`)
+  when a token is present.
+- `main.rs`: build the `StoreClient` with `Config.auth_token`.
+- A `401`/`403` from the server must surface as a clear push error (token missing/
+  wrong), not a silent skip.
 
 ### 1. Mapping module (`src/openalex/mapping.rs`)
 
@@ -66,17 +88,20 @@ persists them via the foundation `StoreClient`, alongside the context return.
 
 ### 4. Config / client plumbing
 
-- The verbs now need a `StoreClient` (built from `Config.server_url`) in addition to
-  the `OpenAlexClient`. Thread it through the openalex dispatch in `main.rs`.
+- The verbs now need a `StoreClient` (built from `Config.server_url` + `auth_token`,
+  see step 0) in addition to the `OpenAlexClient`. Thread it through the openalex
+  dispatch in `main.rs`.
 
 ## Files to Modify
 
+- `apps/cli/src/config.rs` — add `auth_token` (`BRAINCRAWL_AUTH_TOKEN`).
+- `apps/cli/src/store_client.rs` — optional bearer token on all requests.
 - `apps/cli/src/openalex/mapping.rs` — new: node kind, alias extraction, record/edge builders.
 - `apps/cli/src/openalex/verbs.rs` — consume `PushBatch`, push when `!skip_push`.
 - `apps/cli/src/openalex/mod.rs` — export mapping; push-summary type.
-- `apps/cli/src/main.rs` — build/thread `StoreClient` into openalex dispatch.
-- `apps/cli/Cargo.toml` — `braincrawl-server` + `tempfile` dev-deps if not already
-  present (for the integration test); timestamp dep only if `std` is insufficient.
+- `apps/cli/src/main.rs` — build/thread `StoreClient` (with token) into openalex dispatch.
+- `apps/cli/Cargo.toml` — `braincrawl-server` + `braincrawl-auth` + `tempfile` dev-deps
+  already present from the foundation; timestamp dep only if `std` is insufficient.
 - `apps/cli/tests/openalex_push.rs` — integration test.
 
 ## Verification
@@ -86,20 +111,24 @@ cargo build -p braincrawl-cli
 cargo test -p braincrawl-cli
 ```
 
-`apps/cli/tests/openalex_push.rs` spins `braincrawl_server_lib` in-process on an
-ephemeral port (as in the foundation test), then drives the push path directly with a
-fixture work `Value`: assert `to_work_record` produces the expected `kind`/aliases,
-push via `StoreClient.put_work`, then `get_work("openalex:W…")` returns the node with
-matching `attrs`. Assert a fixture institution maps to `node_kind == None` and is
-skipped. Assert `to_edges` builds well-formed `cites` edges and `put_edges` returns
-the expected count. Unit-test alias URL normalization. No live OpenAlex calls.
+`apps/cli/tests/openalex_push.rs` spins the server in-process on an ephemeral port
+via `braincrawl_server::{make_app, make_store, AuthConfig}` + `braincrawl_auth::
+SharedSecret` (mirror `apps/cli/tests/foundation.rs`, which is the working pattern).
+Run the server with **auth enabled** (`AuthConfig { disabled: false, allowlist:
+SharedSecret::new("test-token", "default") }`), point `StoreClient` at it with the
+matching token, and assert: `to_work_record` produces the expected `kind`/aliases;
+push via `StoreClient.put_work` succeeds and `get_work("openalex:W…")` returns the
+node with matching `attrs`; a `StoreClient` with a wrong/absent token gets `401`/`403`
+(auth wiring verified). Assert a fixture institution maps to `node_kind == None` and
+is skipped; `to_edges` builds well-formed `cites` edges and `put_edges` returns the
+expected count. Unit-test alias URL normalization. No live OpenAlex calls.
 
 ## Out of Scope
 
 - Giving institutions/publishers/funders/keywords a push target (requires expanding
   `NodeKind`/server — separate, later work).
 - The smart routing verbs and content/abstract payload upload (`PUT /works/*/content`).
-- Auth headers on push (server auth not wired yet).
+- Multi-tenant tokens / KV allowlist — a single shared bearer token is enough here.
 
 ## Notes
 
@@ -114,6 +143,8 @@ the expected count. Unit-test alias URL normalization. No live OpenAlex calls.
 
 ## Surface after this phase
 
+- `Config.auth_token` (`BRAINCRAWL_AUTH_TOKEN`) and a `StoreClient` that sends
+  `Authorization: Bearer <token>` on every request.
 - `apps/cli/src/openalex/mapping.rs`: `node_kind`, `extract_aliases`, `to_work_record`,
   `to_edges`.
 - `braincrawl openalex` verbs push by default (works/authors/sources/topics/concepts →
