@@ -93,14 +93,15 @@ state_bucket() {
 # source_task_config
 # Sources project-specific config, then sets defaults for any unset variables.
 # Reads: REPO_ROOT, SCRIPT_DIR (from caller scope)
-# Sets: WORKTREE_PREFIX, MAX_BUDGET, RETRY_BUDGET, MAX_RETRIES
+# Sets: WORKTREE_PREFIX, REPO_NAME, MAX_BUDGET, RETRY_BUDGET, MAX_RETRIES
 source_task_config() {
   if [[ -f "${REPO_ROOT}/.todo-tasks/task-config.sh" ]]; then
     source "${REPO_ROOT}/.todo-tasks/task-config.sh"
   elif [[ -f "${SCRIPT_DIR}/task-config.sh" ]]; then
     source "${SCRIPT_DIR}/task-config.sh"
   fi
-  WORKTREE_PREFIX="${WORKTREE_PREFIX:-agent}"
+  WORKTREE_PREFIX="${WORKTREE_PREFIX:-todotask}"
+  REPO_NAME="$(basename "${REPO_ROOT}")"
   MAX_BUDGET="${MAX_BUDGET:-5.00}"
   RETRY_BUDGET="${RETRY_BUDGET:-3.00}"
   MAX_RETRIES="${MAX_RETRIES:-4}"

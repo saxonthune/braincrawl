@@ -74,7 +74,7 @@ else
 fi
 
 BRANCH="${TRUNK}_claude_${PLAN_SLUG}"
-WORKTREE_DIR="${REPO_ROOT}/../${WORKTREE_PREFIX}-${PLAN_SLUG}"
+WORKTREE_DIR="${REPO_ROOT}/../${WORKTREE_PREFIX}-${REPO_NAME}-${PLAN_SLUG}"
 PLAN_SOURCE_FILE="${REPO_ROOT}/.todo-tasks/tasks/${PLAN_SLUG}.md"
 
 # ─── Emergency Finalizer ─────────────────────────────────────────────────────

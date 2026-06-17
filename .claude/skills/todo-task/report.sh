@@ -256,7 +256,7 @@ emit_stale() {
     wt_path="$(echo "$line" | awk '{print $1}')"
     wt_dir="$(basename "$wt_path")"
     case "$wt_dir" in
-      "${WORKTREE_PREFIX}-"*) slug="${wt_dir#"${WORKTREE_PREFIX}-"}" ;;
+      "${WORKTREE_PREFIX}-${REPO_NAME}-"*) slug="${wt_dir#"${WORKTREE_PREFIX}-${REPO_NAME}-"}" ;;
       *) continue ;;
     esac
     # Chain worktrees: skip while a chain run-record is live.
