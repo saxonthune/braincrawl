@@ -44,6 +44,8 @@ pub enum Namespace {
     Store(StoreArgs),
     #[command(about = "Query the OpenAlex scholarly-data API")]
     Openalex(OpenalexArgs),
+    #[command(about = "Query the Semantic Scholar graph API")]
+    Semanticscholar(SemanticscholarArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
     #[command(about = "Show aggregate statistics about the metadata network")]
@@ -117,6 +119,39 @@ pub enum OpenalexCmd {
     /// List works referenced by the given work
     Refs {
         /// OpenAlex work ID (W…) or external ID (doi:…)
+        id: String,
+    },
+}
+
+#[derive(Args)]
+pub struct SemanticscholarArgs {
+    #[command(subcommand)]
+    pub cmd: SemanticscholarCmd,
+}
+
+#[derive(Subcommand)]
+pub enum SemanticscholarCmd {
+    /// Fetch a single paper or author by ID (entity type inferred from ID prefix)
+    Get {
+        /// Semantic Scholar ID (doi:…/arxiv:…/corpusid:…/s2:…/s2author:…/40-char hex)
+        id: String,
+    },
+    /// Full-text search over papers or authors
+    Search {
+        /// Entity type (papers, authors)
+        entity: String,
+        /// Search query string
+        query: String,
+    },
+    /// List papers that cite the given paper
+    #[command(name = "cited-by")]
+    CitedBy {
+        /// Paper ID (doi:…/arxiv:…/corpusid:…/s2:…/40-char hex)
+        id: String,
+    },
+    /// List papers referenced by the given paper
+    Refs {
+        /// Paper ID (doi:…/arxiv:…/corpusid:…/s2:…/40-char hex)
         id: String,
     },
 }

@@ -1,0 +1,25 @@
+{
+  "total": 5,
+  "offset": 0,
+  "next": 1,
+  "data": [
+    {
+      "paperId": "649def34f8be52c8b66281af98ae884c09aef38b",
+      "externalIds": {
+        "DOI": "10.7717/peerj.4375",
+        "CorpusId": 4375000
+      },
+      "title": "A Test Paper for Semantic Scholar",
+      "abstract": "This is a test abstract.",
+      "year": 2023,
+      "publicationDate": "2023-01-15",
+      "venue": "Test Venue",
+      "citationCount": 42,
+      "referenceCount": 10,
+      "authors": [
+        {"authorId": "1741101", "name": "Test Author"}
+      ],
+      "openAccessPdf": null
+    }
+  ]
+}

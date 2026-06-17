@@ -1,4 +1,4 @@
-use braincrawl_cli::cli::{Cli, GraphCmd, Namespace, OpenalexCmd, OutputOpts, StoreCmd};
+use braincrawl_cli::cli::{Cli, GraphCmd, Namespace, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
 use braincrawl_cli::openalex::client::OpenAlexClient;
@@ -6,6 +6,12 @@ use braincrawl_cli::openalex::mapping::{to_edges, to_work_record};
 use braincrawl_cli::openalex::verbs;
 use braincrawl_cli::openalex::{PushBatch, PushSummary};
 use braincrawl_cli::output::{Envelope, QueryMeta, render};
+use braincrawl_cli::semanticscholar::client::SemanticScholarClient;
+use braincrawl_cli::semanticscholar::mapping::{
+    to_edges as s2_to_edges, to_work_record as s2_to_work_record,
+};
+use braincrawl_cli::semanticscholar::verbs as s2_verbs;
+use braincrawl_cli::semanticscholar::{PushBatch as S2PushBatch, PushSummary as S2PushSummary};
 use braincrawl_cli::store_client::StoreClient;
 use clap::Parser;
 
@@ -110,6 +116,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Namespace::Semanticscholar(s2) => {
+            let s2_client = SemanticScholarClient::new(config.semanticscholar_api_key);
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let (envelope, push_batch) = match s2.cmd {
+                SemanticscholarCmd::Get { id } => s2_verbs::get(&s2_client, &id, &opts)?,
+                SemanticscholarCmd::Search { entity, query } => {
+                    s2_verbs::search(&s2_client, &entity, &query, &opts)?
+                }
+                SemanticscholarCmd::CitedBy { id } => {
+                    s2_verbs::cited_by(&s2_client, &id, &opts)?
+                }
+                SemanticscholarCmd::Refs { id } => s2_verbs::refs(&s2_client, &id, &opts)?,
+            };
+            render(&envelope, &opts);
+            if !opts.skip_push {
+                let summary = push_s2_batch_to_store(&store, &push_batch);
+                report_s2_push_summary(&summary);
+                if !summary.errors.is_empty() {
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 
     Ok(())
@@ -208,6 +237,43 @@ fn push_batch_to_store(store: &StoreClient, batch: &PushBatch) -> PushSummary {
 }
 
 fn report_push_summary(s: &PushSummary) {
+    eprintln!(
+        "push: {} node(s) stored, {} edge(s) stored, {} skipped (unmappable kind)",
+        s.nodes_pushed, s.edges_pushed, s.skipped_unmappable
+    );
+    for e in &s.errors {
+        eprintln!("push error: {e}");
+    }
+}
+
+fn push_s2_batch_to_store(store: &StoreClient, batch: &S2PushBatch) -> S2PushSummary {
+    let mut nodes_pushed = 0usize;
+    let mut skipped_unmappable = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (entity, record) in &batch.records {
+        match s2_to_work_record(*entity, record) {
+            None => skipped_unmappable += 1,
+            Some(work_record) => match store.put_work(&work_record) {
+                Ok(_) => nodes_pushed += 1,
+                Err(e) => errors.push(format!("push node failed: {e}")),
+            },
+        }
+    }
+
+    let mut edges_pushed = 0u64;
+    if !batch.edges.is_empty() {
+        let edge_values = s2_to_edges(&batch.edges);
+        match store.put_edges(&edge_values) {
+            Ok(n) => edges_pushed = n,
+            Err(e) => errors.push(format!("push edges failed: {e}")),
+        }
+    }
+
+    S2PushSummary { nodes_pushed, edges_pushed, skipped_unmappable, errors }
+}
+
+fn report_s2_push_summary(s: &S2PushSummary) {
     eprintln!(
         "push: {} node(s) stored, {} edge(s) stored, {} skipped (unmappable kind)",
         s.nodes_pushed, s.edges_pushed, s.skipped_unmappable

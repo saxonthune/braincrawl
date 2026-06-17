@@ -70,8 +70,9 @@ precedence is env > `~/.config/braincrawl/config.toml` > default.
 ```toml
 # ~/.config/braincrawl/config.toml
 server_url = "http://127.0.0.1:8787"
-# auth_token = "..."          # match BRAINCRAWL_AUTH_TOKEN if auth is enabled
-# openalex_api_key = "..."    # optional; OpenAlex needs no key
+# auth_token = "..."                    # match BRAINCRAWL_AUTH_TOKEN if auth is enabled
+# openalex_api_key = "..."              # optional; OpenAlex needs no key
+# semanticscholar_api_key = "..."       # optional but strongly recommended — see below
 ```
 
 Global output flags (work on every command): `--text` (one result/line, tab-separated),
@@ -81,6 +82,19 @@ Global output flags (work on every command): `--text` (one result/line, tab-sepa
 **Push-to-store is on by default.** Every `openalex` query writes the works (and, for
 `cited-by`/`refs`, the citation edges) into L1/L2. That is how coverage accumulates — one
 project's reading is the next project's cache. Use `--skip-push` only for throwaway peeks.
+
+### Set up Semantic Scholar
+
+Semantic Scholar (`braincrawl semanticscholar`) works without a key, but the **keyless
+shared pool is rate-limited to ~1 req/s and hits hard 429s during `--all` snowballs**.
+A free API key raises your quota significantly. Precedence is the same as all other
+config: env > `~/.config/braincrawl/config.toml` > none. The env var is
+`BRAINCRAWL_SEMANTICSCHOLAR_API_KEY`.
+
+**If the user wants to use `semanticscholar` and no key is configured, walk them through
+getting one** rather than silently running keyless. Point at `SETUP.md` (same directory as
+this skill) for step-by-step key acquisition, configuration, and verification. Do not just
+start snowballing — a keyless `--all` will cascade 429s.
 
 ## 3. Build coverage (the funnel = graph traversal)
 
@@ -101,6 +115,28 @@ braincrawl --text openalex refs W2031938753
 # Read the graph back from the store (no provider call) — ranked by in-degree
 braincrawl --text graph neighborhood openalex:W2031938753 --dir backward --depth 1 --max-nodes 50
 ```
+
+**Reach for Semantic Scholar when OpenAlex coverage is patchy** — older or humanities
+works often have missing abstracts and empty `refs` in OpenAlex, but S2 has them.
+S2 pushes into the **same** L1/L2 store and merges on DOI via the server, so coverage
+compounds across both providers automatically.
+
+```bash
+# S2 lookup by DOI or paperId
+braincrawl --text semanticscholar get DOI:10.1126/science.aaf2654 --abstract
+
+# Forward snowball via S2 (writes citation edges into L2)
+braincrawl --text --all semanticscholar cited-by <paperId>
+
+# Backward refs via S2
+braincrawl --text semanticscholar refs <paperId>
+
+# S2 paper search
+braincrawl --text semanticscholar search papers "salt silt mesopotamian agriculture"
+```
+
+S2 IDs: bare 40-hex `paperId`, `DOI:<doi>`, `ARXIV:<id>`, `CorpusId:<n>`. Bare numerics are
+ambiguous — prefix them. Authors: bare `authorId` or `ORCID:<orcid>`.
 
 **Watch for citation drift** (GOALS §"Graph-building strategy"). The most-cited
 descendants of an ancient-history paper are often modern plant-biology/agronomy works —
@@ -201,5 +237,9 @@ Maintenance loop, each research session:
 | Read graph back | `braincrawl --text graph neighborhood openalex:<Wid> --dir backward --depth 1` |
 | Hydrate one work | `braincrawl openalex get <Wid> --abstract` |
 | Peek store | `braincrawl store get openalex:<Wid>` |
+| **S2 lookup** | `braincrawl --text semanticscholar get DOI:<doi> --abstract` |
+| **S2 forward snowball** | `braincrawl --text --all semanticscholar cited-by <paperId>` |
+| **S2 backward refs** | `braincrawl --text semanticscholar refs <paperId>` |
+| **S2 paper search** | `braincrawl --text semanticscholar search papers "<query>"` |
 
 For OpenAlex filter/field details, see the `openalex-reference` skill.

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub server_url: String,
     pub openalex_api_key: Option<String>,
+    pub semanticscholar_api_key: Option<String>,
     pub auth_token: Option<String>,
 }
 
@@ -11,6 +12,7 @@ pub struct Config {
 struct ConfigFile {
     server_url: Option<String>,
     openalex_api_key: Option<String>,
+    semanticscholar_api_key: Option<String>,
     auth_token: Option<String>,
 }
 
@@ -27,6 +29,9 @@ impl Config {
             openalex_api_key: std::env::var("BRAINCRAWL_OPENALEX_API_KEY")
                 .ok()
                 .or_else(|| file.openalex_api_key),
+            semanticscholar_api_key: std::env::var("BRAINCRAWL_SEMANTICSCHOLAR_API_KEY")
+                .ok()
+                .or_else(|| file.semanticscholar_api_key),
             auth_token: std::env::var("BRAINCRAWL_AUTH_TOKEN")
                 .ok()
                 .or_else(|| file.auth_token),

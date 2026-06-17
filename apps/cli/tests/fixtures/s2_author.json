@@ -1,0 +1,11 @@
+{
+  "authorId": "1741101",
+  "externalIds": {
+    "ORCID": "0000-0001-6187-6610"
+  },
+  "name": "Test Author",
+  "affiliations": ["Test University"],
+  "paperCount": 50,
+  "citationCount": 1000,
+  "hIndex": 15
+}

@@ -1,6 +1,6 @@
 ---
 title: Providers
-summary: The provider-fork namespaces — each talks straight to one external API, bypassing routing. One provider today: OpenAlex.
+summary: The provider-fork namespaces — each talks straight to one external API, bypassing routing. One provider today (OpenAlex) has been joined by Semantic Scholar as a second.
 tags: [cli, providers, fork, external]
 deps: [doc02.06]
 ---
@@ -31,3 +31,4 @@ base verbs bind to that provider's API and which fields the trimmed records keep
 ## Contents
 
 - **doc02.06.01.01 — OpenAlex**: the `braincrawl openalex` namespace.
+- **doc02.06.01.02 — Semantic Scholar**: the `braincrawl semanticscholar` namespace.

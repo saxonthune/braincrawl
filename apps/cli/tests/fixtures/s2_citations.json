@@ -1,0 +1,26 @@
+{
+  "offset": 0,
+  "next": null,
+  "data": [
+    {
+      "citingPaper": {
+        "paperId": "abcdef1234567890abcdef1234567890abcdef12",
+        "externalIds": {
+          "DOI": "10.1000/citing-paper",
+          "CorpusId": 1000001
+        },
+        "title": "A Citing Paper",
+        "abstract": "This paper cites the test paper.",
+        "year": 2024,
+        "publicationDate": "2024-03-01",
+        "venue": "Citing Venue",
+        "citationCount": 5,
+        "referenceCount": 20,
+        "authors": [
+          {"authorId": "9999999", "name": "Citing Author"}
+        ],
+        "openAccessPdf": null
+      }
+    }
+  ]
+}
