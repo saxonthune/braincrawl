@@ -46,10 +46,27 @@ pub enum Namespace {
     Openalex(OpenalexArgs),
     #[command(about = "Query the Semantic Scholar graph API")]
     Semanticscholar(SemanticscholarArgs),
+    #[command(name = "fetch-content", about = "Acquire a work's fulltext artifact from the open web into the store")]
+    FetchContent(FetchContentArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
     #[command(about = "Show aggregate statistics about the metadata network")]
     Stats,
+}
+
+#[derive(Args)]
+pub struct FetchContentArgs {
+    /// Work id in ns:value form (e.g. openalex:W2165758805 or doi:10.x/y)
+    pub id: String,
+    /// Where to resolve the artifact URL from (auto|openalex|unpaywall)
+    #[arg(long, default_value = "auto")]
+    pub from: String,
+    /// Re-fetch even if a fulltext payload already exists
+    #[arg(long)]
+    pub force: bool,
+    /// Only accept a PDF artifact (reject HTML or other content types)
+    #[arg(long = "require-pdf")]
+    pub require_pdf: bool,
 }
 
 #[derive(Args)]

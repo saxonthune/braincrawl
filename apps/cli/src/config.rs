@@ -6,6 +6,7 @@ pub struct Config {
     pub openalex_api_key: Option<String>,
     pub semanticscholar_api_key: Option<String>,
     pub auth_token: Option<String>,
+    pub unpaywall_email: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -14,6 +15,7 @@ struct ConfigFile {
     openalex_api_key: Option<String>,
     semanticscholar_api_key: Option<String>,
     auth_token: Option<String>,
+    unpaywall_email: Option<String>,
 }
 
 impl Config {
@@ -35,6 +37,9 @@ impl Config {
             auth_token: std::env::var("BRAINCRAWL_AUTH_TOKEN")
                 .ok()
                 .or_else(|| file.auth_token),
+            unpaywall_email: std::env::var("BRAINCRAWL_UNPAYWALL_EMAIL")
+                .ok()
+                .or_else(|| file.unpaywall_email),
         }
     }
 

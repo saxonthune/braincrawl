@@ -1,6 +1,7 @@
 use braincrawl_cli::cli::{Cli, GraphCmd, Namespace, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
+use braincrawl_cli::fetch_content;
 use braincrawl_cli::openalex::client::OpenAlexClient;
 use braincrawl_cli::openalex::mapping::{to_edges, to_work_record};
 use braincrawl_cli::openalex::verbs;
@@ -136,6 +137,36 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 report_s2_push_summary(&summary);
                 if !summary.errors.is_empty() {
                     std::process::exit(1);
+                }
+            }
+        }
+        Namespace::FetchContent(fc) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let source = match fc.from.as_str() {
+                "openalex" => fetch_content::Source::Openalex,
+                "unpaywall" => fetch_content::Source::Unpaywall,
+                _ => fetch_content::Source::Auto,
+            };
+            match fetch_content::fetch_content(
+                &store,
+                config.unpaywall_email.as_deref(),
+                &fc.id,
+                source,
+                fc.require_pdf,
+                fc.force,
+            )? {
+                fetch_content::Outcome::Stored { bytes_len, mime } => {
+                    println!("stored: {} bytes, mime={}", bytes_len, mime);
+                }
+                fetch_content::Outcome::AlreadyPresent => {
+                    println!("already-present: fulltext payload already in store (use --force to re-fetch)");
+                }
+                fetch_content::Outcome::LinkOnly { url } => {
+                    println!("link-only: {}", url);
+                }
+                fetch_content::Outcome::NoOaFound { reason } => {
+                    return Err(format!("no-oa-found: {}", reason).into());
                 }
             }
         }
