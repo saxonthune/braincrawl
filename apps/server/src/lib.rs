@@ -151,6 +151,14 @@ pub struct HaveRequest {
     pub ids: Vec<String>,
 }
 
+#[derive(Deserialize)]
+pub struct NeighborhoodHttpRequest {
+    pub seeds: Vec<String>,
+    pub dir: String,
+    pub depth: u32,
+    pub max_nodes: u32,
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 fn parse_alias(id_str: &str) -> Option<Alias> {
@@ -365,6 +373,29 @@ async fn handler_works_put(
     StatusCode::NOT_FOUND.into_response()
 }
 
+/// POST /graph/neighborhood
+async fn handler_neighborhood(
+    State(store): State<Arc<LocalStore>>,
+    Json(req): Json<NeighborhoodHttpRequest>,
+) -> impl IntoResponse {
+    let dir = match req.dir.as_str() {
+        "forward" => EdgeDir::Forward,
+        "backward" => EdgeDir::Backward,
+        _ => return (StatusCode::BAD_REQUEST, "dir must be forward or backward").into_response(),
+    };
+    let seeds: Vec<Alias> = req.seeds.iter().filter_map(|s| parse_alias(s)).collect();
+    let depth = req.depth;
+    let max_nodes = req.max_nodes;
+
+    let result =
+        run_blocking(move || async move { store.neighborhood(seeds, dir, depth, max_nodes).await })
+            .await;
+    match result {
+        Ok(neighborhood) => Json(neighborhood).into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 /// Build the axum router wired to the given store and auth config.
@@ -374,6 +405,7 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
         .route("/works/have", post(handler_have))
         .route("/works", put(handler_put_work))
         .route("/edges", put(handler_put_edges))
+        .route("/graph/neighborhood", post(handler_neighborhood))
         // Wildcard routes capture alias values that contain `/` (e.g. DOIs).
         .route("/works/*path", get(handler_works_get).put(handler_works_put))
         .layer(axum::middleware::from_fn_with_state(auth, gate))

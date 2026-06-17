@@ -1,4 +1,4 @@
-use braincrawl_cli::cli::{Cli, Namespace, OpenalexCmd, OutputOpts, StoreCmd};
+use braincrawl_cli::cli::{Cli, GraphCmd, Namespace, OpenalexCmd, OutputOpts, StoreCmd};
 use braincrawl_cli::config::Config;
 use braincrawl_cli::openalex::client::OpenAlexClient;
 use braincrawl_cli::openalex::mapping::{to_edges, to_work_record};
@@ -66,6 +66,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Namespace::Graph(graph) => {
+            let client = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            match graph.cmd {
+                GraphCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
+                    let value = client.neighborhood(&seeds, &dir, depth, max_nodes)?;
+                    render_neighborhood(&value, &opts);
+                }
+            }
+        }
         Namespace::Openalex(oa) => {
             let oa_client = OpenAlexClient::new(config.openalex_api_key);
             let store = StoreClient::new(&config.server_url)
@@ -96,6 +106,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn render_neighborhood(value: &serde_json::Value, opts: &OutputOpts) {
+    if opts.text {
+        let empty = vec![];
+        let nodes = value["nodes"].as_array().unwrap_or(&empty);
+        for node in nodes {
+            let id = node["canonical_id"].as_str().unwrap_or("");
+            let in_degree = node["in_degree"].as_u64().unwrap_or(0);
+            let title = node["attrs"]["title"]
+                .as_str()
+                .or_else(|| node["attrs"]["display_name"].as_str())
+                .unwrap_or("");
+            println!("{}\t{}\t{}", id, in_degree, title);
+        }
+        let node_count = nodes.len();
+        let edge_count = value["edges"].as_array().map(|e| e.len()).unwrap_or(0);
+        let truncated = value["truncated"].as_bool().unwrap_or(false);
+        if truncated {
+            eprintln!("{} node(s), {} edge(s) [truncated]", node_count, edge_count);
+        } else {
+            eprintln!("{} node(s), {} edge(s)", node_count, edge_count);
+        }
+    } else {
+        println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+    }
 }
 
 fn push_batch_to_store(store: &StoreClient, batch: &PushBatch) -> PushSummary {

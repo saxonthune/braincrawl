@@ -163,3 +163,97 @@ async fn test_content_roundtrip() {
 
     handle.abort();
 }
+
+#[tokio::test]
+async fn test_neighborhood_endpoint() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    // Create two works.
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.1/src"}],
+            "attrs": {"title": "Source"}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.1/dst"}],
+            "attrs": {"title": "Dest"}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Create an edge src → dst.
+    client
+        .put(format!("{base}/edges"))
+        .json(&serde_json::json!([{
+            "src": {"namespace": "doi", "value": "10.1/src"},
+            "dst": {"namespace": "doi", "value": "10.1/dst"},
+            "relation": "cites",
+            "source": "test",
+            "attrs": null,
+            "fetched_at": "2024-01-01T00:00:00Z"
+        }]))
+        .send()
+        .await
+        .unwrap();
+
+    // POST /graph/neighborhood from seed src, depth 1.
+    let res = client
+        .post(format!("{base}/graph/neighborhood"))
+        .json(&serde_json::json!({
+            "seeds": ["doi:10.1/src"],
+            "dir": "forward",
+            "depth": 1,
+            "max_nodes": 50
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "POST /graph/neighborhood should return 200");
+
+    let body: serde_json::Value = res.json().await.unwrap();
+
+    // Shape check.
+    assert!(body.get("nodes").is_some(), "response must have nodes");
+    assert!(body.get("edges").is_some(), "response must have edges");
+    assert!(body.get("truncated").is_some(), "response must have truncated");
+
+    // Both src and dst should appear in nodes.
+    let nodes = body["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 2, "both src and dst nodes expected");
+
+    let edges = body["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 1, "one edge expected");
+
+    assert!(!body["truncated"].as_bool().unwrap());
+
+    // Bad dir → 400.
+    let res = client
+        .post(format!("{base}/graph/neighborhood"))
+        .json(&serde_json::json!({
+            "seeds": ["doi:10.1/src"],
+            "dir": "sideways",
+            "depth": 1,
+            "max_nodes": 50
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "bad dir must return 400");
+
+    handle.abort();
+}

@@ -91,6 +91,35 @@ pub struct EdgeView {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NeighborhoodNode {
+    pub canonical_id: CanonicalId,
+    pub kind: NodeKind,
+    /// BFS distance from the nearest seed (seeds = 0).
+    pub depth: u32,
+    /// Count of discovered edges (both endpoints included) whose `dst == this node`.
+    pub in_degree: u32,
+    /// Merged node attrs (same merge as get_work); `{}` for stubs.
+    pub attrs: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NeighborhoodEdge {
+    pub src: CanonicalId,
+    pub dst: CanonicalId,
+    pub relation: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Neighborhood {
+    /// Sorted: in_degree desc, then canonical_id asc.
+    pub nodes: Vec<NeighborhoodNode>,
+    /// Only edges where both endpoints are included nodes.
+    pub edges: Vec<NeighborhoodEdge>,
+    /// True if max_nodes capped the traversal.
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EdgeDir {
     Forward,
     Backward,

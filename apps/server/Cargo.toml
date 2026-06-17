@@ -1,15 +1,11 @@
 [package]
-name = "braincrawl-server"
+name = "braincrawl-server-lib"
 edition.workspace = true
 version.workspace = true
 
 [lib]
 name = "braincrawl_server_lib"
 path = "src/lib.rs"
-
-[[bin]]
-name = "braincrawl-server"
-path = "src/main.rs"
 
 [dependencies]
 braincrawl-core = { workspace = true }

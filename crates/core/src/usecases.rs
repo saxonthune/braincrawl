@@ -36,10 +36,13 @@
 use crate::{
     traits::{BlobStore, Clock, Coordinator, IdGen, IdResolver, MetadataStore, PayloadsRepo},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, NodeKind,
-        PayloadDescriptor, PayloadKind, Rights, WorkRecord, WorkView,
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, Neighborhood,
+        NeighborhoodEdge, NeighborhoodNode, NodeKind, PayloadDescriptor, PayloadKind, Rights,
+        WorkRecord, WorkView,
     },
 };
+
+const NEIGHBORHOOD_EDGE_PAGE: u32 = 200;
 
 // ---------------------------------------------------------------------------
 // Store struct
@@ -312,6 +315,150 @@ where
     /// Return which of the given aliases are already present in the store.
     pub async fn have(&self, aliases: Vec<Alias>) -> Result<Vec<Alias>, DomainError> {
         self.meta.present_aliases(&aliases).await
+    }
+
+    /// Bounded BFS from seed aliases, returning a closed subgraph ranked by in-degree.
+    ///
+    /// In-degree is computed over edges discovered during traversal among the included
+    /// nodes. Last-layer cross-edges that were never expanded are not counted — this is
+    /// intentional and bounded by `max_nodes`.
+    pub async fn neighborhood(
+        &self,
+        seeds: Vec<Alias>,
+        dir: EdgeDir,
+        depth: u32,
+        max_nodes: u32,
+    ) -> Result<Neighborhood, DomainError> {
+        // 1. Resolve seeds.
+        let mut visited: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        for seed_alias in &seeds {
+            let raw = match self.meta.get_alias(seed_alias).await? {
+                None => continue,
+                Some(r) => r,
+            };
+            let live = self.meta.resolve_live(&raw).await?;
+            visited.entry(live.0).or_insert(0);
+        }
+
+        // If seed count exceeds max_nodes, keep only the first max_nodes (sorted for determinism).
+        let mut truncated = false;
+        if visited.len() as u32 > max_nodes {
+            let mut keys: Vec<String> = visited.keys().cloned().collect();
+            keys.sort();
+            keys.truncate(max_nodes as usize);
+            visited.retain(|k, _| keys.contains(k));
+            truncated = true;
+        }
+
+        // Discovered edges: keyed by (src, dst, relation) for dedup.
+        let mut discovered_edges: std::collections::HashSet<(String, String, String)> =
+            std::collections::HashSet::new();
+        // Also store the actual edge objects to avoid recomputing.
+        let mut edge_list: Vec<NeighborhoodEdge> = Vec::new();
+
+        // 2. BFS.
+        let mut frontier: Vec<String> = visited.keys().cloned().collect();
+
+        for current_depth in 0..depth {
+            if frontier.is_empty() {
+                break;
+            }
+            let mut next_frontier: Vec<String> = Vec::new();
+
+            for node_id in &frontier {
+                // Drain all pages for this node.
+                let mut cursor: Option<String> = None;
+                loop {
+                    let (edges, next_cursor) = self
+                        .meta
+                        .read_edges(
+                            &CanonicalId(node_id.clone()),
+                            dir.clone(),
+                            cursor.as_deref(),
+                            NEIGHBORHOOD_EDGE_PAGE,
+                        )
+                        .await?;
+
+                    for ev in edges {
+                        let edge_key = (ev.src.0.clone(), ev.dst.0.clone(), ev.relation.clone());
+                        if discovered_edges.insert(edge_key) {
+                            edge_list.push(NeighborhoodEdge {
+                                src: ev.src.clone(),
+                                dst: ev.dst.clone(),
+                                relation: ev.relation.clone(),
+                            });
+                        }
+
+                        // Neighbor depends on direction.
+                        let neighbor_id = match dir {
+                            EdgeDir::Forward => ev.dst.0.clone(),
+                            EdgeDir::Backward => ev.src.0.clone(),
+                        };
+
+                        if !visited.contains_key(&neighbor_id) {
+                            if (visited.len() as u32) < max_nodes {
+                                visited.insert(neighbor_id.clone(), current_depth + 1);
+                                next_frontier.push(neighbor_id);
+                            } else {
+                                truncated = true;
+                            }
+                        }
+                    }
+
+                    cursor = next_cursor;
+                    if cursor.is_none() {
+                        break;
+                    }
+                }
+            }
+
+            frontier = next_frontier;
+        }
+
+        // 3. Build edges: keep only those where both endpoints are in visited.
+        let closed_edges: Vec<NeighborhoodEdge> = edge_list
+            .into_iter()
+            .filter(|e| visited.contains_key(&e.src.0) && visited.contains_key(&e.dst.0))
+            .collect();
+
+        // 4. Build nodes.
+        let mut nodes: Vec<NeighborhoodNode> = Vec::new();
+        for (id, node_depth) in &visited {
+            let canonical = CanonicalId(id.clone());
+            let (kind, attrs) = match self.meta.read_node(&canonical).await? {
+                None => (NodeKind::Work, serde_json::Value::Object(serde_json::Map::new())),
+                Some((k, assertions, _aliases)) => {
+                    let (merged_attrs, _prov) = merge_assertions(&assertions);
+                    (k, merged_attrs)
+                }
+            };
+
+            let in_degree = closed_edges
+                .iter()
+                .filter(|e| e.dst.0 == *id)
+                .count() as u32;
+
+            nodes.push(NeighborhoodNode {
+                canonical_id: canonical,
+                kind,
+                depth: *node_depth,
+                in_degree,
+                attrs,
+            });
+        }
+
+        // 5. Sort nodes by in_degree desc, then canonical_id asc.
+        nodes.sort_by(|a, b| {
+            b.in_degree
+                .cmp(&a.in_degree)
+                .then(a.canonical_id.0.cmp(&b.canonical_id.0))
+        });
+
+        Ok(Neighborhood {
+            nodes,
+            edges: closed_edges,
+            truncated,
+        })
     }
 
     // -----------------------------------------------------------------------

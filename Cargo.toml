@@ -15,6 +15,7 @@ members = [
   "crates/backends/coord-local",
   "apps/worker",
   "apps/server",
+  "apps/server-bin",
   "apps/cli",
 ]
 # Exclude apps/worker from default builds; it only targets wasm32-unknown-unknown.
@@ -33,6 +34,7 @@ default-members = [
   "crates/backends/resolver-mem",
   "crates/backends/coord-local",
   "apps/server",
+  "apps/server-bin",
   "apps/cli",
 ]
 

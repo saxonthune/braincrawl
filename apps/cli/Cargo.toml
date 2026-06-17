@@ -20,7 +20,7 @@ thiserror = { workspace = true }
 toml = "0.8"
 
 [dev-dependencies]
-braincrawl-server = { path = "../server", package = "braincrawl-server" }
+braincrawl-server = { path = "../server", package = "braincrawl-server-lib" }
 braincrawl-auth = { workspace = true }
 axum = "0.7"
 tempfile = "3"

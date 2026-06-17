@@ -244,6 +244,171 @@ async fn test_have() {
 }
 
 // ---------------------------------------------------------------------------
+// 8. neighborhood — BFS traversal
+// ---------------------------------------------------------------------------
+
+/// Build a graph: A→H, B→H, C→H, A→B
+/// (H is a hub cited by A, B, C)
+async fn build_hub_graph(
+    s: &Store<
+        braincrawl_store_mem::MemStore,
+        braincrawl_blob_mem::MemBlobStore,
+        braincrawl_store_mem::MemStore,
+        braincrawl_resolver_mem::MemResolver,
+        braincrawl_coord_local::LocalCoordinator,
+        braincrawl_coord_local::SystemClock,
+        braincrawl_coord_local::UuidGen,
+    >,
+) {
+    for id in ["a", "b", "c", "h"] {
+        s.put_work(work("s", vec![alias("test", id)])).await.unwrap();
+    }
+    let edges = vec![
+        EdgeInput {
+            src: alias("test", "a"),
+            dst: alias("test", "h"),
+            relation: "cites".to_string(),
+            source: "s".to_string(),
+            attrs: None,
+            fetched_at: "2024-01-01T00:00:00Z".to_string(),
+        },
+        EdgeInput {
+            src: alias("test", "b"),
+            dst: alias("test", "h"),
+            relation: "cites".to_string(),
+            source: "s".to_string(),
+            attrs: None,
+            fetched_at: "2024-01-01T00:00:00Z".to_string(),
+        },
+        EdgeInput {
+            src: alias("test", "c"),
+            dst: alias("test", "h"),
+            relation: "cites".to_string(),
+            source: "s".to_string(),
+            attrs: None,
+            fetched_at: "2024-01-01T00:00:00Z".to_string(),
+        },
+        EdgeInput {
+            src: alias("test", "a"),
+            dst: alias("test", "b"),
+            relation: "cites".to_string(),
+            source: "s".to_string(),
+            attrs: None,
+            fetched_at: "2024-01-01T00:00:00Z".to_string(),
+        },
+    ];
+    s.put_edges(edges).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_neighborhood_forward_bfs() {
+    let s = make_store();
+    build_hub_graph(&s).await;
+
+    // From seed A, forward, depth 2: should reach A, B (A→B), H (A→H and B→H)
+    let result = s
+        .neighborhood(vec![alias("test", "a")], EdgeDir::Forward, 2, 50)
+        .await
+        .unwrap();
+
+    let node_ids: Vec<&str> = result
+        .nodes
+        .iter()
+        .map(|n| n.canonical_id.0.as_str())
+        .collect();
+
+    // Resolve actual canonical ids for a, b, h
+    let id_a = s.get_work(alias("test", "a")).await.unwrap().unwrap().canonical_id.0;
+    let id_b = s.get_work(alias("test", "b")).await.unwrap().unwrap().canonical_id.0;
+    let id_h = s.get_work(alias("test", "h")).await.unwrap().unwrap().canonical_id.0;
+
+    assert!(node_ids.contains(&id_a.as_str()), "A must be in subgraph");
+    assert!(node_ids.contains(&id_b.as_str()), "B must be in subgraph");
+    assert!(node_ids.contains(&id_h.as_str()), "H must be in subgraph");
+
+    // H has in-degree 2 (A→H, B→H), so it should be first (highest in_degree).
+    let h_node = result.nodes.iter().find(|n| n.canonical_id.0 == id_h).unwrap();
+    assert_eq!(h_node.in_degree, 2, "H has in_degree 2 within subgraph");
+    assert_eq!(result.nodes[0].canonical_id.0, id_h, "H should be first (highest in_degree)");
+
+    // Edges should be the closed subset.
+    let edge_pairs: Vec<(&str, &str)> = result
+        .edges
+        .iter()
+        .map(|e| (e.src.0.as_str(), e.dst.0.as_str()))
+        .collect();
+    assert!(
+        edge_pairs.contains(&(id_a.as_str(), id_h.as_str())),
+        "A→H must be in edges"
+    );
+    assert!(
+        edge_pairs.contains(&(id_a.as_str(), id_b.as_str())),
+        "A→B must be in edges"
+    );
+    assert!(
+        edge_pairs.contains(&(id_b.as_str(), id_h.as_str())),
+        "B→H must be in edges"
+    );
+
+    assert!(!result.truncated);
+}
+
+#[tokio::test]
+async fn test_neighborhood_max_nodes_truncation() {
+    let s = make_store();
+    build_hub_graph(&s).await;
+
+    // max_nodes = 2 is smaller than the reachable set → truncated must be true.
+    let result = s
+        .neighborhood(vec![alias("test", "a")], EdgeDir::Forward, 2, 2)
+        .await
+        .unwrap();
+
+    assert!(result.truncated, "truncated must be true when cap is hit");
+    assert!(result.nodes.len() <= 2, "no more than max_nodes nodes returned");
+}
+
+#[tokio::test]
+async fn test_neighborhood_depth_zero() {
+    let s = make_store();
+    build_hub_graph(&s).await;
+
+    // depth = 0 → only the seed, no edges.
+    let result = s
+        .neighborhood(vec![alias("test", "a")], EdgeDir::Forward, 0, 50)
+        .await
+        .unwrap();
+
+    assert_eq!(result.nodes.len(), 1, "depth=0 returns only the seed");
+    assert!(result.edges.is_empty(), "depth=0 returns no edges");
+    assert!(!result.truncated);
+}
+
+#[tokio::test]
+async fn test_neighborhood_unknown_seed_skipped() {
+    let s = make_store();
+    build_hub_graph(&s).await;
+
+    // Unknown seed alias → skipped, no error.
+    let result = s
+        .neighborhood(
+            vec![alias("test", "does-not-exist"), alias("test", "a")],
+            EdgeDir::Forward,
+            1,
+            50,
+        )
+        .await
+        .unwrap();
+
+    // Should still succeed and include A + its neighbors.
+    let id_a = s.get_work(alias("test", "a")).await.unwrap().unwrap().canonical_id.0;
+    assert!(
+        result.nodes.iter().any(|n| n.canonical_id.0 == id_a),
+        "known seed A should be present"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // 7. put_content / get_content rights gating
 // ---------------------------------------------------------------------------
 

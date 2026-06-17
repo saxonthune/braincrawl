@@ -84,6 +84,30 @@ impl StoreClient {
         Ok(resp.json()?)
     }
 
+    /// POST /graph/neighborhood — returns the neighborhood subgraph as JSON.
+    pub fn neighborhood(
+        &self,
+        seeds: &[String],
+        dir: &str,
+        depth: u32,
+        max_nodes: u32,
+    ) -> Result<serde_json::Value> {
+        let url = format!("{}/graph/neighborhood", self.base_url);
+        let body = serde_json::json!({
+            "seeds": seeds,
+            "dir": dir,
+            "depth": depth,
+            "max_nodes": max_nodes,
+        });
+        let resp = self.apply_auth(self.http.post(&url)).json(&body).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(resp.json()?)
+    }
+
     /// GET /works/{alias} — returns the work JSON, or `None` on 404.
     /// `alias` should be in `ns:value` form.
     pub fn get_work(&self, alias: &str) -> Result<Option<serde_json::Value>> {

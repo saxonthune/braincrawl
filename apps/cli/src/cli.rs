@@ -44,6 +44,32 @@ pub enum Namespace {
     Store(StoreArgs),
     #[command(about = "Query the OpenAlex scholarly-data API")]
     Openalex(OpenalexArgs),
+    #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
+    Graph(GraphArgs),
+}
+
+#[derive(Args)]
+pub struct GraphArgs {
+    #[command(subcommand)]
+    pub cmd: GraphCmd,
+}
+
+#[derive(Subcommand)]
+pub enum GraphCmd {
+    /// Bounded neighborhood traversal from one or more seed ids
+    Neighborhood {
+        /// Seed ids in ns:value form (e.g. openalex:W2031938753 doi:10.x/y)
+        seeds: Vec<String>,
+        /// Traversal direction: forward (src→dst) or backward (dst→src)
+        #[arg(long, default_value = "forward")]
+        dir: String,
+        /// Max BFS depth from the seeds
+        #[arg(long, default_value_t = 1)]
+        depth: u32,
+        /// Max nodes in the returned subgraph
+        #[arg(long = "max-nodes", default_value_t = 200)]
+        max_nodes: u32,
+    },
 }
 
 #[derive(Args)]
