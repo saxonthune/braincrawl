@@ -15,6 +15,7 @@ pub type Result<T> = std::result::Result<T, ClientError>;
 pub struct StoreClient {
     base_url: String,
     http: reqwest::blocking::Client,
+    token: Option<String>,
 }
 
 impl StoreClient {
@@ -22,13 +23,31 @@ impl StoreClient {
         StoreClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             http: reqwest::blocking::Client::new(),
+            token: None,
+        }
+    }
+
+    /// Attach a bearer token sent with every request.
+    pub fn with_token(mut self, token: Option<String>) -> Self {
+        self.token = token;
+        self
+    }
+
+    fn apply_auth(
+        &self,
+        req: reqwest::blocking::RequestBuilder,
+    ) -> reqwest::blocking::RequestBuilder {
+        if let Some(t) = &self.token {
+            req.bearer_auth(t)
+        } else {
+            req
         }
     }
 
     /// PUT /works — returns the assigned canonical id (`guid:…`).
     pub fn put_work(&self, record: &serde_json::Value) -> Result<String> {
         let url = format!("{}/works", self.base_url);
-        let resp = self.http.put(&url).json(record).send()?;
+        let resp = self.apply_auth(self.http.put(&url)).json(record).send()?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
@@ -41,7 +60,7 @@ impl StoreClient {
     /// PUT /edges — returns the number of edges stored.
     pub fn put_edges(&self, edges: &[serde_json::Value]) -> Result<u64> {
         let url = format!("{}/edges", self.base_url);
-        let resp = self.http.put(&url).json(edges).send()?;
+        let resp = self.apply_auth(self.http.put(&url)).json(edges).send()?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
@@ -56,7 +75,7 @@ impl StoreClient {
     pub fn have(&self, ids: &[String]) -> Result<Vec<String>> {
         let url = format!("{}/works/have", self.base_url);
         let body = serde_json::json!({ "ids": ids });
-        let resp = self.http.post(&url).json(&body).send()?;
+        let resp = self.apply_auth(self.http.post(&url)).json(&body).send()?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
@@ -69,7 +88,7 @@ impl StoreClient {
     /// `alias` should be in `ns:value` form.
     pub fn get_work(&self, alias: &str) -> Result<Option<serde_json::Value>> {
         let url = format!("{}/works/{}", self.base_url, alias);
-        let resp = self.http.get(&url).send()?;
+        let resp = self.apply_auth(self.http.get(&url)).send()?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }

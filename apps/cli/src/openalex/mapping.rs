@@ -1,0 +1,289 @@
+use serde_json::Value;
+
+use super::entity::Entity;
+
+/// Map an OpenAlex entity type to the server's NodeKind string.
+/// Returns `None` for entity types without a push target (institutions, publishers,
+/// funders, keywords).
+pub fn node_kind(entity: Entity) -> Option<&'static str> {
+    match entity {
+        Entity::Works => Some("Work"),
+        Entity::Authors => Some("Author"),
+        Entity::Sources => Some("Venue"),
+        Entity::Topics => Some("Topic"),
+        Entity::Concepts => Some("Concept"),
+        Entity::Institutions | Entity::Publishers | Entity::Funders | Entity::Keywords => None,
+    }
+}
+
+/// Extract structured aliases from an OpenAlex record.
+/// Values are bare (URL prefixes stripped) to match how the server's `have`/`get` use `ns:value`.
+pub fn extract_aliases(entity: Entity, record: &Value) -> Vec<Value> {
+    let mut aliases: Vec<Value> = Vec::new();
+
+    match entity {
+        Entity::Works => {
+            if let Some(id) = record.get("id").and_then(|v| v.as_str()) {
+                aliases.push(alias("openalex", strip_openalex_url(id)));
+            }
+            if let Some(ids) = record.get("ids").and_then(|v| v.as_object()) {
+                if let Some(doi) = ids.get("doi").and_then(|v| v.as_str()) {
+                    aliases.push(alias("doi", strip_doi_url(doi)));
+                }
+                if let Some(pmid) = ids.get("pmid").and_then(|v| v.as_str()) {
+                    aliases.push(alias("pmid", pmid));
+                }
+                if let Some(pmcid) = ids.get("pmcid").and_then(|v| v.as_str()) {
+                    aliases.push(alias("pmcid", pmcid));
+                }
+                // mag is sometimes a number, sometimes a string
+                if let Some(mag) = ids.get("mag") {
+                    let mag_str = if let Some(s) = mag.as_str() {
+                        Some(s.to_string())
+                    } else {
+                        mag.as_u64().map(|n| n.to_string())
+                    };
+                    if let Some(s) = mag_str {
+                        aliases.push(alias("mag", &s));
+                    }
+                }
+            }
+        }
+        Entity::Authors => {
+            if let Some(id) = record.get("id").and_then(|v| v.as_str()) {
+                aliases.push(alias("openalex", strip_openalex_url(id)));
+            }
+            if let Some(orcid) = record.get("orcid").and_then(|v| v.as_str()) {
+                aliases.push(alias("orcid", strip_orcid_url(orcid)));
+            }
+        }
+        Entity::Sources => {
+            if let Some(id) = record.get("id").and_then(|v| v.as_str()) {
+                aliases.push(alias("openalex", strip_openalex_url(id)));
+            }
+            if let Some(issn_l) = record.get("issn_l").and_then(|v| v.as_str()) {
+                aliases.push(alias("issn_l", issn_l));
+            }
+            if let Some(issns) = record.get("issn").and_then(|v| v.as_array()) {
+                for issn in issns {
+                    if let Some(s) = issn.as_str() {
+                        aliases.push(alias("issn", s));
+                    }
+                }
+            }
+        }
+        Entity::Topics => {
+            if let Some(id) = record.get("id").and_then(|v| v.as_str()) {
+                aliases.push(alias("openalex", strip_openalex_url(id)));
+            }
+        }
+        Entity::Concepts => {
+            if let Some(id) = record.get("id").and_then(|v| v.as_str()) {
+                aliases.push(alias("openalex", strip_openalex_url(id)));
+            }
+            if let Some(wikidata) = record.get("wikidata").and_then(|v| v.as_str()) {
+                aliases.push(alias("wikidata", strip_wikidata_url(wikidata)));
+            }
+        }
+        _ => {}
+    }
+
+    aliases
+}
+
+/// Build a WorkRecord JSON value for the given entity and (optionally trimmed) record.
+/// Returns `None` if the entity has no push target.
+pub fn to_work_record(entity: Entity, record: &Value) -> Option<Value> {
+    let kind = node_kind(entity)?;
+    let aliases = extract_aliases(entity, record);
+    Some(serde_json::json!({
+        "source": "openalex",
+        "kind": kind,
+        "aliases": aliases,
+        "attrs": record
+    }))
+}
+
+/// Build EdgeInput JSON values for a slice of (citing_id, cited_id) pairs.
+/// IDs may be full OpenAlex URLs or bare IDs — URL prefixes are stripped.
+pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
+    let fetched_at = rfc3339_now();
+    pairs
+        .iter()
+        .map(|(citing, cited)| {
+            let citing_bare = strip_openalex_url(citing).to_string();
+            let cited_bare = strip_openalex_url(cited).to_string();
+            serde_json::json!({
+                "src": {"namespace": "openalex", "value": citing_bare},
+                "dst": {"namespace": "openalex", "value": cited_bare},
+                "relation": "cites",
+                "source": "openalex",
+                "attrs": null,
+                "fetched_at": fetched_at
+            })
+        })
+        .collect()
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+fn alias(namespace: &str, value: &str) -> Value {
+    serde_json::json!({"namespace": namespace, "value": value})
+}
+
+fn strip_openalex_url(s: &str) -> &str {
+    s.strip_prefix("https://openalex.org/").unwrap_or(s)
+}
+
+fn strip_doi_url(s: &str) -> &str {
+    s.strip_prefix("https://doi.org/").unwrap_or(s)
+}
+
+fn strip_orcid_url(s: &str) -> &str {
+    s.strip_prefix("https://orcid.org/").unwrap_or(s)
+}
+
+fn strip_wikidata_url(s: &str) -> &str {
+    s.strip_prefix("https://www.wikidata.org/wiki/")
+        .or_else(|| s.strip_prefix("https://www.wikidata.org/entity/"))
+        .unwrap_or(s)
+}
+
+/// Format the current time as an RFC3339 UTC timestamp without external deps.
+fn rfc3339_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600) % 24;
+    let days = secs / 86400;
+    let (year, month, day) = days_to_ymd(days);
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+    let mut year = 1970u64;
+    loop {
+        let diy = if is_leap(year) { 366 } else { 365 };
+        if days < diy {
+            break;
+        }
+        days -= diy;
+        year += 1;
+    }
+    let dims: [u64; 12] = if is_leap(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1u64;
+    for &dim in &dims {
+        if days < dim {
+            break;
+        }
+        days -= dim;
+        month += 1;
+    }
+    (year, month, days + 1)
+}
+
+fn is_leap(year: u64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_kind_mapping() {
+        assert_eq!(node_kind(Entity::Works), Some("Work"));
+        assert_eq!(node_kind(Entity::Authors), Some("Author"));
+        assert_eq!(node_kind(Entity::Sources), Some("Venue"));
+        assert_eq!(node_kind(Entity::Topics), Some("Topic"));
+        assert_eq!(node_kind(Entity::Concepts), Some("Concept"));
+        assert_eq!(node_kind(Entity::Institutions), None);
+        assert_eq!(node_kind(Entity::Publishers), None);
+        assert_eq!(node_kind(Entity::Funders), None);
+        assert_eq!(node_kind(Entity::Keywords), None);
+    }
+
+    #[test]
+    fn alias_url_normalization_work() {
+        let record = serde_json::json!({
+            "id": "https://openalex.org/W2741809807",
+            "ids": {
+                "doi": "https://doi.org/10.7717/peerj.4375",
+                "pmid": "29456894",
+                "mag": 2741809807u64
+            }
+        });
+        let aliases = extract_aliases(Entity::Works, &record);
+        let ns_vals: Vec<(&str, &str)> = aliases
+            .iter()
+            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .collect();
+        assert!(ns_vals.contains(&("openalex", "W2741809807")));
+        assert!(ns_vals.contains(&("doi", "10.7717/peerj.4375")));
+        assert!(ns_vals.contains(&("pmid", "29456894")));
+        assert!(ns_vals.contains(&("mag", "2741809807")));
+    }
+
+    #[test]
+    fn alias_url_normalization_author() {
+        let record = serde_json::json!({
+            "id": "https://openalex.org/A5023888391",
+            "orcid": "https://orcid.org/0000-0001-6187-6610"
+        });
+        let aliases = extract_aliases(Entity::Authors, &record);
+        let ns_vals: Vec<(&str, &str)> = aliases
+            .iter()
+            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .collect();
+        assert!(ns_vals.contains(&("openalex", "A5023888391")));
+        assert!(ns_vals.contains(&("orcid", "0000-0001-6187-6610")));
+    }
+
+    #[test]
+    fn institution_maps_to_none() {
+        let record = serde_json::json!({"id": "https://openalex.org/I27837315"});
+        assert!(to_work_record(Entity::Institutions, &record).is_none());
+    }
+
+    #[test]
+    fn to_work_record_shape() {
+        let record = serde_json::json!({
+            "id": "https://openalex.org/W2741809807",
+            "ids": {"doi": "https://doi.org/10.7717/peerj.4375"}
+        });
+        let wr = to_work_record(Entity::Works, &record).unwrap();
+        assert_eq!(wr["source"].as_str(), Some("openalex"));
+        assert_eq!(wr["kind"].as_str(), Some("Work"));
+        let aliases = wr["aliases"].as_array().unwrap();
+        assert!(!aliases.is_empty());
+    }
+
+    #[test]
+    fn to_edges_strips_urls() {
+        let pairs = vec![
+            (
+                "https://openalex.org/W111".to_string(),
+                "https://openalex.org/W222".to_string(),
+            ),
+        ];
+        let edges = to_edges(&pairs);
+        assert_eq!(edges.len(), 1);
+        let e = &edges[0];
+        assert_eq!(e["src"]["namespace"].as_str(), Some("openalex"));
+        assert_eq!(e["src"]["value"].as_str(), Some("W111"));
+        assert_eq!(e["dst"]["value"].as_str(), Some("W222"));
+        assert_eq!(e["relation"].as_str(), Some("cites"));
+        assert_eq!(e["source"].as_str(), Some("openalex"));
+        assert!(e["fetched_at"].as_str().is_some());
+    }
+}

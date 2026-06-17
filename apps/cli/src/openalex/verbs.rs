@@ -123,11 +123,12 @@ pub fn cited_by(
         Some(resolved),
         opts,
     )?;
-    // Record citation edges: each result cites the given ID
-    let cited_id = citing_entity.to_string() + ":" + &path_id;
+    // Record citation edges: each result cites the given ID.
+    // Use bare OpenAlex IDs (not entity-path prefix); mapping.rs strips URL prefixes.
+    let _ = citing_entity; // entity type used only for infer; edge uses the bare path_id
     for result in &envelope.results {
         if let Some(citing_id) = result.get("id").and_then(|v| v.as_str()) {
-            batch.edges.push((citing_id.to_string(), cited_id.clone()));
+            batch.edges.push((citing_id.to_string(), path_id.clone()));
         }
     }
     Ok((envelope, batch))

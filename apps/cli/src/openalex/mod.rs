@@ -1,6 +1,7 @@
 pub mod client;
 pub mod entity;
 pub mod filters;
+pub mod mapping;
 pub mod shape;
 pub mod verbs;
 
@@ -39,4 +40,12 @@ impl PushBatch {
     pub fn empty() -> Self {
         PushBatch { records: Vec::new(), edges: Vec::new() }
     }
+}
+
+/// Counts from a push operation; reported to stderr.
+pub struct PushSummary {
+    pub nodes_pushed: usize,
+    pub edges_pushed: u64,
+    pub skipped_unmappable: usize,
+    pub errors: Vec<String>,
 }
