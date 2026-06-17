@@ -35,14 +35,7 @@ pub fn render(envelope: &Envelope, opts: &OutputOpts) {
 
     if opts.text && !opts.json {
         for r in &results {
-            let id = r.get("id").and_then(|v| v.as_str()).unwrap_or("-");
-            let display = r
-                .get("title")
-                .or_else(|| r.get("display_name"))
-                .or_else(|| r.get("name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            println!("{id}\t{display}");
+            println!("{}", render_text_line(r, &opts.fields));
         }
     } else {
         let out = serde_json::json!({
@@ -57,6 +50,39 @@ pub fn render(envelope: &Envelope, opts: &OutputOpts) {
     }
 }
 
+/// Render a single result as one tab-separated text line.
+/// When `fields` is set, prints exactly those fields in order (no id prepended).
+/// When `fields` is empty, prints `id<TAB>display` where display is the first of
+/// title/display_name/name.
+fn render_text_line(r: &serde_json::Value, fields: &[String]) -> String {
+    if fields.is_empty() {
+        let id = r.get("id").and_then(|v| v.as_str()).unwrap_or("-");
+        let display = r
+            .get("title")
+            .or_else(|| r.get("display_name"))
+            .or_else(|| r.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        format!("{id}\t{}", sanitize_text_value(display))
+    } else {
+        fields
+            .iter()
+            .map(|f| match r.get(f) {
+                None | Some(serde_json::Value::Null) => String::new(),
+                Some(serde_json::Value::String(s)) => sanitize_text_value(s),
+                Some(other) => sanitize_text_value(&other.to_string()),
+            })
+            .collect::<Vec<_>>()
+            .join("\t")
+    }
+}
+
+/// Flatten a field value to a single row: replace tab/newline/carriage-return
+/// with a single space so each result stays exactly one line.
+fn sanitize_text_value(s: &str) -> String {
+    s.replace(['\t', '\n', '\r'], " ")
+}
+
 fn project(v: &serde_json::Value, fields: &[String]) -> serde_json::Value {
     let Some(obj) = v.as_object() else {
         return v.clone();
@@ -68,4 +94,56 @@ fn project(v: &serde_json::Value, fields: &[String]) -> serde_json::Value {
         }
     }
     serde_json::Value::Object(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fields(s: &[&str]) -> Vec<String> {
+        s.iter().map(|f| f.to_string()).collect()
+    }
+
+    #[test]
+    fn text_fields_projection_in_order_no_id_prepended() {
+        let r = serde_json::json!({
+            "id": "W123",
+            "display_name": "A Title",
+            "cited_by_count": 42,
+        });
+        let line = render_text_line(&r, &fields(&["display_name", "cited_by_count"]));
+        assert_eq!(line, "A Title\t42");
+    }
+
+    #[test]
+    fn text_field_value_with_newline_is_flattened() {
+        let r = serde_json::json!({
+            "abstract": "line one\nline two\twith tab\r\nend",
+        });
+        let line = render_text_line(&r, &fields(&["abstract"]));
+        assert_eq!(line, "line one line two with tab  end");
+        assert!(!line.contains('\n'));
+        assert!(!line.contains('\t'));
+        assert!(!line.contains('\r'));
+    }
+
+    #[test]
+    fn text_no_fields_prints_id_tab_display() {
+        let r = serde_json::json!({
+            "id": "W123",
+            "title": "Some Work",
+        });
+        let line = render_text_line(&r, &[]);
+        assert_eq!(line, "W123\tSome Work");
+    }
+
+    #[test]
+    fn text_fields_missing_renders_empty_and_objects_compact_json() {
+        let r = serde_json::json!({
+            "display_name": "T",
+            "nested": { "a": 1 },
+        });
+        let line = render_text_line(&r, &fields(&["display_name", "missing", "nested"]));
+        assert_eq!(line, "T\t\t{\"a\":1}");
+    }
 }
