@@ -108,9 +108,54 @@ pub fn fetch_content(
 
 // ── URL resolution ────────────────────────────────────────────────────────────
 
+/// Resolve and download the artifact for `id` WITHOUT writing to the store.
+/// Returns (bytes, mime, artifact_url). Errors if no downloadable URL exists
+/// (no LinkOnly fallback — that belongs to fetch_content).
+pub fn fetch_artifact_bytes(
+    store: &StoreClient,
+    unpaywall_email: Option<&str>,
+    id: &str,
+    from: Source,
+    require_pdf: bool,
+) -> Result<(Vec<u8>, String, String), Box<dyn std::error::Error>> {
+    let work = store
+        .get_work(id)?
+        .ok_or_else(|| format!("work not found in store: {}", id))?;
+
+    let (artifact_url, _source_label) =
+        resolve_artifact_url(&work, &from, unpaywall_email)?
+            .ok_or_else(|| format!("no downloadable artifact URL found for {}", id))?;
+
+    let (bytes, mime) = download_artifact(&artifact_url)?;
+
+    if (require_pdf || mime.contains("pdf") || artifact_url.to_ascii_lowercase().ends_with(".pdf"))
+        && !is_valid_pdf(&bytes)
+    {
+        return Err(format!(
+            "artifact at {} does not start with %PDF magic bytes \
+             (received {} bytes, content-type: {})",
+            artifact_url,
+            bytes.len(),
+            mime
+        )
+        .into());
+    }
+
+    Ok((bytes, mime, artifact_url))
+}
+
+/// Best-effort mime for raw bytes with no HTTP response to read.
+pub fn sniff_mime(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"%PDF") {
+        "application/pdf"
+    } else {
+        "application/octet-stream"
+    }
+}
+
 /// Resolve a downloadable URL from stored attrs and/or Unpaywall.
 /// Returns `(url, source_label)` or `None` if no URL is found.
-fn resolve_artifact_url(
+pub fn resolve_artifact_url(
     work: &serde_json::Value,
     from: &Source,
     unpaywall_email: Option<&str>,
@@ -229,7 +274,7 @@ fn query_unpaywall(
 
 /// Download an artifact URL, returning `(bytes, mime)`.
 /// Follows redirects, enforces a 60 s timeout and a 50 MB size cap.
-fn download_artifact(url: &str) -> Result<(Vec<u8>, String), Box<dyn std::error::Error>> {
+pub fn download_artifact(url: &str) -> Result<(Vec<u8>, String), Box<dyn std::error::Error>> {
     let client = reqwest::blocking::ClientBuilder::new()
         .timeout(std::time::Duration::from_secs(60))
         .user_agent(format!("braincrawl/{} (+fetch-content)", env!("CARGO_PKG_VERSION")))
@@ -371,6 +416,21 @@ mod tests {
     #[test]
     fn rejects_other_content() {
         assert!(!is_valid_pdf(b"Not a PDF at all"));
+    }
+
+    // ── sniff_mime ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn sniff_mime_detects_pdf() {
+        assert_eq!(sniff_mime(b"%PDF-1.7 ..."), "application/pdf");
+        assert_eq!(sniff_mime(b"%PDF"), "application/pdf");
+    }
+
+    #[test]
+    fn sniff_mime_falls_back_to_octet_stream() {
+        assert_eq!(sniff_mime(b"<html></html>"), "application/octet-stream");
+        assert_eq!(sniff_mime(b""), "application/octet-stream");
+        assert_eq!(sniff_mime(b"not a pdf"), "application/octet-stream");
     }
 
     // ── DOI extraction ────────────────────────────────────────────────────────

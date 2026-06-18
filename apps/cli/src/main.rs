@@ -1,4 +1,5 @@
 use braincrawl_cli::cli::{Cli, CrossrefCmd, GraphCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
+use std::io::Write as IoWrite;
 use braincrawl_cli::pdf_text;
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
@@ -323,6 +324,97 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 fetch_content::Outcome::NoOaFound { reason } => {
                     return Err(format!("no-oa-found: {}", reason).into());
+                }
+            }
+        }
+        Namespace::FetchPdf(args) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let source = match args.from.as_str() {
+                "openalex" => fetch_content::Source::Openalex,
+                "unpaywall" => fetch_content::Source::Unpaywall,
+                _ => fetch_content::Source::Auto,
+            };
+            let (bytes, mime, url) = fetch_content::fetch_artifact_bytes(
+                &store,
+                config.unpaywall_email.as_deref(),
+                &args.id,
+                source,
+                args.require_pdf,
+            )?;
+            if let Some(path) = &args.output {
+                std::fs::write(path, &bytes)?;
+            } else {
+                std::io::stdout().lock().write_all(&bytes)?;
+            }
+            eprintln!("fetched: {} bytes, mime={}, url={}", bytes.len(), mime, url);
+        }
+        Namespace::PushPdf(args) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let bytes: Vec<u8> = if let Some(path) = &args.file {
+                std::fs::read(path)?
+            } else {
+                use std::io::Read as _;
+                let mut buf = Vec::new();
+                std::io::stdin().lock().read_to_end(&mut buf)?;
+                buf
+            };
+            if bytes.is_empty() {
+                return Err("no input bytes (provide a file arg or pipe bytes on stdin)".into());
+            }
+            let mime = args.mime.as_deref().unwrap_or_else(|| fetch_content::sniff_mime(&bytes));
+            store.put_content(
+                &args.id,
+                "fulltext",
+                bytes.clone(),
+                mime,
+                &args.rights,
+                args.source.as_deref(),
+                args.source_url.as_deref(),
+            )?;
+            eprintln!("pushed: {} bytes, mime={}, rights={}", bytes.len(), mime, args.rights);
+        }
+        Namespace::GetPdf(args) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            use braincrawl_cli::store_client::ContentOutcome;
+            match store.get_content(&args.id, "fulltext")? {
+                ContentOutcome::Bytes { bytes, mime } => {
+                    if let Some(path) = &args.output {
+                        std::fs::write(path, &bytes)?;
+                    } else {
+                        std::io::stdout().lock().write_all(&bytes)?;
+                    }
+                    eprintln!("read: {} bytes, mime={}", bytes.len(), mime);
+                }
+                ContentOutcome::Absent => {
+                    return Err(format!(
+                        "no fulltext payload in store for {}; run fetch-content first",
+                        args.id
+                    )
+                    .into());
+                }
+                ContentOutcome::Pending => {
+                    return Err(format!(
+                        "fulltext for {} is still being fetched",
+                        args.id
+                    )
+                    .into());
+                }
+                ContentOutcome::Restricted => {
+                    return Err(format!(
+                        "fulltext for {} is rights-restricted",
+                        args.id
+                    )
+                    .into());
+                }
+                ContentOutcome::Redirect(url) => {
+                    return Err(format!(
+                        "only a link is stored for {} (link-only): {}",
+                        args.id, url
+                    )
+                    .into());
                 }
             }
         }

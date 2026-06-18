@@ -54,6 +54,12 @@ pub enum Namespace {
     FetchContent(FetchContentArgs),
     #[command(name = "extract-text", about = "Extract text from a work's stored fulltext PDF payload")]
     ExtractText(ExtractTextArgs),
+    #[command(name = "fetch-pdf", about = "Resolve and download a work's fulltext artifact to stdout (no store write)")]
+    FetchPdf(FetchPdfArgs),
+    #[command(name = "push-pdf", about = "Store fulltext bytes from stdin or a file as a work's fulltext payload")]
+    PushPdf(PushPdfArgs),
+    #[command(name = "get-pdf", about = "Read a work's stored fulltext payload bytes to stdout")]
+    GetPdf(GetPdfArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
     #[command(about = "Show aggregate statistics about the metadata network")]
@@ -79,6 +85,50 @@ pub struct FetchContentArgs {
 pub struct ExtractTextArgs {
     /// Work id in ns:value form (e.g. openalex:W2304167012)
     pub id: String,
+}
+
+#[derive(Args)]
+pub struct FetchPdfArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Where to resolve the artifact URL from (auto|openalex|unpaywall)
+    #[arg(long, default_value = "auto")]
+    pub from: String,
+    /// Only accept a PDF artifact (reject HTML or other content types)
+    #[arg(long = "require-pdf")]
+    pub require_pdf: bool,
+    /// Write bytes to this path instead of stdout
+    #[arg(long, short = 'o')]
+    pub output: Option<String>,
+}
+
+#[derive(Args)]
+pub struct PushPdfArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Read bytes from this file instead of stdin
+    pub file: Option<String>,
+    /// Content mime type (default: sniff %PDF, else application/octet-stream)
+    #[arg(long)]
+    pub mime: Option<String>,
+    /// Rights value: open | link_only | restricted
+    #[arg(long, default_value = "open")]
+    pub rights: String,
+    /// Optional source label recorded with the payload
+    #[arg(long)]
+    pub source: Option<String>,
+    /// Optional source URL recorded with the payload
+    #[arg(long = "source-url")]
+    pub source_url: Option<String>,
+}
+
+#[derive(Args)]
+pub struct GetPdfArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Write bytes to this path instead of stdout
+    #[arg(long, short = 'o')]
+    pub output: Option<String>,
 }
 
 #[derive(Args)]
