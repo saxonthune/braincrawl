@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 braincrawl-server-lib = { path = "../server", package = "braincrawl-server-lib" }
+braincrawl-core = { workspace = true }
 braincrawl-auth = { workspace = true }
 axum = "0.7"
-tokio = { version = "1", features = ["rt", "net", "macros"] }
+tokio = { version = "1", features = ["rt", "net", "macros", "time"] }

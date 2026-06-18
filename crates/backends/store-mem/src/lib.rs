@@ -166,7 +166,7 @@ impl PayloadsRepo for MemStore {
         let mut inner = self.inner.borrow_mut();
         let kind_str = MemStoreInner::kind_str(&descriptor.kind).to_string();
         let key = (descriptor.canonical_id.0.clone(), kind_str);
-        let rows = inner.payloads.entry(key).or_insert_with(Vec::new);
+        let rows = inner.payloads.entry(key).or_default();
         if descriptor.is_current {
             for row in rows.iter_mut() {
                 row.is_current = false;
@@ -311,7 +311,7 @@ impl MetadataStore for MemStore {
                 },
                 old_key.2.clone(),
             );
-            let target = inner.edges.entry(new_key).or_insert_with(BTreeMap::new);
+            let target = inner.edges.entry(new_key).or_default();
             for (source, row) in assertions {
                 let keep = match target.get(&source) {
                     Some(existing) => existing.fetched_at < row.fetched_at,
@@ -346,7 +346,7 @@ impl MetadataStore for MemStore {
             inner
                 .payloads
                 .entry(new_key)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .extend(rows);
         }
 
@@ -399,7 +399,7 @@ impl MetadataStore for MemStore {
     ) -> Result<(), DomainError> {
         let mut inner = self.inner.borrow_mut();
         let key = (src.0.clone(), dst.0.clone(), relation.to_string());
-        let assertions = inner.edges.entry(key).or_insert_with(BTreeMap::new);
+        let assertions = inner.edges.entry(key).or_default();
         assertions.insert(
             source.to_string(),
             EdgeAssertionRow {

@@ -13,7 +13,14 @@
 use std::sync::Arc;
 
 use braincrawl_auth::SharedSecret;
-use braincrawl_server_lib::{make_app, make_store, AuthConfig};
+use braincrawl_core::{
+    traits::FetchHandler,
+    worker::{tick, BackoffPolicy},
+};
+use braincrawl_server_lib::{
+    handlers::{FulltextHandler, RefsHandler},
+    make_app, make_store, AuthConfig,
+};
 use tokio::net::TcpListener;
 
 #[tokio::main(flavor = "current_thread")]
@@ -45,11 +52,59 @@ async fn main() {
 
     let store =
         Arc::new(make_store(&db_path, &blob_root).expect("failed to initialise local store"));
-    let app = make_app(store, auth);
 
+    let crossref_mailto = std::env::var("BRAINCRAWL_CROSSREF_MAILTO").ok();
+    let unpaywall_email = std::env::var("BRAINCRAWL_UNPAYWALL_EMAIL").ok();
+
+    let handlers: Vec<Box<dyn FetchHandler>> = vec![
+        Box::new(FulltextHandler {
+            store: Arc::clone(&store),
+            unpaywall_email,
+        }),
+        Box::new(RefsHandler {
+            store: Arc::clone(&store),
+            crossref_mailto,
+        }),
+    ];
+
+    let policy = BackoffPolicy {
+        max_attempts: 5,
+        base_secs: 30,
+        factor: 2,
+    };
+
+    let app = make_app(Arc::clone(&store), auth);
     let listener = TcpListener::bind(&bind_addr)
         .await
         .expect("failed to bind TCP listener");
     eprintln!("braincrawl-server listening on {bind_addr}");
-    axum::serve(listener, app).await.expect("server error");
+
+    // Run the worker loop on the local task set alongside the HTTP server.
+    // spawn_local avoids the Send requirement on the !Send FetchHandler futures.
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async move {
+            let store_w = Arc::clone(&store);
+            tokio::task::spawn_local(async move {
+                loop {
+                    let n = tick(
+                        &store_w.meta,
+                        &store_w.coord,
+                        &store_w.clock,
+                        &handlers,
+                        10,
+                        &policy,
+                    )
+                    .await
+                    .unwrap_or(0);
+
+                    if n == 0 {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                }
+            });
+
+            axum::serve(listener, app).await.expect("server error");
+        })
+        .await;
 }

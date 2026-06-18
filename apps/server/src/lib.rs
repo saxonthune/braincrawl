@@ -11,6 +11,8 @@
 //! driven to completion on a blocking thread via `Handle::block_on`, so it never
 //! crosses a thread boundary.
 
+pub mod handlers;
+
 use std::sync::Arc;
 
 use std::collections::HashMap;
@@ -28,10 +30,10 @@ use braincrawl_auth::{AuthOutcome, SharedSecret};
 use braincrawl_blob_fs::FsBlobStore;
 use braincrawl_coord_local::{LocalCoordinator, SystemClock, UuidGen};
 use braincrawl_core::{
-    traits::IdResolver,
+    traits::{IdResolver, JobEnqueuer},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput,
-        PayloadKind, Rights, WorkRecord,
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec, PayloadKind,
+        Rights, WorkRecord,
     },
     usecases::Store,
 };
@@ -413,6 +415,22 @@ async fn handler_neighborhood(
     }
 }
 
+/// POST /jobs — enqueue a background fetch job.
+async fn handler_post_job(
+    State(store): State<Arc<LocalStore>>,
+    Json(spec): Json<JobSpec>,
+) -> impl IntoResponse {
+    let result = run_blocking(move || async move { store.meta.enqueue(spec).await }).await;
+    match result {
+        Ok(id) => (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({"id": id.0})),
+        )
+            .into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 /// Build the axum router wired to the given store and auth config.
@@ -422,6 +440,7 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
         .route("/works/have", post(handler_have))
         .route("/works", put(handler_put_work))
         .route("/edges", put(handler_put_edges))
+        .route("/jobs", post(handler_post_job))
         .route("/graph/neighborhood", post(handler_neighborhood))
         .route("/stats", get(handler_stats))
         // Wildcard routes capture alias values that contain `/` (e.g. DOIs).

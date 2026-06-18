@@ -14,9 +14,11 @@ use braincrawl_core::{
     types::{DomainError, StoredBlob},
 };
 
+/// key → (bytes, mime, content_hash)
+type BlobMap = HashMap<String, (Vec<u8>, String, String)>;
+
 pub struct MemBlobStore {
-    /// key → (bytes, mime, content_hash)
-    inner: RefCell<HashMap<String, (Vec<u8>, String, String)>>,
+    inner: RefCell<BlobMap>,
 }
 
 impl MemBlobStore {
