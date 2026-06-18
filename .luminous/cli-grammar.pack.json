@@ -1,0 +1,262 @@
+{
+  "description": "The braincrawl CLI grammar — every command, subcommand and flag, derived from the clap definition.",
+  "disclosure": [
+    {
+      "card": [
+        "name",
+        "about"
+      ],
+      "deep": [
+        "name",
+        "path",
+        "about",
+        "hidden",
+        "depth"
+      ],
+      "kind": "cli.command",
+      "open": [
+        "name",
+        "path",
+        "about",
+        "hidden"
+      ],
+      "peek": [
+        "name"
+      ]
+    },
+    {
+      "card": [
+        "name",
+        "kind",
+        "help"
+      ],
+      "deep": [
+        "name",
+        "kind",
+        "long",
+        "short",
+        "required",
+        "global",
+        "default",
+        "values",
+        "help"
+      ],
+      "kind": "cli.flag",
+      "open": [
+        "name",
+        "kind",
+        "long",
+        "short",
+        "required",
+        "help"
+      ],
+      "peek": [
+        "name"
+      ]
+    }
+  ],
+  "edgeKinds": [
+    {
+      "acceptsSource": [
+        "cli.command"
+      ],
+      "acceptsTarget": [
+        "cli.command",
+        "cli.flag"
+      ],
+      "directed": true,
+      "id": "cli.contains",
+      "label": "contains",
+      "props": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    }
+  ],
+  "id": "cli-grammar",
+  "layers": [],
+  "nodeKinds": [
+    {
+      "id": "cli.command",
+      "label": "Command",
+      "props": {
+        "additionalProperties": false,
+        "properties": {
+          "about": {
+            "type": "string"
+          },
+          "depth": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "render": {
+        "card": {
+          "children": [
+            {
+              "children": [
+                {
+                  "style": "heading",
+                  "type": "text",
+                  "value": "{content.name}"
+                },
+                {
+                  "tone": "muted",
+                  "type": "badge",
+                  "value": "command"
+                }
+              ],
+              "gap": 6,
+              "justify": "space-between",
+              "type": "hstack"
+            },
+            {
+              "style": "caption",
+              "tone": "muted",
+              "type": "text",
+              "value": "{content.about}"
+            }
+          ],
+          "padding": 12,
+          "shape": "rectangle",
+          "type": "card"
+        },
+        "peek": {
+          "style": "heading",
+          "type": "text",
+          "value": "{content.name}"
+        }
+      }
+    },
+    {
+      "id": "cli.flag",
+      "label": "Flag / Arg",
+      "props": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "type": "string"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "help": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "long": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "short": {
+            "type": "string"
+          },
+          "values": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "render": {
+        "card": {
+          "children": [
+            {
+              "children": [
+                {
+                  "style": "mono",
+                  "type": "text",
+                  "value": "{content.name}"
+                },
+                {
+                  "tone": "accent",
+                  "type": "badge",
+                  "value": "{content.kind}"
+                }
+              ],
+              "gap": 6,
+              "type": "hstack"
+            },
+            {
+              "style": "caption",
+              "tone": "muted",
+              "type": "text",
+              "value": "{content.help}"
+            }
+          ],
+          "padding": 8,
+          "shape": "pill",
+          "type": "card"
+        },
+        "peek": {
+          "style": "mono",
+          "type": "text",
+          "value": "{content.name}"
+        }
+      }
+    }
+  ],
+  "version": "0.1.0",
+  "views": [
+    {
+      "description": "The full command tree with flags nested under their command.",
+      "edgeRoles": {
+        "cli.contains": "contain"
+      },
+      "id": "cli-grammar",
+      "layers": {},
+      "layout": {
+        "algorithm": "elk"
+      },
+      "name": "CLI Grammar",
+      "nodeRoles": {
+        "cli.command": "spatial",
+        "cli.flag": "spatial"
+      },
+      "zoomToLevel": [
+        {
+          "level": "peek",
+          "minZoom": 0
+        },
+        {
+          "level": "card",
+          "minZoom": 0.4
+        },
+        {
+          "level": "open",
+          "minZoom": 1.2
+        },
+        {
+          "level": "deep",
+          "minZoom": 3.0
+        }
+      ]
+    }
+  ]
+}

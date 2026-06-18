@@ -33,6 +33,8 @@ Add to `~/.bashrc` / `~/.zshrc` to persist across sessions.
 # ~/.config/braincrawl/config.toml
 server_url = "http://127.0.0.1:8787"
 semanticscholar_api_key = "your-key-here"
+unpaywall_email = "you@example.com"   # contact email Unpaywall requires for fulltext lookups
+crossref_mailto = "you@example.com"   # polite-pool contact for Crossref reference fetches
 ```
 
 Override the config path with `BRAINCRAWL_CONFIG=/path/to/config.toml`.
@@ -85,3 +87,11 @@ fail, S2's API may be having an incident — try again in a few minutes.
 OpenAlex requires **no key**. The `openalex_api_key` config field / `BRAINCRAWL_OPENALEX_API_KEY`
 env var is optional and only needed if you have a polite-pool key to raise the rate limit.
 Config and env precedence are identical to S2.
+
+## Unpaywall & Crossref (parity note)
+
+`fetch-content --from unpaywall` (and `--from auto`) needs a contact email — Unpaywall
+requires one by policy. Set `unpaywall_email` in `config.toml` (above) and it just works,
+no per-command prefix. The `BRAINCRAWL_UNPAYWALL_EMAIL` env var overrides the config value;
+precedence is identical to S2 (env > config > unset). `crossref_mailto` /
+`BRAINCRAWL_CROSSREF_MAILTO` behaves the same way for Crossref reference fetches.

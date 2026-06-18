@@ -36,3 +36,7 @@ build-release:
 # Run the workspace test suite
 test:
     cargo test
+
+# Regenerate the Luminous CLI-grammar canvas in .luminous/ from the clap definition
+luminous-cli:
+    cargo run -p braincrawl-cli --example luminous_cli_grammar
