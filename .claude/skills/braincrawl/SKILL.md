@@ -157,7 +157,43 @@ Other useful verbs: `openalex get <id>` (single entity; id can be `W…/A…/S�
 <query>`, `openalex autocomplete <entity> <prefix>`. Entities: works, authors, sources,
 institutions, topics, keywords, publishers, funders.
 
-## 4. Maintain your L3 projection (the part you own)
+## 4. Read by progressive disclosure (the query ladder — cheap layer first)
+
+Decisiveness is *reading*, and reading has a cost gradient. **Always answer a question at
+the cheapest rung that suffices, and only climb when the angle isn't covered.** Don't
+fulltext-fetch a paper whose title already disqualifies it; don't hydrate 40 abstracts when
+the in-degree ranking already names the three that matter.
+
+The ladder, cheapest → dearest:
+
+1. **Metadata graph** — titles, authors, in-degree, citation edges. `graph neighborhood`,
+   `openalex search/find`, `cited-by`/`refs`. Often a title + who-cites-whom is enough to
+   place a work or kill it. This rung is store-local (no provider call) once accreted.
+2. **Abstracts** — `--abstract` (pair with `--fields title,publication_year,abstract` to
+   skip the JSON dump). The workhorse rung: usually answers "what does this argue, and does
+   it bear on my question?" **Coverage is uneven** — old/closed works may have *no* abstract
+   (e.g. Jacobsen & Adams 1958), and some publishers (De Gruyter) return a boilerplate stub,
+   not real content. When OpenAlex is blank, S2 is the gap-filler (§3).
+3. **AI-condensed summary** — fetch fulltext and have an agent distill it to the claim you
+   need. *Not yet a CLI capability* (see "Capability gaps" below) — today you bridge it by
+   fetching the source yourself (WebFetch/the open-access PDF) and condensing in-context.
+4. **Full text** — read the whole work. The dearest rung; reserve for the load-bearing few
+   a finding actually hangs on. L1 is designed to hold fulltext "on demand," but the CLI
+   exposes no fulltext verb yet.
+
+Worked loop: a temple-formation question returned *nothing* on the held graph (rung 1
+miss) → seeded `openalex search "origins of the temple economy…"` → one `--abstract`
+hydrate of the landmark (rung 2) carried the full Gelb/Diakonoff vs Deimel answer. Rungs
+3–4 never needed. That is the target shape: climb only as far as the question forces you.
+
+**Capability gaps (as of this writing).** The CLI top-level verbs are `openalex`,
+`semanticscholar`, `graph`, `stats` — rungs 1–2 are implemented; **rungs 3–4 are not**
+(no fulltext fetch, no condense/summarize verb, no `store` subcommand despite older
+quick-ref mentions). Until they land, treat rung 3 as a manual bridge. When you hit a
+question that genuinely needs fulltext, *say so explicitly* and name it as the capability
+to add rather than silently stopping at abstracts.
+
+## 5. Maintain your L3 projection (the part you own)
 
 Your domain project (e.g. the Mesopotamia game) keeps **one L3 artifact in its own repo** —
 not in this repo. It records *your* selections, questions, findings, and domain edges,
