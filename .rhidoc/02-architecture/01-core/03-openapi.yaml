@@ -35,10 +35,9 @@ paths:
     get:
       summary: get_content — rights-gated
       responses:
-        "200": { description: bytes (rights=open) }
+        "200": { description: bytes (rights=open or rights=restricted; both store and serve bytes) }
         "302": { description: redirect to OA url (rights=link_only) }
         "202": { description: materialization pending }
-        "451": { description: restricted — never persisted }
         "404": { description: absent }
 
   /edges:

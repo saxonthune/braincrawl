@@ -202,7 +202,6 @@ fn parse_rights(s: &str) -> Option<Rights> {
 fn domain_status(e: &DomainError) -> u16 {
     match e {
         DomainError::NotFound => 404,
-        DomainError::RightsViolation(_) => 451,
         DomainError::Conflict => 409,
         _ => 500,
     }
@@ -336,7 +335,6 @@ async fn handle_get_content(
             Response::redirect(url)
         }
         Ok(ContentOutcome::Pending) => Ok(Response::empty()?.with_status(202)),
-        Ok(ContentOutcome::Restricted) => Response::error("unavailable for legal reasons", 451),
         Ok(ContentOutcome::Absent) => Response::error("not found", 404),
         Err(e) => err_response(&e),
     }

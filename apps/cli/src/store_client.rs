@@ -17,7 +17,6 @@ pub enum ContentOutcome {
     /// LinkOnly: server returned a redirect; value is the Location URL.
     Redirect(String),
     Pending,
-    Restricted,
     Absent,
 }
 
@@ -189,7 +188,7 @@ impl StoreClient {
     ///
     /// Uses a non-redirect-following client so a `LinkOnly` 3xx is observable.
     /// Maps server responses to `ContentOutcome`:
-    ///   200 → Bytes, 3xx+Location → Redirect, 202 → Pending, 451 → Restricted, 404 → Absent.
+    ///   200 → Bytes, 3xx+Location → Redirect, 202 → Pending, 404 → Absent.
     pub fn get_content(&self, alias: &str, kind: &str) -> Result<ContentOutcome> {
         let url = format!("{}/works/{}/content/{}", self.base_url, alias, kind);
         let resp = self
@@ -209,7 +208,6 @@ impl StoreClient {
             }
             202 => Ok(ContentOutcome::Pending),
             404 => Ok(ContentOutcome::Absent),
-            451 => Ok(ContentOutcome::Restricted),
             301 | 302 | 303 | 307 | 308 => {
                 let location = resp
                     .headers()

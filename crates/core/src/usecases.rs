@@ -181,9 +181,8 @@ where
 
     /// Store content bytes and record a payload descriptor.
     ///
-    /// - `Restricted` → returns `DomainError::RightsViolation` immediately (451 semantics).
-    /// - `LinkOnly`   → stores descriptor only (no blob bytes); `source_url` used on read.
-    /// - `Open`       → stores blob bytes + descriptor.
+    /// - `Open` | `Restricted` → stores blob bytes + descriptor; both return bytes on read.
+    /// - `LinkOnly`            → stores descriptor only (no blob bytes); `source_url` used on read.
     #[allow(clippy::too_many_arguments)]
     pub async fn put_content(
         &self,
@@ -196,10 +195,6 @@ where
         source_url: Option<String>,
         fetched_at: String,
     ) -> Result<PayloadDescriptor, DomainError> {
-        if rights == Rights::Restricted {
-            return Err(DomainError::RightsViolation(Rights::Restricted));
-        }
-
         let canonical = self.resolve_alias_to_live(&id).await?;
         let version = self.payloads.next_version(&canonical, kind.clone()).await?;
         let kind_str = match kind {
@@ -210,7 +205,7 @@ where
         let content_hash = fnv1a_hash(&body);
         let byte_size = body.len() as u64;
 
-        if rights == Rights::Open {
+        if rights != Rights::LinkOnly {
             self.blob.put(&r2_key, body, &mime).await?;
         }
 
@@ -254,12 +249,11 @@ where
         };
 
         match descriptor.rights {
-            Rights::Restricted => Ok(ContentOutcome::Restricted),
             Rights::LinkOnly => match descriptor.source_url {
                 Some(url) => Ok(ContentOutcome::RedirectUrl(url)),
                 None => Ok(ContentOutcome::Pending),
             },
-            Rights::Open => match self.blob.get(&descriptor.r2_key).await? {
+            Rights::Open | Rights::Restricted => match self.blob.get(&descriptor.r2_key).await? {
                 None => Ok(ContentOutcome::Pending),
                 Some(b) => Ok(ContentOutcome::Bytes {
                     bytes: b.bytes,

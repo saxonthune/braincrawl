@@ -281,13 +281,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     )
                     .into());
                 }
-                ContentOutcome::Restricted => {
-                    return Err(format!(
-                        "fulltext for {} is rights-restricted",
-                        args.id
-                    )
-                    .into());
-                }
                 ContentOutcome::Redirect(url) => {
                     return Err(format!(
                         "only a link is stored for {} (link-only): {}",
@@ -398,13 +391,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ContentOutcome::Pending => {
                     return Err(format!(
                         "fulltext for {} is still being fetched",
-                        args.id
-                    )
-                    .into());
-                }
-                ContentOutcome::Restricted => {
-                    return Err(format!(
-                        "fulltext for {} is rights-restricted",
                         args.id
                     )
                     .into());

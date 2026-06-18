@@ -268,26 +268,30 @@ async fn test_content_rights_gating() {
         "open content must return Bytes"
     );
 
-    // Restricted content — put_content must error.
+    // Restricted content — bytes must be stored and returned (restricted = stored, non-redistributable).
     s.put_work(work("s", vec![alias("doi", "10.1/restricted")])).await.unwrap();
-    let err = s
-        .put_content(
+    s.put_content(
+        alias("doi", "10.1/restricted"),
+        braincrawl_core::types::PayloadKind::Fulltext,
+        b"secret".to_vec(),
+        Rights::Restricted,
+        "text/plain".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+    )
+    .await
+    .expect("restricted put_content must succeed");
+    let restricted_outcome = s
+        .get_content(
             alias("doi", "10.1/restricted"),
             braincrawl_core::types::PayloadKind::Fulltext,
-            b"secret".to_vec(),
-            Rights::Restricted,
-            "text/plain".to_string(),
-            None,
-            None,
-            "2024-01-01T00:00:00Z".to_string(),
         )
-        .await;
+        .await
+        .unwrap();
     assert!(
-        matches!(
-            err,
-            Err(braincrawl_core::types::DomainError::RightsViolation(_))
-        ),
-        "restricted content must return RightsViolation"
+        matches!(restricted_outcome, ContentOutcome::Bytes { .. }),
+        "restricted content must return Bytes"
     );
 
     // get_content on a never-stored alias → Absent.

@@ -191,7 +191,6 @@ fn parse_rights(s: &str) -> Option<Rights> {
 fn domain_status(e: &DomainError) -> StatusCode {
     match e {
         DomainError::NotFound => StatusCode::NOT_FOUND,
-        DomainError::RightsViolation(_) => StatusCode::from_u16(451).unwrap(),
         DomainError::Conflict => StatusCode::CONFLICT,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -307,7 +306,6 @@ async fn handler_works_get(
             }
             Ok(ContentOutcome::RedirectUrl(url)) => Redirect::to(&url).into_response(),
             Ok(ContentOutcome::Pending) => StatusCode::ACCEPTED.into_response(),
-            Ok(ContentOutcome::Restricted) => StatusCode::from_u16(451).unwrap().into_response(),
             Ok(ContentOutcome::Absent) => StatusCode::NOT_FOUND.into_response(),
             Err(e) => (domain_status(&e), e.to_string()).into_response(),
         };

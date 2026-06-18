@@ -163,8 +163,6 @@ pub enum EdgeDir {
 
 #[derive(Error, Debug)]
 pub enum DomainError {
-    #[error("rights violation: {0:?}")]
-    RightsViolation(Rights),
     #[error("not found")]
     NotFound,
     #[error("conflict")]
@@ -234,10 +232,9 @@ pub struct Job {
 
 /// Outcome of `get_content`, mirroring HTTP status semantics.
 ///
-/// - `Bytes`       → 200 OK (open content, bytes returned)
+/// - `Bytes`       → 200 OK (open or restricted content, bytes returned)
 /// - `RedirectUrl` → 302 Found (link_only; redirect to source URL)
 /// - `Pending`     → 202 Accepted (descriptor exists; blob not yet stored)
-/// - `Restricted`  → 451 Unavailable For Legal Reasons
 /// - `Absent`      → 404 Not Found
 pub enum ContentOutcome {
     Bytes {
@@ -247,6 +244,5 @@ pub enum ContentOutcome {
     },
     RedirectUrl(String),
     Pending,
-    Restricted,
     Absent,
 }
