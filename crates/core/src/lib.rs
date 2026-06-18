@@ -7,3 +7,4 @@
 pub mod traits;
 pub mod types;
 pub mod usecases;
+pub mod worker;

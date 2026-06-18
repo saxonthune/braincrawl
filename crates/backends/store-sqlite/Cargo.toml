@@ -9,6 +9,7 @@ braincrawl-sql = { path = "../../sql" }
 async-trait = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
 braincrawl-blob-fs = { path = "../blob-fs" }

@@ -26,12 +26,14 @@
 
 pub const MIGRATION_0001: &str = include_str!("../../../migrations/0001_init.sql");
 pub const MIGRATION_0002: &str = include_str!("../../../migrations/0002_graph.sql");
+pub const MIGRATION_0003: &str = include_str!("../../../migrations/0003_jobs.sql");
 
 /// Ordered `(name, sql)` pairs for startup application by backends.
 pub fn migrations() -> &'static [(&'static str, &'static str)] {
     &[
         ("0001_init", MIGRATION_0001),
         ("0002_graph", MIGRATION_0002),
+        ("0003_jobs", MIGRATION_0003),
     ]
 }
 
@@ -394,6 +396,56 @@ pub mod stats {
 }
 
 // ── variable-arity helpers ────────────────────────────────────────────────
+
+// ── job ───────────────────────────────────────────────────────────────────────
+
+/// Queries for the `fetch_jobs` background-queue table.
+pub mod job {
+    /// Insert a new job row; silently ignores conflicts with an active (pending/running)
+    /// job for the same (kind, target_id) (get-or-create step 1).
+    /// Params: (id, kind, target_id, params, run_after, created_at, updated_at)
+    pub const ENQUEUE_INSERT: &str = "\
+        INSERT INTO fetch_jobs (id, kind, target_id, params, state, run_after, created_at, updated_at) \
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?) \
+        ON CONFLICT DO NOTHING";
+
+    /// Resolve which job (id) is the active winner for (kind, target_id)
+    /// (get-or-create step 2).
+    /// Params: (kind, target_id)
+    pub const ENQUEUE_SELECT: &str = "\
+        SELECT id FROM fetch_jobs \
+        WHERE kind = ? AND target_id = ? AND state IN ('pending', 'running') \
+        ORDER BY created_at \
+        LIMIT 1";
+
+    /// Claim up to `limit` pending-and-ready jobs atomically; flips them to 'running'.
+    /// Params: (updated_at, run_after_cutoff, limit)
+    pub const CLAIM: &str = "\
+        UPDATE fetch_jobs SET state='running', updated_at=? \
+        WHERE id IN ( \
+          SELECT id FROM fetch_jobs \
+          WHERE state='pending' AND run_after <= ? \
+          ORDER BY created_at LIMIT ? \
+        ) \
+        RETURNING id, kind, target_id, params, attempts";
+
+    /// Mark a claimed job as done.
+    /// Params: (updated_at, id)
+    pub const COMPLETE: &str = "\
+        UPDATE fetch_jobs SET state='done', updated_at=? WHERE id=?";
+
+    /// Return a job to pending after a transient failure; increments attempts.
+    /// Params: (run_after, last_error, updated_at, id)
+    pub const RETRY: &str = "\
+        UPDATE fetch_jobs \
+        SET state='pending', attempts=attempts+1, run_after=?, last_error=?, updated_at=? \
+        WHERE id=?";
+
+    /// Mark a job as permanently failed.
+    /// Params: (last_error, updated_at, id)
+    pub const FAIL: &str = "\
+        UPDATE fetch_jobs SET state='failed', last_error=?, updated_at=? WHERE id=?";
+}
 
 /// Build a `(?, ?, …)` placeholder string with `n` slots.
 ///

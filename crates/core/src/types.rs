@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -171,6 +173,63 @@ pub enum DomainError {
     Backend(String),
     #[error("serde error: {0}")]
     Serde(String),
+}
+
+// ── Job types ──────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JobId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum JobKind {
+    Fulltext,
+    Refs,
+}
+
+impl JobKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            JobKind::Fulltext => "fulltext",
+            JobKind::Refs => "refs",
+        }
+    }
+}
+
+impl FromStr for JobKind {
+    type Err = DomainError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "fulltext" => Ok(JobKind::Fulltext),
+            "refs" => Ok(JobKind::Refs),
+            other => Err(DomainError::Backend(format!("unknown JobKind: {other}"))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum JobState {
+    Pending,
+    Running,
+    Done,
+    Failed,
+}
+
+/// What a producer hands to enqueue.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JobSpec {
+    pub kind: JobKind,
+    pub target_id: String,
+    pub params: serde_json::Value,
+}
+
+/// What the worker receives on claim.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Job {
+    pub id: JobId,
+    pub kind: JobKind,
+    pub target_id: String,
+    pub params: serde_json::Value,
+    pub attempts: u32,
 }
 
 /// Outcome of `get_content`, mirroring HTTP status semantics.

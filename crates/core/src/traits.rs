@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
 use crate::types::{
-    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor,
-    PayloadKind, StoredBlob,
+    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind, JobSpec,
+    NodeKind, PayloadDescriptor, PayloadKind, StoredBlob,
 };
 
 /// Opaque key → bytes. Knows nothing of `kind`/`version`.
@@ -132,3 +132,27 @@ pub trait Coordinator {
 
 /// Returned by `Coordinator::with_lock`; dropping releases the lock.
 pub struct LockGuard;
+
+// ── Queue traits ──────────────────────────────────────────────────────────────
+
+/// Producer seam (write-only). Idempotent on `(kind, target_id)` while active.
+#[async_trait(?Send)]
+pub trait JobEnqueuer {
+    async fn enqueue(&self, spec: JobSpec) -> Result<JobId, DomainError>;
+}
+
+/// Worker lifecycle seam.
+#[async_trait(?Send)]
+pub trait JobQueue {
+    async fn claim(&self, limit: u32, now: &str) -> Result<Vec<Job>, DomainError>;
+    async fn complete(&self, id: &JobId) -> Result<(), DomainError>;
+    async fn retry(&self, id: &JobId, run_after: &str, err: &str) -> Result<(), DomainError>;
+    async fn fail(&self, id: &JobId, err: &str) -> Result<(), DomainError>;
+}
+
+/// Per-kind unit of work; the only seam that knows an upstream.
+#[async_trait(?Send)]
+pub trait FetchHandler {
+    fn kind(&self) -> JobKind;
+    async fn handle(&self, job: &Job) -> Result<(), DomainError>;
+}

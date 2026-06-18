@@ -10,13 +10,13 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use braincrawl_core::{
-    traits::{MetadataStore, PayloadsRepo},
+    traits::{JobEnqueuer, JobQueue, MetadataStore, PayloadsRepo},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor,
-        PayloadKind, Rights, Tally,
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind,
+        JobSpec, NodeKind, PayloadDescriptor, PayloadKind, Rights, Tally,
     },
 };
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 // ─── string helpers ───────────────────────────────────────────────────────────
 
@@ -703,4 +703,149 @@ impl MetadataStore for SqliteStore {
             assertions_by_source,
         })
     }
+}
+
+// ─── JobEnqueuer ──────────────────────────────────────────────────────────────
+
+#[async_trait(?Send)]
+impl JobEnqueuer for SqliteStore {
+    async fn enqueue(&self, spec: JobSpec) -> Result<JobId, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let kind_s = spec.kind.as_str();
+        let params_s = serde_json::to_string(&spec.params)
+            .map_err(|e| DomainError::Serde(e.to_string()))?;
+        let now = now_rfc3339();
+        let candidate_id = uuid::Uuid::new_v4().to_string();
+
+        conn.execute(
+            braincrawl_sql::job::ENQUEUE_INSERT,
+            params![candidate_id, kind_s, spec.target_id, params_s, now, now, now],
+        )
+        .map_err(be)?;
+
+        let id: Option<String> = conn
+            .query_row(
+                braincrawl_sql::job::ENQUEUE_SELECT,
+                params![kind_s, spec.target_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(be)?;
+
+        match id {
+            Some(id) => Ok(JobId(id)),
+            None => Err(DomainError::Backend(
+                "enqueue: no active job found after insert".to_string(),
+            )),
+        }
+    }
+}
+
+// ─── JobQueue ─────────────────────────────────────────────────────────────────
+
+#[async_trait(?Send)]
+impl JobQueue for SqliteStore {
+    async fn claim(&self, limit: u32, now: &str) -> Result<Vec<Job>, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(braincrawl_sql::job::CLAIM).map_err(be)?;
+        let rows: Vec<Result<(String, String, String, String, i64), rusqlite::Error>> = stmt
+            .query_map(params![now, now, limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(be)?
+            .collect();
+
+        let mut jobs = Vec::with_capacity(rows.len());
+        for row in rows {
+            let (id, kind_s, target_id, params_s, attempts) = row.map_err(be)?;
+            let kind = kind_s.parse::<JobKind>()?;
+            let params: serde_json::Value = serde_json::from_str(&params_s)
+                .map_err(|e| DomainError::Serde(e.to_string()))?;
+            jobs.push(Job {
+                id: JobId(id),
+                kind,
+                target_id,
+                params,
+                attempts: attempts as u32,
+            });
+        }
+        Ok(jobs)
+    }
+
+    async fn complete(&self, id: &JobId) -> Result<(), DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let now = now_rfc3339();
+        conn.execute(braincrawl_sql::job::COMPLETE, params![now, id.0])
+            .map_err(be)?;
+        Ok(())
+    }
+
+    async fn retry(&self, id: &JobId, run_after: &str, err: &str) -> Result<(), DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let now = now_rfc3339();
+        conn.execute(
+            braincrawl_sql::job::RETRY,
+            params![run_after, err, now, id.0],
+        )
+        .map_err(be)?;
+        Ok(())
+    }
+
+    async fn fail(&self, id: &JobId, err: &str) -> Result<(), DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let now = now_rfc3339();
+        conn.execute(braincrawl_sql::job::FAIL, params![err, now, id.0])
+            .map_err(be)?;
+        Ok(())
+    }
+}
+
+fn now_rfc3339() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3_600) % 24;
+    let days = secs / 86_400;
+    let (year, month, day) = sqlite_days_to_ymd(days);
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+fn sqlite_days_to_ymd(mut days: u64) -> (u32, u32, u32) {
+    let mut year = 1970u32;
+    loop {
+        let dy = if sqlite_is_leap(year) { 366 } else { 365 };
+        if days < dy {
+            break;
+        }
+        days -= dy;
+        year += 1;
+    }
+    let months: [u32; 12] = if sqlite_is_leap(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1u32;
+    for &dm in &months {
+        if days < dm as u64 {
+            break;
+        }
+        days -= dm as u64;
+        month += 1;
+    }
+    (year, month, days as u32 + 1)
+}
+
+fn sqlite_is_leap(year: u32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
