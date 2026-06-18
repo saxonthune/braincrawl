@@ -242,7 +242,7 @@ fn collect_pages(
         let batch_empty = page.results.is_empty();
         all_results.extend(page.results);
 
-        let reached_limit = limit.map_or(false, |lim| all_results.len() >= lim as usize);
+        let reached_limit = limit.is_some_and(|lim| all_results.len() >= lim as usize);
         if batch_empty || page.next_cursor.is_none() || reached_limit {
             break;
         }

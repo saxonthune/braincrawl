@@ -79,17 +79,17 @@ pub fn fetch_content(
     let (bytes, mime) = download_artifact(&artifact_url)?;
 
     // Step 5: validate PDF magic bytes when requested or when content appears to be PDF
-    if require_pdf || mime.contains("pdf") || artifact_url.to_ascii_lowercase().ends_with(".pdf") {
-        if !is_valid_pdf(&bytes) {
-            return Err(format!(
-                "artifact at {} does not start with %PDF magic bytes \
-                 (received {} bytes, content-type: {})",
-                artifact_url,
-                bytes.len(),
-                mime
-            )
-            .into());
-        }
+    if (require_pdf || mime.contains("pdf") || artifact_url.to_ascii_lowercase().ends_with(".pdf"))
+        && !is_valid_pdf(&bytes)
+    {
+        return Err(format!(
+            "artifact at {} does not start with %PDF magic bytes \
+             (received {} bytes, content-type: {})",
+            artifact_url,
+            bytes.len(),
+            mime
+        )
+        .into());
     }
 
     // Step 6: store

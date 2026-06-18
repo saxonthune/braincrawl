@@ -64,7 +64,7 @@ pub fn search(
         all_results.extend(results);
 
         let next = raw.get("next").and_then(|v| v.as_u64());
-        let reached_limit = limit.map_or(false, |lim| all_results.len() >= lim as usize);
+        let reached_limit = limit.is_some_and(|lim| all_results.len() >= lim as usize);
 
         if batch_empty || next.is_none() || reached_limit || !opts.all {
             break;
@@ -124,7 +124,7 @@ pub fn cited_by(
         }
 
         let next = raw.get("next").and_then(|v| v.as_u64());
-        let reached_limit = limit.map_or(false, |lim| all_papers.len() >= lim as usize);
+        let reached_limit = limit.is_some_and(|lim| all_papers.len() >= lim as usize);
 
         if batch_empty || next.is_none() || reached_limit || !opts.all {
             break;
@@ -199,7 +199,7 @@ pub fn refs(
         }
 
         let next = raw.get("next").and_then(|v| v.as_u64());
-        let reached_limit = limit.map_or(false, |lim| all_papers.len() >= lim as usize);
+        let reached_limit = limit.is_some_and(|lim| all_papers.len() >= lim as usize);
 
         if batch_empty || next.is_none() || reached_limit || !opts.all {
             break;

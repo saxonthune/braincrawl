@@ -1,4 +1,5 @@
 use braincrawl_cli::cli::{Cli, CrossrefCmd, GraphCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
+use braincrawl_cli::pdf_text;
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
 use braincrawl_cli::fetch_content;
@@ -245,6 +246,53 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         eprintln!("skip-push: {} edge(s) found", edges.len());
                     }
+                }
+            }
+        }
+        Namespace::ExtractText(args) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            use braincrawl_cli::store_client::ContentOutcome;
+            match store.get_content(&args.id, "fulltext")? {
+                ContentOutcome::Bytes { bytes, mime } => {
+                    if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
+                        return Err(format!(
+                            "fulltext payload for {} is not a PDF (mime={})",
+                            args.id, mime
+                        )
+                        .into());
+                    }
+                    let text = pdf_text::extract_text(&bytes)?;
+                    print!("{text}");
+                    eprintln!("extracted: {} chars", text.len());
+                }
+                ContentOutcome::Absent => {
+                    return Err(format!(
+                        "no fulltext payload in store for {}; run fetch-content first",
+                        args.id
+                    )
+                    .into());
+                }
+                ContentOutcome::Pending => {
+                    return Err(format!(
+                        "fulltext for {} is still being fetched",
+                        args.id
+                    )
+                    .into());
+                }
+                ContentOutcome::Restricted => {
+                    return Err(format!(
+                        "fulltext for {} is rights-restricted",
+                        args.id
+                    )
+                    .into());
+                }
+                ContentOutcome::Redirect(url) => {
+                    return Err(format!(
+                        "only a link is stored for {} (link-only): {}",
+                        args.id, url
+                    )
+                    .into());
                 }
             }
         }

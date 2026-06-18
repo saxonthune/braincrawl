@@ -17,6 +17,7 @@ pub struct ListPage {
     pub url: String,
 }
 
+#[derive(Default)]
 pub struct ListParams<'a> {
     pub filter: Option<&'a str>,
     pub search: Option<&'a str>,
@@ -24,19 +25,6 @@ pub struct ListParams<'a> {
     pub select: Option<&'a str>,
     pub per_page: Option<u32>,
     pub cursor: Option<&'a str>,
-}
-
-impl<'a> Default for ListParams<'a> {
-    fn default() -> Self {
-        ListParams {
-            filter: None,
-            search: None,
-            sort: None,
-            select: None,
-            per_page: None,
-            cursor: None,
-        }
-    }
 }
 
 impl OpenAlexClient {

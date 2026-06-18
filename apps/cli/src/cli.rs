@@ -52,6 +52,8 @@ pub enum Namespace {
     Opencitations(OpencitationsArgs),
     #[command(name = "fetch-content", about = "Acquire a work's fulltext artifact from the open web into the store")]
     FetchContent(FetchContentArgs),
+    #[command(name = "extract-text", about = "Extract text from a work's stored fulltext PDF payload")]
+    ExtractText(ExtractTextArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
     #[command(about = "Show aggregate statistics about the metadata network")]
@@ -71,6 +73,12 @@ pub struct FetchContentArgs {
     /// Only accept a PDF artifact (reject HTML or other content types)
     #[arg(long = "require-pdf")]
     pub require_pdf: bool,
+}
+
+#[derive(Args)]
+pub struct ExtractTextArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
 }
 
 #[derive(Args)]

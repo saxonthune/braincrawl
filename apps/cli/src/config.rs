@@ -28,23 +28,23 @@ impl Config {
         Config {
             server_url: std::env::var("BRAINCRAWL_SERVER_URL")
                 .ok()
-                .or_else(|| file.server_url)
+                .or(file.server_url)
                 .unwrap_or_else(|| "http://127.0.0.1:8787".to_string()),
             openalex_api_key: std::env::var("BRAINCRAWL_OPENALEX_API_KEY")
                 .ok()
-                .or_else(|| file.openalex_api_key),
+                .or(file.openalex_api_key),
             semanticscholar_api_key: std::env::var("BRAINCRAWL_SEMANTICSCHOLAR_API_KEY")
                 .ok()
-                .or_else(|| file.semanticscholar_api_key),
+                .or(file.semanticscholar_api_key),
             auth_token: std::env::var("BRAINCRAWL_AUTH_TOKEN")
                 .ok()
-                .or_else(|| file.auth_token),
+                .or(file.auth_token),
             unpaywall_email: std::env::var("BRAINCRAWL_UNPAYWALL_EMAIL")
                 .ok()
-                .or_else(|| file.unpaywall_email),
+                .or(file.unpaywall_email),
             crossref_mailto: std::env::var("BRAINCRAWL_CROSSREF_MAILTO")
                 .ok()
-                .or_else(|| file.crossref_mailto),
+                .or(file.crossref_mailto),
         }
     }
 

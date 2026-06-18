@@ -299,9 +299,7 @@ fn envelope_limit_truncates_results() {
     let results: Vec<serde_json::Value> = list["results"]
         .as_array()
         .unwrap()
-        .iter()
-        .cloned()
-        .collect();
+        .to_vec();
     let lim_opts = OutputOpts { limit: Some(0), ..opts() };
     let env = build_envelope(Entity::Works, results, 1, None, None, None, &lim_opts);
     assert_eq!(env.returned, 0);

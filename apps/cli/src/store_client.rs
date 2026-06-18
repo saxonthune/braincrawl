@@ -160,6 +160,7 @@ impl StoreClient {
     /// Params are sent as query parameters per the server's handler_works_put:
     /// `mime` and `rights` are required; `source`, `source_url`, `fetched_at` optional.
     /// Accepted `rights` values: `"open"`, `"link_only"`, `"restricted"`.
+    #[allow(clippy::too_many_arguments)]
     pub fn put_content(
         &self,
         alias: &str,

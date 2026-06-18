@@ -8,6 +8,12 @@ pub struct OpenCitationsClient {
     http: reqwest::blocking::Client,
 }
 
+impl Default for OpenCitationsClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OpenCitationsClient {
     pub fn new() -> Self {
         OpenCitationsClient {

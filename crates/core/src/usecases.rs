@@ -184,6 +184,7 @@ where
     /// - `Restricted` → returns `DomainError::RightsViolation` immediately (451 semantics).
     /// - `LinkOnly`   → stores descriptor only (no blob bytes); `source_url` used on read.
     /// - `Open`       → stores blob bytes + descriptor.
+    #[allow(clippy::too_many_arguments)]
     pub async fn put_content(
         &self,
         id: Alias,
