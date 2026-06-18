@@ -25,9 +25,13 @@ server-status:
 server-logs:
     ./scripts/braincrawl-server.sh logs
 
-# Build the server + CLI binaries
+# Build the server + CLI binaries (debug)
 build:
     cargo build --bin braincrawl-server --bin braincrawl
+
+# Build optimized release binaries (server script + consumers point here)
+build-release:
+    cargo build --release --bin braincrawl-server --bin braincrawl
 
 # Run the workspace test suite
 test:
