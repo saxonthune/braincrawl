@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use axum::{
     body::Bytes,
-    extract::{Path, Query, Request, State},
+    extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Redirect, Response},
@@ -433,6 +433,12 @@ async fn handler_post_job(
 
 /// Build the axum router wired to the given store and auth config.
 pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
+    // The wildcard route accepts arbitrarily large request bodies (book-sized
+    // PDFs), so disable the default 2 MB body limit on it alone.
+    let works_wildcard = Router::new()
+        .route("/works/*path", get(handler_works_get).put(handler_works_put))
+        .layer(DefaultBodyLimit::disable());
+
     let authed = Router::new()
         // Exact static routes first so they win over wildcards.
         .route("/works/have", post(handler_have))
@@ -441,8 +447,7 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
         .route("/jobs", post(handler_post_job))
         .route("/graph/neighborhood", post(handler_neighborhood))
         .route("/stats", get(handler_stats))
-        // Wildcard routes capture alias values that contain `/` (e.g. DOIs).
-        .route("/works/*path", get(handler_works_get).put(handler_works_put))
+        .merge(works_wildcard)
         .layer(axum::middleware::from_fn_with_state(auth, gate))
         .with_state(store);
 

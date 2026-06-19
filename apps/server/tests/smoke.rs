@@ -234,6 +234,55 @@ async fn test_stats_endpoint() {
 }
 
 #[tokio::test]
+async fn test_large_content_put() {
+    // Regression test: PUT /works/*path must accept bodies larger than axum's
+    // default 2 MB limit. Without DefaultBodyLimit::disable() on that route
+    // this returns 413.
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    // Create a work.
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.2/large"}],
+            "attrs": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Build a ~5 MB payload (well above the 2 MB default cap).
+    let large_body: Vec<u8> = (0u8..=255).cycle().take(5 * 1024 * 1024).collect();
+
+    let res = client
+        .put(format!(
+            "{base}/works/doi:10.2/large/content/fulltext?mime=application/pdf&rights=open&fetched_at=2024-01-01T00:00:00Z"
+        ))
+        .body(large_body.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "PUT large content must not 413");
+
+    // Round-trip: GET back and verify byte identity.
+    let res = client
+        .get(format!("{base}/works/doi:10.2/large/content/fulltext"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "GET large content should return 200");
+    let returned = res.bytes().await.unwrap();
+    assert_eq!(returned.as_ref(), large_body.as_slice(), "bytes must round-trip");
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn test_neighborhood_endpoint() {
     let dir = tempfile::tempdir().unwrap();
     let (base, handle) = start_server(dir.path()).await;
