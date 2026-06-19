@@ -33,6 +33,11 @@ build:
 build-release:
     cargo build --release --bin braincrawl-server --bin braincrawl
 
+# Install/update the `braincrawl` CLI into ~/.cargo/bin so other repos & skills
+# can invoke it on PATH. Re-run after changing the CLI to push a new build.
+install:
+    cargo install --path apps/cli --force
+
 # Run the workspace test suite
 test:
     cargo test
