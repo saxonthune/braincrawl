@@ -32,7 +32,10 @@ impl OpenAlexClient {
         OpenAlexClient {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
-            http: reqwest::blocking::Client::new(),
+            http: reqwest::blocking::Client::builder()
+                .user_agent(concat!("braincrawl/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .expect("failed to build HTTP client"),
         }
     }
 

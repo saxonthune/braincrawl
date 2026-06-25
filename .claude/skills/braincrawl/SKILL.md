@@ -1,6 +1,6 @@
 ---
 name: braincrawl
-description: "Drive the braincrawl research graph — run the local server, build shared L1/L2 coverage with the CLI (OpenAlex search → citation snowball → neighborhood), and maintain a per-domain L3 projection as an annotation-over-reference artifact in your own repo. Use when doing accumulating, coverage-first literature research (e.g. the Mesopotamia case study) instead of one-shot deep research."
+description: "Drive the braincrawl research graph — run the local server, build shared Library/Catalog coverage with the CLI (OpenAlex search → citation snowball → neighborhood), and maintain per-domain Research Collections as annotation-over-reference Research Documents in the consolidated `braincrawl l3` store. Use when doing accumulating, coverage-first literature research (e.g. the Mesopotamia case study) instead of one-shot deep research."
 ---
 
 # braincrawl
@@ -13,25 +13,26 @@ Three layers:
 
 | Layer | What it is | Where it lives |
 |---|---|---|
-| **L1 — Corpus** | works keyed by canonical id + payloads (abstract now, fulltext on demand) | the **server's store** (shared) |
-| **L2 — Metadata graph** | nodes + citation edges, lazily accreted from OpenAlex | the **server's store** (shared) |
-| **L3 — Consumer projection** | *your* questions, selections, annotations, domain edges | **a file in your own repo** (per-domain) |
+| **L1 — Library** | works keyed by canonical id + payloads (abstract now, fulltext on demand) | the **server's store** (shared) |
+| **L2 — Catalog** | nodes + citation edges, lazily accreted from OpenAlex | the **server's store** (shared) |
+| **L3 — Research Collection** | *your* questions, selections, annotations, domain edges | **the consolidated research document store** (one config-driven dir, one Research Document per item) |
 
-L1/L2 are general and shared across every project. L3 is yours. **L3 is
+The Library and Catalog are general and shared across every project. The Research Collection is yours. **The Research Collection is
 annotation-over-reference: it stores canonical ids + your notes, never copies of the
-metadata.** Hydrate L3 from the store at read time so it never drifts from the graph.
+metadata.** Hydrate the Research Collection from the store at read time so it never drifts from the graph.
 
-> Status note: L1 and L2 are implemented and runnable today (local server + CLI). The
-> server has **no `/collections` endpoints yet**, so L3 is not a server feature — you
-> maintain it as a flat artifact in your repo (this skill's main job). When server-side
-> collections land, the same artifact migrates up.
+> Status note: The Library and Catalog live in the server's DB; the Research Collection is **not** a server feature (no
+> `/collections` endpoints). Instead the `braincrawl l3` CLI manages a **consolidated,
+> local document store** — one markdown file per doc under a single config-driven root —
+> so research knowledge stops scattering into per-project repos. When server-side collections
+> land, the same docs migrate up.
 
 ## 1. Use the one shared server (don't start your own)
 
-There is **one** braincrawl server per machine. It owns the accumulating L1/L2 corpus
+There is **one** braincrawl server per machine. It owns the accumulating Library and Catalog
 (a stable SQLite file + blob dir under `~/.local/share/braincrawl/`). Every consumer
 repo points at it so coverage compounds — a second project launching its own binary would
-fork the corpus into a per-repo DB and defeat the whole accumulation thesis.
+fork the shared store into a per-repo DB and defeat the whole accumulation thesis.
 
 **First thing, every session: check it's up.** It exposes an unauthenticated liveness
 probe at `GET /health`:
@@ -80,7 +81,7 @@ Global output flags (work on every command): `--text` (one result/line, tab-sepa
 `--abstract`, `--skip-push`.
 
 **Push-to-store is on by default.** Every `openalex` query writes the works (and, for
-`cited-by`/`refs`, the citation edges) into L1/L2. That is how coverage accumulates — one
+`cited-by`/`refs`, the citation edges) into the Library and Catalog. That is how coverage accumulates — one
 project's reading is the next project's cache. Use `--skip-push` only for throwaway peeks.
 
 ### Set up Semantic Scholar
@@ -106,7 +107,7 @@ braincrawl --text --limit 5 openalex search works "salt silt ancient mesopotamia
 # → W2031938753 "Salt and Silt in Ancient Mesopotamian Agriculture" (the landmark)
 
 # Snowball FORWARD (cited-by) — old/humanities works have almost no backward refs,
-# but forward citations are rich. This pushes nodes AND edges into L2.
+# but forward citations are rich. This pushes nodes AND edges into the Catalog.
 braincrawl --text --all openalex cited-by W2031938753
 
 # Backward refs when they exist (modern works)
@@ -118,14 +119,14 @@ braincrawl --text graph neighborhood openalex:W2031938753 --dir backward --depth
 
 **Reach for Semantic Scholar when OpenAlex coverage is patchy** — older or humanities
 works often have missing abstracts and empty `refs` in OpenAlex, but S2 has them.
-S2 pushes into the **same** L1/L2 store and merges on DOI via the server, so coverage
+S2 pushes into the **same** Library/Catalog and merges on DOI via the server, so coverage
 compounds across both providers automatically.
 
 ```bash
 # S2 lookup by DOI or paperId
 braincrawl --text semanticscholar get DOI:10.1126/science.aaf2654 --abstract
 
-# Forward snowball via S2 (writes citation edges into L2)
+# Forward snowball via S2 (writes citation edges into the Catalog)
 braincrawl --text --all semanticscholar cited-by <paperId>
 
 # Backward refs via S2
@@ -166,7 +167,7 @@ the in-degree ranking already names the three that matter.
 
 The ladder, cheapest → dearest:
 
-1. **Metadata graph** — titles, authors, in-degree, citation edges. `graph neighborhood`,
+1. **Catalog** — titles, authors, in-degree, citation edges. `graph neighborhood`,
    `openalex search/find`, `cited-by`/`refs`. Often a title + who-cites-whom is enough to
    place a work or kill it. This rung is store-local (no provider call) once accreted.
 2. **Abstracts** — `--abstract` (pair with `--fields title,publication_year,abstract` to
@@ -178,7 +179,7 @@ The ladder, cheapest → dearest:
    need. *Not yet a CLI capability* (see "Capability gaps" below) — today you bridge it by
    fetching the source yourself (WebFetch/the open-access PDF) and condensing in-context.
 4. **Full text** — read the whole work. The dearest rung; reserve for the load-bearing few
-   a finding actually hangs on. L1 is designed to hold fulltext "on demand," but the CLI
+   a finding actually hangs on. The Library is designed to hold fulltext "on demand," but the CLI
    exposes no fulltext verb yet.
 
 Worked loop: a temple-formation question returned *nothing* on the held graph (rung 1
@@ -193,70 +194,91 @@ quick-ref mentions). Until they land, treat rung 3 as a manual bridge. When you 
 question that genuinely needs fulltext, *say so explicitly* and name it as the capability
 to add rather than silently stopping at abstracts.
 
-## 5. Maintain your L3 projection (the part you own)
+## 5. Maintain your Research Collection (the consolidated store you own)
 
-Your domain project (e.g. the Mesopotamia game) keeps **one L3 artifact in its own repo** —
-not in this repo. It records *your* selections, questions, findings, and domain edges,
-each pointing at a **canonical / OpenAlex id** in the shared store. It never copies titles,
-abstracts, or metadata except as a human-readable convenience comment — the id is the
-source of truth, and you re-hydrate from the store when you need the facts.
+Research Documents are **not** scattered in per-project repos anymore. They live in **one
+consolidated store** — a single directory, one `<doc>.l3.md` markdown file per item —
+and you create, locate, and list them through the `braincrawl l3` CLI. Each document records
+*your* selections, questions, findings, and domain edges, each pointing at a **canonical
+/ OpenAlex id** in the shared store. It never copies titles, abstracts, or metadata except
+as a human-readable convenience — the id is the source of truth; re-hydrate from the store
+when you need the facts.
 
-Create `research/<domain>.l3.md` in your project repo. Recommended shape:
+### The store location (config-driven)
 
-```markdown
----
-domain: mesopotamia-loop-vs-accumulator
-braincrawl_server: http://127.0.0.1:8787
-updated: 2026-06-17
----
+The store root resolves from `BRAINCRAWL_L3_REPO` (env) > `l3_repo` in
+`~/.config/braincrawl/config.toml` > default `~/.local/share/braincrawl/l3`. Set it once:
 
-# L3 — Mesopotamia: loop vs accumulator
-
-## Questions (the aim-directed frontier)
-- Q1 soil salinization as a one-way accumulator until land abandonment
-- Q2 debt accumulation until jubilee/clean-slate reset
-- Q3 land concentration until the reset mechanism itself fails
-
-## Selection set  (canonical id → tags · note)
-- openalex:W2031938753  #landmark #Q1  Jacobsen & Adams 1958 — salt & silt; the seed
-- openalex:W…           #review  #Q2   <one-line why it's in>
-- openalex:W…           #primary #Q3
-
-## Domain edges  (src --type--> dst)
-- openalex:W2031938753 --supports--> Q1
-- openalex:Wxxxx --refutes--> openalex:Wyyyy   # rebuttal found via forward citations
-- openalex:Wxxxx --builds-on--> openalex:W2031938753
-
-## Findings / annotations
-- [Q1] salinization is loop-breaking, not cyclic — see W2031938753 §… ; confirm against …
-- [open] need a review-tier synthesis for Q2; current coverage is primary-only
+```toml
+# ~/.config/braincrawl/config.toml
+l3_repo = "~/code/github/saxonthune/braincrawl-l3"   # a dedicated git repo is recommended
 ```
+
+### The contract: a frozen envelope, a free body
+
+The reason the Research Collection can stay consolidated *and* keep evolving its document design is that the
+contract is split:
+
+- **Envelope (frozen, tooling reads it without parsing the body).** Three frontmatter keys:
+  - `doc:` — kebab-case slug, the **primary key** and filename stem. (Replaces the old
+    `domain:` key.)
+  - `schema:` — a label naming the body convention in use (free string).
+  - `updated:` — date, stamped by the CLI.
+  These are the *required* keys (`l3 check` warns on any missing). The set grows over time
+  as conventions firm up — that is the one place the contract tightens.
+- **Body (free — this is the experimentation zone).** Everything below the frontmatter is
+  yours. The only body rule is the Research Collection invariant: **reference canonical ids, never copy
+  metadata.** Many document designs coexist because each doc *declares* its `schema:`; the
+  linter only checks what that schema requires. `schema: freeform` = no body lint at all
+  (the escape hatch — full consolidation + indexing, zero layout constraint).
+
+`l3 new --schema spine` and `--schema dialectical` stamp a starter skeleton (Questions /
+Selection set / Domain edges / Findings); any other schema (incl. `freeform`) just stamps
+the envelope + an H1. To trial a new design, pick a new `schema:` label and write freely.
+
+### CLI surface
+
+```bash
+braincrawl l3 new <doc> [--schema spine|dialectical|<your-label>] [--title "…"]  # create; prints absolute path
+braincrawl l3 path <doc>          # print absolute path of an existing doc
+braincrawl l3 list                # all docs (doc · schema · updated · path)
+braincrawl l3 check <doc> | --all # advisory lint against the envelope contract
+braincrawl l3 index               # regenerate INDEX.md
+braincrawl l3 import <file> [--doc <slug>] [--schema <s>] [--mv]   # adopt an existing md, normalize its envelope
+braincrawl l3 rm <doc>            # delete + reindex
+```
+
+`new` and `path` print **only the absolute path** to stdout, so you can capture it and
+write the file yourself: get the path, then use your editor/Write tool on it. braincrawl
+owns *where* the doc lives and the index; you own the bytes.
 
 Maintenance loop, each research session:
 
-1. **Ask L3 first.** Read your selection set. Can the open question be answered from ids
+1. **Find the doc.** `braincrawl l3 path <doc>` (or `l3 new <doc>` the first time) → get
+   its absolute path, then read/edit that file.
+2. **Ask the Research Collection first.** Read your selection set. Can the open question be answered from ids
    you already hold? `braincrawl graph neighborhood openalex:<id> …` and `openalex get
    <id> --abstract` hydrate them from the store — no re-fetch.
-2. **If not, expand coverage** (§3): seed/snowball into L1/L2. New works land in the
+3. **If not, expand coverage** (§3): seed/snowball into the Library/Catalog. New works land in the
    shared store automatically (push-on-by-default).
-3. **Project the keepers into L3.** Add the canonical ids that matter to your selection
+4. **Project the keepers into the Research Collection.** Add the canonical ids that matter to your selection
    set with tags + a one-line note; add domain edges (`supports`/`refutes`/`builds-on`)
-   and link them to your questions. Keep notes terse — they annotate, they don't restate.
-4. **Decide at query time, not now.** Verification is a *lens you choose later*
-   (e.g. "judge this claim by where it sits in the citation network"), never an up-front
-   kill-gate. Coverage stays inclusive; decisiveness happens when you query.
-5. **Commit `research/<domain>.l3.md`** to your project repo. It is small (ids + notes),
-   diffs cleanly, and is the durable record of your domain thinking. The heavy shared
-   corpus stays in the server's DB, reused across every project.
+   linked to your questions. Keep notes terse — they annotate, they don't restate.
+5. **Decide at query time, not now.** Verification is a *lens you choose later*, never an
+   up-front kill-gate. Coverage stays inclusive; decisiveness happens when you query.
+6. **Reindex** (`braincrawl l3 index`) if you want `INDEX.md` refreshed. The store is plain
+   markdown under git — commit it like any repo.
 
-### Rules that keep L3 honest
+### Rules that keep the Research Collection honest
 - **Reference, never copy.** Store ids, not metadata. Re-hydrate from the server.
 - **Canonical ids are the join key.** Prefer `openalex:W…`; the store resolves DOIs/ISBNs
   to the same canonical node, so any id form is safe but be consistent.
-- **One artifact per domain**, in that domain's repo. A second project gets its own L3 and
-  inherits whatever shared works already overlap in L1/L2 for free.
-- **Edges and questions are yours.** L2 edges are neutral citations; L3 edges
+- **One doc per item, in the consolidated store.** Don't create `.l3.md` files by hand in
+  random repos — go through `l3 new`/`l3 import` so nothing scatters.
+- **Edges and questions are yours.** Catalog edges are neutral citations; Research Collection edges
   (`supports`/`refutes`/domain relations) carry your interpretation.
+- **`doc`/`schema`/`updated` are the envelope; the body is free.** Experiment with layout
+  under a new `schema:` label; never break the three envelope keys.
 
 ## Quick reference
 
@@ -273,6 +295,11 @@ Maintenance loop, each research session:
 | Read graph back | `braincrawl --text graph neighborhood openalex:<Wid> --dir backward --depth 1` |
 | Hydrate one work | `braincrawl openalex get <Wid> --abstract` |
 | Peek store | `braincrawl store get openalex:<Wid>` |
+| **New Research Document** | `braincrawl l3 new <doc> --schema spine` |
+| **Locate Research Document** | `braincrawl l3 path <doc>` |
+| **List Research Documents** | `braincrawl l3 list` |
+| **Lint Research Document** | `braincrawl l3 check <doc>` / `--all` |
+| **Adopt existing md** | `braincrawl l3 import <file>` |
 | **S2 lookup** | `braincrawl --text semanticscholar get DOI:<doi> --abstract` |
 | **S2 forward snowball** | `braincrawl --text --all semanticscholar cited-by <paperId>` |
 | **S2 backward refs** | `braincrawl --text semanticscholar refs <paperId>` |

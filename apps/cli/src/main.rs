@@ -95,6 +95,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let value = client.stats()?;
             render_stats(&value, &opts);
         }
+        Namespace::L3(l3) => {
+            braincrawl_cli::l3::dispatch(l3.cmd, &config, &opts)?;
+        }
         Namespace::Openalex(oa) => {
             let oa_client = OpenAlexClient::new(config.openalex_api_key);
             let store = StoreClient::new(&config.server_url)

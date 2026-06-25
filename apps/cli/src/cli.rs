@@ -64,6 +64,69 @@ pub enum Namespace {
     Graph(GraphArgs),
     #[command(about = "Show aggregate statistics about the metadata network")]
     Stats,
+    #[command(about = "Manage the consolidated L3 document store (local files, no provider)")]
+    L3(L3Args),
+}
+
+#[derive(Args)]
+pub struct L3Args {
+    #[command(subcommand)]
+    pub cmd: L3Cmd,
+}
+
+#[derive(Subcommand)]
+pub enum L3Cmd {
+    /// Create a new L3 doc in the store; prints its absolute path to stdout
+    New {
+        /// Doc slug (kebab-case) — the primary key and filename stem
+        doc: String,
+        /// Body-convention label recorded in frontmatter (free string; `spine`/`dialectical` get a skeleton)
+        #[arg(long, default_value = "freeform")]
+        schema: String,
+        /// Human title for the H1 heading (defaults to the doc slug)
+        #[arg(long)]
+        title: Option<String>,
+        /// Overwrite if a doc with this slug already exists
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print the absolute path of an existing L3 doc to stdout
+    Path {
+        /// Doc slug
+        doc: String,
+    },
+    /// List all L3 docs in the store
+    List,
+    /// Lint a doc (or --all) against the envelope contract; advisory, never fails
+    Check {
+        /// Doc slug (omit with --all)
+        #[arg(required_unless_present = "all")]
+        doc: Option<String>,
+        /// Check every doc in the store
+        #[arg(long)]
+        all: bool,
+    },
+    /// Regenerate INDEX.md from every doc's frontmatter
+    Index,
+    /// Adopt an existing markdown file into the store, normalizing its envelope
+    Import {
+        /// Path to the existing .md / .l3.md file
+        file: String,
+        /// Doc slug override (default: existing `doc`/`domain` frontmatter, else filename stem)
+        #[arg(long)]
+        doc: Option<String>,
+        /// Schema label to set when the file declares none (default: freeform)
+        #[arg(long)]
+        schema: Option<String>,
+        /// Remove the source file after a successful import
+        #[arg(long)]
+        mv: bool,
+    },
+    /// Delete a doc from the store and reindex
+    Rm {
+        /// Doc slug
+        doc: String,
+    },
 }
 
 #[derive(Args)]

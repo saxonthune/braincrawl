@@ -12,7 +12,7 @@ One concrete binding of the core model (`doc02.01`) onto Cloudflare edge primiti
 | Concern | Primitive |
 |---|---|
 | API / compute | Workers |
-| Layer 2 graph + Layer 3 collections | D1 (SQLite) — consider per-tenant DB for L3 isolation |
+| Catalog graph + Research Collections | D1 (SQLite) — consider per-tenant DB for Research Collection isolation |
 | Full-text blobs (OA / public-domain only) | R2 |
 | Identity-resolution + status hot cache | KV |
 | Per-work ingestion coordinator (dedup, upstream rate-limit) | Durable Objects |

@@ -2,6 +2,7 @@
 name = "braincrawl-blob-r2"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [features]
 # Enable real R2 implementation using workers-rs (wasm32 only).

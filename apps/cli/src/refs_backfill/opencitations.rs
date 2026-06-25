@@ -18,7 +18,10 @@ impl OpenCitationsClient {
     pub fn new() -> Self {
         OpenCitationsClient {
             base_url: DEFAULT_BASE_URL.to_string(),
-            http: reqwest::blocking::Client::new(),
+            http: reqwest::blocking::Client::builder()
+                .user_agent(concat!("braincrawl/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .expect("failed to build HTTP client"),
         }
     }
 

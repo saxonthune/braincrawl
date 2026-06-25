@@ -1,6 +1,6 @@
 ---
 title: Layers
-summary: Core splits into two storage worlds — Layer 1 is raw bytes in a blob store keyed by canonical id, Layer 2 is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on.
+summary: Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by canonical id, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on.
 tags: [architecture, core, layers, storage, separation]
 deps: []
 ---
@@ -9,15 +9,15 @@ deps: []
 
 The separation is by **storage kind**, not by feature:
 
-- **Layer 1 — blob store (R2).** Raw bytes only: a work's abstract, its full-text
+- **Library (Layer 1) — blob store (R2).** Raw bytes only: a work's abstract, its full-text
   PDF, or nothing. Keyed by `{canonical_id}/{kind}/v{version}`. Holds no truth and
-  is never queried for facts — it is addressed by Layer 2.
-- **Layer 2 — metadata DB (D1).** The source of truth for everything relational:
+  is never queried for facts — it is addressed by the Catalog.
+- **Catalog (Layer 2) — metadata DB (D1).** The source of truth for everything relational:
   identity, the citation graph, and the descriptors of what sits in the blob store.
   If a thing can be queried, filtered, or versioned, it lives here, not on the object.
 
 > Object stores carry per-object custom metadata, but it is not queryable and drifts
-> easily. Any such metadata is a redundant convenience copy — Layer 2 remains the
+> easily. Any such metadata is a redundant convenience copy — the Catalog remains the
 > single source of truth.
 
 ## Identity — the shared spine
@@ -35,7 +35,7 @@ identifier with no metadata yet.
 
 ## What describes the blobs
 
-A `payloads` table in Layer 2 records one row per stored blob and answers both
+A `payloads` table in the Catalog records one row per stored blob and answers both
 "what is in the bucket" and "where did it come from":
 
 | Column | Role |
@@ -59,13 +59,13 @@ Consequences:
 - **Node materialization status** (`stub → metadata → abstract → fulltext`) is
   *derived* from the presence of `works` and `payloads` rows, not stored separately.
 
-## Building Layer 1 and Layer 2 separately
+## Building the Library and Catalog separately
 
 Once identity is extracted as the spine, the two layers are independent workstreams:
 
-- Layer 1 work is byte handling — fetch, store, rights-gate, version. It depends on
+- Library work is byte handling — fetch, store, rights-gate, version. It depends on
   the spine for the id, nothing more.
-- Layer 2 work is relational — aliases, edges, provenance, `payloads`. It creates
+- Catalog work is relational — aliases, edges, provenance, `payloads`. It creates
   stubs through the spine but never reads bytes.
 
 The single ordering constraint is **spine first**. The ingestion fetch stays in the

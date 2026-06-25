@@ -23,7 +23,7 @@ land on the same node.
 
 ## Surface
 
-### Works & content (Layer 1 + identity)
+### Works & content (Library + identity)
 
 ```
 put_work(id, metadata, aliases[])      # upsert; resolves/mints canonical GUID, records aliases
@@ -37,7 +37,7 @@ Writes are **idempotent upserts**: putting the same work twice converges on one 
 rather than duplicating. Content provenance and rights ride with each put (see
 Layers, `doc02.01.01`).
 
-### Citation edges (Layer 2)
+### Citation edges (Catalog)
 
 ```
 put_edges([{ src, dst, relation,       # src/dst accept any id; resolved to GUIDs

@@ -44,9 +44,9 @@ impl CrossrefClient {
 
     fn user_agent(&self) -> String {
         if let Some(m) = &self.mailto {
-            format!("braincrawl/1.0 (mailto:{})", m)
+            format!("braincrawl/{} (mailto:{})", env!("CARGO_PKG_VERSION"), m)
         } else {
-            "braincrawl/1.0".to_string()
+            concat!("braincrawl/", env!("CARGO_PKG_VERSION")).to_string()
         }
     }
 

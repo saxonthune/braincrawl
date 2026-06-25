@@ -1,6 +1,6 @@
 ---
 title: Auth & Tenancy
-summary: Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Layer 3 collections. Core stays auth-blind; the entry points gate every request before any use-case runs.
+summary: Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Research Collections. Core stays auth-blind; the entry points gate every request before any use-case runs.
 tags: [architecture, auth, security, tenancy, token]
 deps: [doc02.01.03, doc02.02.00]
 ---
@@ -49,20 +49,20 @@ an env var) mapping to one tenant — no allowlist table needed. Multi-token iss
 (rotate, revoke, name a token) is an additive change: populate the KV allowlist and the
 gate already reads it.
 
-## Tenancy and Layer 3
+## Tenancy and Research Collections
 
-The token's tenant is the **isolation key for Layer 3 collections** — the hint in
-doc02.02.00 ("consider per-tenant DB for L3 isolation") resolves here. Layers 1 and 2
-(the corpus and the neutral metadata graph) are a **shared substrate**: identity,
+The token's tenant is the **isolation key for Research Collections** — the hint in
+doc02.02.00 ("consider per-tenant DB for Research Collection isolation") resolves here.
+The Library and Catalog are a **shared substrate**: identity,
 metadata, and the citation graph accumulate across all tenants, because facts about a
 work are not anyone's private data and the accumulation payoff (doc02.01.03) depends on
-sharing them. Only Layer 3 — a consumer's curated collections and projections — is
+sharing them. Only Research Collections — a consumer's curated data — are
 partitioned by tenant.
 
 So the gate enforces an asymmetry:
 
-- **Read/write Layer 1 + Layer 2** — any valid token; results are tenant-independent.
-- **Read/write Layer 3** — scoped to the caller's tenant; one tenant never sees another's
+- **Read/write the Library + Catalog** — any valid token; results are tenant-independent.
+- **Read/write Research Collections** — scoped to the caller's tenant; one tenant never sees another's
   collections. Per-tenant D1 (doc02.02.00) is the strong form of this boundary.
 
 ## API surface
@@ -79,7 +79,7 @@ security:
 ```
 
 Unauthenticated requests get `401`; authenticated-but-unauthorized (e.g. another
-tenant's Layer 3 resource) get `403`.
+tenant's Research Collection) get `403`.
 
 ## Local development
 

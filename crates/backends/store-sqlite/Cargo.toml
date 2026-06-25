@@ -2,6 +2,7 @@
 name = "braincrawl-store-sqlite"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [dependencies]
 braincrawl-core = { workspace = true }

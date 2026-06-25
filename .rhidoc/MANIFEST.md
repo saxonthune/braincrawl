@@ -2,7 +2,7 @@
 
 Machine-readable index for AI navigation. Read this file first, then open only the docs relevant to your query.
 
-**Retrieval strategy:** See doc00.04 for AI retrieval patterns.
+**Retrieval strategy:** See doc00.00 (codex index) for how to find and read docs efficiently.
 
 ## Column Definitions
 
@@ -33,6 +33,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc01.00 | `00-index.md` |  |  | — | — | — |
+| doc01.01 | `01-glossary.md` | Plain-language names for braincrawl's three layers — Library, Catalog, and Research Collection. | glossary, vocabulary, terms, product | — | — | — |
 
 ## 02-architecture — Architecture
 
@@ -41,15 +42,15 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 
 | doc02.00 | `00-index.md` | Monorepo split into three deliverables — core (the layered knowledge-graph engine), cloudflare (the deployment target), and skill (the agent-facing surface). | architecture, monorepo, overview | — | doc02.04 | — |
 | doc02.04 | `04-monorepo-rust-runtimes.md` | A single Cargo workspace in Rust. The platform-agnostic core defines traits; concrete backends bind them to Cloudflare or to a local stack. Two entry points — a Wasm Worker and a native dev server — wire the backends, and are the only crates that name infrastructure. | architecture, monorepo, rust, cloudflare, runtime, traits-and-backends, separation | doc02.00, doc02.01.01, doc02.02.00 | — | — |
-| doc02.05 | `05-auth-tenancy.md` | Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Layer 3 collections. Core stays auth-blind; the entry points gate every request before any use-case runs. | architecture, auth, security, tenancy, token | doc02.01.03, doc02.02.00 | — | — |
+| doc02.05 | `05-auth-tenancy.md` | Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Research Collections. Core stays auth-blind; the entry points gate every request before any use-case runs. | architecture, auth, security, tenancy, token | doc02.01.03, doc02.02.00 | — | — |
 
 ### Core
 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
 |-----|------|---------|------|------|------|-------------|
 
-| doc02.01.00 | `01-core/00-index.md` | The platform-agnostic knowledge-graph engine, decomposed into the three goals layers — corpus (identity + payloads), neutral metadata graph, and per-consumer projection graphs. | architecture, core, layers | — | — | — |
-| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — Layer 1 is raw bytes in a blob store keyed by canonical id, Layer 2 is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.04 | — |
+| doc02.01.00 | `01-core/00-index.md` | The platform-agnostic knowledge-graph engine, decomposed into the three goals layers — Library (identity + payloads), Catalog, and Research Collections. | architecture, core, layers | — | — | — |
+| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by canonical id, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.04 | — |
 | doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one canonical GUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
 | doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a canonical GUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.00, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
 
@@ -65,7 +66,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
 |-----|------|---------|------|------|------|-------------|
 
-| doc02.03.00 | `03-skill/00-index.md` | The agent-facing surface — how a consuming agent drives the graph API. Builds coverage once via the corpus/metadata layers, then applies decisiveness as a query-time lens over a consumer projection. | architecture, skill, agent, consumer | — | — | — |
+| doc02.03.00 | `03-skill/00-index.md` | The agent-facing surface — how a consuming agent drives the graph API. Builds coverage once via the Library/Catalog, then applies decisiveness as a query-time lens over a Research Collection. | architecture, skill, agent, consumer | — | — | — |
 
 ### CLI
 
@@ -100,6 +101,7 @@ Quick lookup for file-path→doc mapping:
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
 | `external` | doc02.06.01.00 |
 | `fork` | doc02.06.01.00, doc02.06.01.01, doc02.06.01.02 |
+| `glossary` | doc01.01 |
 | `id-resolution` | doc02.01.02 |
 | `identity` | doc02.01.02 |
 | `index` | doc00.00 |
@@ -111,6 +113,7 @@ Quick lookup for file-path→doc mapping:
 | `openalex` | doc02.06.01.01 |
 | `overview` | doc02.00 |
 | `philosophy` | doc00.02 |
+| `product` | doc01.01 |
 | `providers` | doc02.06.00, doc02.06.01.00, doc02.06.01.01, doc02.06.01.02 |
 | `retrieval` | doc00.04 |
 | `routing` | doc02.06.00 |
@@ -123,8 +126,10 @@ Quick lookup for file-path→doc mapping:
 | `skill` | doc02.03.00 |
 | `storage` | doc02.01.01 |
 | `tenancy` | doc02.05 |
+| `terms` | doc01.01 |
 | `theory` | doc00.01 |
 | `token` | doc02.05 |
 | `traits-and-backends` | doc02.04 |
 | `union-find` | doc02.01.02 |
 | `verbs` | doc02.06.01.01, doc02.06.01.02 |
+| `vocabulary` | doc01.01 |

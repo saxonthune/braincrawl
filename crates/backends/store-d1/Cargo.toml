@@ -2,6 +2,7 @@
 name = "braincrawl-store-d1"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [features]
 # Enable real D1 implementation using workers-rs (wasm32 only).

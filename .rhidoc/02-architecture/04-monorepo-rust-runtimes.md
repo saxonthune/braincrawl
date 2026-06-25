@@ -28,7 +28,7 @@ is just plain Rust: **traits in core, backends that implement them**. There is n
 extra abstraction layer; the trait *is* the interface.
 
 - **Traits** live in the core crate, phrased in domain vocabulary (canonical id,
-  kind, rights), naming no platform. The corpus split from `doc02.01.01` maps to a
+  kind, rights), naming no platform. The Library/Catalog split from `doc02.01.01` maps to a
   `BlobStore` trait (opaque key → bytes) and `PayloadsRepo` / `MetadataStore` traits
   (the queryable facts, including each blob's key). Identity resolution is an
   `IdResolver` trait.

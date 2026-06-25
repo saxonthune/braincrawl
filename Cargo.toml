@@ -41,6 +41,7 @@ default-members = [
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
+license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
 braincrawl-core = { path = "crates/core", package = "braincrawl-core" }

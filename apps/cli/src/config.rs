@@ -8,6 +8,8 @@ pub struct Config {
     pub auth_token: Option<String>,
     pub unpaywall_email: Option<String>,
     pub crossref_mailto: Option<String>,
+    /// Root directory of the consolidated L3 document store.
+    pub l3_repo: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -18,6 +20,7 @@ struct ConfigFile {
     auth_token: Option<String>,
     unpaywall_email: Option<String>,
     crossref_mailto: Option<String>,
+    l3_repo: Option<String>,
 }
 
 impl Config {
@@ -45,7 +48,17 @@ impl Config {
             crossref_mailto: std::env::var("BRAINCRAWL_CROSSREF_MAILTO")
                 .ok()
                 .or(file.crossref_mailto),
+            l3_repo: std::env::var("BRAINCRAWL_L3_REPO").ok().or(file.l3_repo),
         }
+    }
+
+    /// Resolve the L3 store root: configured `l3_repo` > `$HOME/.local/share/braincrawl/l3`.
+    pub fn l3_root(&self) -> PathBuf {
+        if let Some(p) = &self.l3_repo {
+            return PathBuf::from(shellexpand_home(p));
+        }
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home).join(".local/share/braincrawl/l3")
     }
 
     /// Override the server URL (flag tier of the precedence chain).
@@ -63,6 +76,19 @@ fn load_config_file() -> ConfigFile {
         return ConfigFile::default();
     };
     toml::from_str(&content).unwrap_or_default()
+}
+
+/// Expand a leading `~/` or bare `~` to `$HOME`. Other shell expansions are not handled.
+fn shellexpand_home(p: &str) -> String {
+    if p == "~" {
+        return std::env::var("HOME").unwrap_or_else(|_| p.to_string());
+    }
+    if let Some(rest) = p.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{home}/{rest}");
+        }
+    }
+    p.to_string()
 }
 
 fn config_file_path() -> Option<PathBuf> {
