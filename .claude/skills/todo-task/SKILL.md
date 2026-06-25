@@ -364,15 +364,9 @@ The predecessor must be a standalone task (not part of the chain). It merges to 
 
 ## Mode: `monitor`
 
-Launch a live dashboard that refreshes every 5 seconds, showing running agents, recent completions, and epic progress.
+Launch the live dashboard — a self-refreshing TUI showing running agents, recent completions, and epic progress.
 
-Tell the user to run this in a separate terminal:
-
-```bash
-watch -n5 bash .claude/skills/todo-task/monitor.sh
-```
-
-Or run it once for a snapshot:
+Tell the user to run it in a separate terminal (it redraws on its own; press `q` or `Ctrl-C` to exit):
 
 ```bash
 bash .claude/skills/todo-task/monitor.sh
@@ -439,6 +433,22 @@ When you manually resolve a merge conflict from an agent (auto-merge failed, so 
    ```
 
 If you skip these steps, future sessions will see stale worktrees in status output.
+
+### Finalizing a deferred chain
+
+When a chain defers its merge (`awaiting-merge` or `conflict`) and you complete the merge
+by hand, the run-record lingers and the chain shows as `finalizable` on the dashboard.
+After you finish the merge, run:
+
+```bash
+bash .claude/skills/todo-task/finalize-chain.sh <chain-name>
+```
+
+This writes the chain definition to trunk, removes the worktree and branch, and clears the
+run-record. `archive.sh` then sweeps it as complete on the next run.
+
+The script refuses to act if the chain's phase results are not yet present on trunk HEAD —
+it will print the merge command and exit 1 without touching anything.
 
 ## Rules
 
