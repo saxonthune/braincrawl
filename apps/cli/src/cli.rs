@@ -66,6 +66,8 @@ pub enum Namespace {
     Stats,
     #[command(about = "Manage the consolidated L3 document store (local files, no provider)")]
     L3(L3Args),
+    #[command(about = "Query the arXiv preprint API")]
+    Arxiv(ArxivArgs),
 }
 
 #[derive(Args)]
@@ -343,6 +345,26 @@ pub enum StoreCmd {
     /// Retrieve a work by alias (ns:value)
     Get {
         id: String,
+    },
+}
+
+#[derive(Args)]
+pub struct ArxivArgs {
+    #[command(subcommand)]
+    pub cmd: ArxivCmd,
+}
+
+#[derive(Subcommand)]
+pub enum ArxivCmd {
+    /// Fetch a single arXiv work by ID (e.g. arxiv:2301.07041 or 2301.07041)
+    Get {
+        /// arXiv ID (arxiv:…, bare numeric, old-style hep-th/…, or full URL)
+        id: String,
+    },
+    /// Search arXiv by query string
+    Search {
+        /// Search query; use field operators (ti:/au:/cat:) or plain text (wrapped as all:…)
+        query: String,
     },
 }
 

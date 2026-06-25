@@ -2,10 +2,12 @@ use serde_json::Value;
 
 use crate::cli::OutputOpts;
 use crate::output::Envelope;
+use crate::provider::Emission;
 
-use super::{PushBatch, Result};
+use super::Result;
 use super::client::SemanticScholarClient;
 use super::entity::{Entity, infer_entity};
+use super::mapping;
 use super::shape::build_envelope;
 
 const PAPER_FIELDS: &str =
@@ -20,7 +22,7 @@ pub fn get(
     client: &SemanticScholarClient,
     id: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let (entity, path_id) = infer_entity(id)?;
     let (raw, url) = match entity {
         Entity::Papers => client.get_paper(&path_id, PAPER_FIELDS)?,
@@ -28,7 +30,7 @@ pub fn get(
     };
     let records = vec![(entity, raw.clone())];
     let envelope = build_envelope(entity, vec![raw], 1, None, Some(path_id), Some(url), opts);
-    Ok((envelope, PushBatch { records, edges: Vec::new() }))
+    Ok((envelope, mapping::to_emission(&records, &[])))
 }
 
 /// Full-text search over papers or authors.
@@ -37,7 +39,7 @@ pub fn search(
     entity_str: &str,
     query: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let entity = Entity::parse(entity_str)?;
     let per_page = page_size(opts);
     let limit = if opts.all { None } else { opts.limit };
@@ -82,7 +84,7 @@ pub fn search(
         None,
         opts,
     );
-    Ok((envelope, PushBatch { records, edges: Vec::new() }))
+    Ok((envelope, mapping::to_emission(&records, &[])))
 }
 
 /// List papers that cite the given paper ID.
@@ -91,7 +93,7 @@ pub fn cited_by(
     client: &SemanticScholarClient,
     id: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let (_, path_id) = infer_entity(id)?;
 
     // Fetch seed paper's externalIds to compute its best merge alias
@@ -102,7 +104,7 @@ pub fn cited_by(
     let limit = if opts.all { None } else { opts.limit };
 
     let mut all_papers: Vec<Value> = Vec::new();
-    let mut edges: Vec<(String, String)> = Vec::new();
+    let mut edge_pairs: Vec<(String, String)> = Vec::new();
     let mut offset = 0u32;
 
     loop {
@@ -118,7 +120,7 @@ pub fn cited_by(
         for item in &data {
             if let Some(citing_paper) = item.get("citingPaper") {
                 let citing_alias = best_paper_alias(citing_paper);
-                edges.push((citing_alias, seed_alias.clone()));
+                edge_pairs.push((citing_alias, seed_alias.clone()));
                 all_papers.push(citing_paper.clone());
             }
         }
@@ -142,7 +144,7 @@ pub fn cited_by(
             None,
             opts,
         );
-        return Ok((envelope, PushBatch::empty()));
+        return Ok((envelope, Emission::empty()));
     }
 
     let count = all_papers.len() as u64;
@@ -157,7 +159,7 @@ pub fn cited_by(
         None,
         opts,
     );
-    Ok((envelope, PushBatch { records, edges }))
+    Ok((envelope, mapping::to_emission(&records, &edge_pairs)))
 }
 
 /// List papers referenced by the given paper ID.
@@ -166,7 +168,7 @@ pub fn refs(
     client: &SemanticScholarClient,
     id: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let (_, path_id) = infer_entity(id)?;
 
     // Fetch seed paper's externalIds to compute its best merge alias
@@ -177,7 +179,7 @@ pub fn refs(
     let limit = if opts.all { None } else { opts.limit };
 
     let mut all_papers: Vec<Value> = Vec::new();
-    let mut edges: Vec<(String, String)> = Vec::new();
+    let mut edge_pairs: Vec<(String, String)> = Vec::new();
     let mut offset = 0u32;
 
     loop {
@@ -193,7 +195,7 @@ pub fn refs(
         for item in &data {
             if let Some(cited_paper) = item.get("citedPaper") {
                 let cited_alias = best_paper_alias(cited_paper);
-                edges.push((seed_alias.clone(), cited_alias));
+                edge_pairs.push((seed_alias.clone(), cited_alias));
                 all_papers.push(cited_paper.clone());
             }
         }
@@ -217,7 +219,7 @@ pub fn refs(
             None,
             opts,
         );
-        return Ok((envelope, PushBatch::empty()));
+        return Ok((envelope, Emission::empty()));
     }
 
     let count = all_papers.len() as u64;
@@ -232,7 +234,7 @@ pub fn refs(
         None,
         opts,
     );
-    Ok((envelope, PushBatch { records, edges }))
+    Ok((envelope, mapping::to_emission(&records, &edge_pairs)))
 }
 
 /// Choose the best alias for a paper to maximize merge with OpenAlex edges.

@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::provider::{Alias, EdgeInput, Emission, WorkRecord};
 use super::entity::Entity;
 
 /// Map an OpenAlex entity type to the server's NodeKind string.
@@ -107,7 +108,7 @@ pub fn to_work_record(entity: Entity, record: &Value) -> Option<Value> {
 /// Build EdgeInput JSON values for a slice of (citing_id, cited_id) pairs.
 /// IDs may be full OpenAlex URLs or bare IDs — URL prefixes are stripped.
 pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
-    let fetched_at = rfc3339_now();
+    let fetched_at = crate::provider::rfc3339_now();
     pairs
         .iter()
         .map(|(citing, cited)| {
@@ -123,6 +124,54 @@ pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// Lower raw OpenAlex records and edge pairs into a fully-typed `Emission`.
+/// Drops records whose entity type has no NodeKind and counts them as `skipped_unmappable`.
+pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)]) -> Emission {
+    let mut work_records: Vec<WorkRecord> = Vec::new();
+    let mut skipped = 0usize;
+
+    for (entity, record) in records {
+        match node_kind(*entity) {
+            None => skipped += 1,
+            Some(kind) => {
+                let aliases_val = extract_aliases(*entity, record);
+                let aliases: Vec<Alias> = aliases_val
+                    .iter()
+                    .map(|v| Alias {
+                        namespace: v["namespace"].as_str().unwrap_or("").to_string(),
+                        value: v["value"].as_str().unwrap_or("").to_string(),
+                    })
+                    .collect();
+                work_records.push(WorkRecord {
+                    source: "openalex".to_string(),
+                    kind: kind.to_string(),
+                    aliases,
+                    attrs: record.clone(),
+                });
+            }
+        }
+    }
+
+    let fetched_at = crate::provider::rfc3339_now();
+    let edges: Vec<EdgeInput> = edge_pairs
+        .iter()
+        .map(|(citing, cited)| {
+            let citing_bare = strip_openalex_url(citing).to_string();
+            let cited_bare = strip_openalex_url(cited).to_string();
+            EdgeInput {
+                src: Alias { namespace: "openalex".to_string(), value: citing_bare },
+                dst: Alias { namespace: "openalex".to_string(), value: cited_bare },
+                relation: "cites".to_string(),
+                source: "openalex".to_string(),
+                attrs: serde_json::Value::Null,
+                fetched_at: fetched_at.clone(),
+            }
+        })
+        .collect();
+
+    Emission { records: work_records, edges, skipped_unmappable: skipped }
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -147,51 +196,6 @@ fn strip_wikidata_url(s: &str) -> &str {
     s.strip_prefix("https://www.wikidata.org/wiki/")
         .or_else(|| s.strip_prefix("https://www.wikidata.org/entity/"))
         .unwrap_or(s)
-}
-
-/// Format the current time as an RFC3339 UTC timestamp without external deps.
-fn rfc3339_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600) % 24;
-    let days = secs / 86400;
-    let (year, month, day) = days_to_ymd(days);
-    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
-}
-
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
-    let mut year = 1970u64;
-    loop {
-        let diy = if is_leap(year) { 366 } else { 365 };
-        if days < diy {
-            break;
-        }
-        days -= diy;
-        year += 1;
-    }
-    let dims: [u64; 12] = if is_leap(year) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut month = 1u64;
-    for &dim in &dims {
-        if days < dim {
-            break;
-        }
-        days -= dim;
-        month += 1;
-    }
-    (year, month, days + 1)
-}
-
-fn is_leap(year: u64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -285,5 +289,34 @@ mod tests {
         assert_eq!(e["relation"].as_str(), Some("cites"));
         assert_eq!(e["source"].as_str(), Some("openalex"));
         assert!(e["fetched_at"].as_str().is_some());
+    }
+
+    #[test]
+    fn to_emission_skips_unmappable() {
+        let record_work = serde_json::json!({"id": "https://openalex.org/W1"});
+        let record_inst = serde_json::json!({"id": "https://openalex.org/I99"});
+        let records = vec![
+            (Entity::Works, record_work),
+            (Entity::Institutions, record_inst),
+        ];
+        let em = to_emission(&records, &[]);
+        assert_eq!(em.records.len(), 1);
+        assert_eq!(em.skipped_unmappable, 1);
+        assert_eq!(em.records[0].kind, "Work");
+    }
+
+    #[test]
+    fn to_emission_edge_shape() {
+        let pairs = vec![
+            ("https://openalex.org/W111".to_string(), "https://openalex.org/W222".to_string()),
+        ];
+        let em = to_emission(&[], &pairs);
+        assert_eq!(em.edges.len(), 1);
+        assert_eq!(em.edges[0].src.namespace, "openalex");
+        assert_eq!(em.edges[0].src.value, "W111");
+        assert_eq!(em.edges[0].dst.value, "W222");
+        assert_eq!(em.edges[0].relation, "cites");
+        assert_eq!(em.edges[0].source, "openalex");
+        assert!(!em.edges[0].fetched_at.is_empty());
     }
 }

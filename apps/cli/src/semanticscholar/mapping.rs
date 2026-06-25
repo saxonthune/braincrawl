@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::provider::{Alias, EdgeInput, Emission, WorkRecord};
 use super::entity::Entity;
 
 /// Map a Semantic Scholar entity type to the server's NodeKind string.
@@ -87,7 +88,7 @@ pub fn to_work_record(entity: Entity, record: &Value) -> Option<Value> {
 /// Build EdgeInput JSON values for a slice of (citing_alias, cited_alias) pairs.
 /// Each alias is already in `ns:value` form (e.g. `doi:10.x/y` or `s2:<paperId>`).
 pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
-    let fetched_at = rfc3339_now();
+    let fetched_at = crate::provider::rfc3339_now();
     pairs
         .iter()
         .map(|(citing, cited)| {
@@ -103,6 +104,54 @@ pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// Lower raw Semantic Scholar records and edge pairs into a fully-typed `Emission`.
+/// S2 entities always have a NodeKind, so `skipped_unmappable` stays 0.
+pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)]) -> Emission {
+    let mut work_records: Vec<WorkRecord> = Vec::new();
+    let mut skipped = 0usize;
+
+    for (entity, record) in records {
+        match node_kind(*entity) {
+            None => skipped += 1,
+            Some(kind) => {
+                let aliases_val = extract_aliases(*entity, record);
+                let aliases: Vec<Alias> = aliases_val
+                    .iter()
+                    .map(|v| Alias {
+                        namespace: v["namespace"].as_str().unwrap_or("").to_string(),
+                        value: v["value"].as_str().unwrap_or("").to_string(),
+                    })
+                    .collect();
+                work_records.push(WorkRecord {
+                    source: "semanticscholar".to_string(),
+                    kind: kind.to_string(),
+                    aliases,
+                    attrs: record.clone(),
+                });
+            }
+        }
+    }
+
+    let fetched_at = crate::provider::rfc3339_now();
+    let edges: Vec<EdgeInput> = edge_pairs
+        .iter()
+        .map(|(citing, cited)| {
+            let (src_ns, src_val) = split_alias(citing);
+            let (dst_ns, dst_val) = split_alias(cited);
+            EdgeInput {
+                src: Alias { namespace: src_ns.to_string(), value: src_val.to_string() },
+                dst: Alias { namespace: dst_ns.to_string(), value: dst_val.to_string() },
+                relation: "cites".to_string(),
+                source: "semanticscholar".to_string(),
+                attrs: serde_json::Value::Null,
+                fetched_at: fetched_at.clone(),
+            }
+        })
+        .collect();
+
+    Emission { records: work_records, edges, skipped_unmappable: skipped }
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -127,51 +176,6 @@ fn split_alias(alias: &str) -> (&str, &str) {
     } else {
         ("s2", alias)
     }
-}
-
-/// Format the current time as an RFC3339 UTC timestamp without external deps.
-fn rfc3339_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600) % 24;
-    let days = secs / 86400;
-    let (year, month, day) = days_to_ymd(days);
-    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
-}
-
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
-    let mut year = 1970u64;
-    loop {
-        let diy = if is_leap(year) { 366 } else { 365 };
-        if days < diy {
-            break;
-        }
-        days -= diy;
-        year += 1;
-    }
-    let dims: [u64; 12] = if is_leap(year) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut month = 1u64;
-    for &dim in &dims {
-        if days < dim {
-            break;
-        }
-        days -= dim;
-        month += 1;
-    }
-    (year, month, days + 1)
-}
-
-fn is_leap(year: u64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -318,5 +322,20 @@ mod tests {
             .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert_eq!(map.get("corpusid"), Some(&"99999"));
+    }
+
+    #[test]
+    fn to_emission_edge_shape() {
+        let pairs = vec![
+            ("doi:10.1000/a".to_string(), "s2:abc123".to_string()),
+        ];
+        let em = to_emission(&[], &pairs);
+        assert_eq!(em.edges.len(), 1);
+        assert_eq!(em.edges[0].src.namespace, "doi");
+        assert_eq!(em.edges[0].src.value, "10.1000/a");
+        assert_eq!(em.edges[0].dst.namespace, "s2");
+        assert_eq!(em.edges[0].relation, "cites");
+        assert_eq!(em.edges[0].source, "semanticscholar");
+        assert!(!em.edges[0].fetched_at.is_empty());
     }
 }

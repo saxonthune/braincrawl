@@ -2,11 +2,13 @@ use serde_json::Value;
 
 use crate::cli::OutputOpts;
 use crate::output::Envelope;
+use crate::provider::Emission;
 
-use super::{PushBatch, Result};
+use super::Result;
 use super::client::{ListParams, OpenAlexClient};
 use super::entity::{Entity, infer_entity};
 use super::filters::{KV, validate_filters};
+use super::mapping;
 use super::shape::build_envelope;
 
 const DEFAULT_PER_PAGE: u32 = 25;
@@ -17,7 +19,7 @@ pub fn get(
     client: &OpenAlexClient,
     id: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let (entity, path_id) = infer_entity(id)?;
     let (raw, url) = client.get_one(entity, &path_id, None)?;
     let records = vec![(entity, raw.clone())];
@@ -30,7 +32,7 @@ pub fn get(
         Some(url),
         opts,
     );
-    Ok((envelope, PushBatch { records, edges: Vec::new() }))
+    Ok((envelope, mapping::to_emission(&records, &[])))
 }
 
 /// Full-text search over an entity collection.
@@ -39,16 +41,17 @@ pub fn search(
     entity_str: &str,
     query: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let entity = Entity::parse(entity_str)?;
     let per_page = page_size(opts);
-    collect_pages(
+    let (envelope, records) = collect_pages(
         client,
         entity,
         ListParams { search: Some(query), per_page: Some(per_page), ..Default::default() },
         Some(query.to_string()),
         opts,
-    )
+    )?;
+    Ok((envelope, mapping::to_emission(&records, &[])))
 }
 
 /// Filter an entity collection by key:value pairs.
@@ -57,7 +60,7 @@ pub fn find(
     entity_str: &str,
     filter_strs: &[String],
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let entity = Entity::parse(entity_str)?;
     let kvs: std::result::Result<Vec<KV>, String> =
         filter_strs.iter().map(|s| KV::parse(s)).collect();
@@ -65,7 +68,7 @@ pub fn find(
     let filter_val = validate_filters(entity, &kvs)?;
     let resolved = filter_val.clone();
     let per_page = page_size(opts);
-    collect_pages(
+    let (envelope, records) = collect_pages(
         client,
         entity,
         ListParams {
@@ -75,7 +78,8 @@ pub fn find(
         },
         Some(resolved),
         opts,
-    )
+    )?;
+    Ok((envelope, mapping::to_emission(&records, &[])))
 }
 
 /// Autocomplete entity names by prefix query.
@@ -84,7 +88,7 @@ pub fn autocomplete(
     entity_str: &str,
     q: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let entity = Entity::parse(entity_str)?;
     let (raw, url) = client.autocomplete(entity, q)?;
     let count = raw
@@ -99,7 +103,7 @@ pub fn autocomplete(
         .unwrap_or_default();
     let records: Vec<(Entity, Value)> = results.iter().map(|r| (entity, r.clone())).collect();
     let envelope = build_envelope(entity, results, count, None, Some(q.to_string()), Some(url), opts);
-    Ok((envelope, PushBatch { records, edges: Vec::new() }))
+    Ok((envelope, mapping::to_emission(&records, &[])))
 }
 
 /// List works that cite the given work ID.
@@ -107,12 +111,13 @@ pub fn cited_by(
     client: &OpenAlexClient,
     id: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let (citing_entity, path_id) = infer_entity(id)?;
+    let _ = citing_entity;
     let filter = format!("cites:{path_id}");
     let resolved = filter.clone();
     let per_page = page_size(opts);
-    let (envelope, mut batch) = collect_pages(
+    let (envelope, records) = collect_pages(
         client,
         Entity::Works,
         ListParams {
@@ -123,15 +128,16 @@ pub fn cited_by(
         Some(resolved),
         opts,
     )?;
-    // Record citation edges: each result cites the given ID.
-    // Use bare OpenAlex IDs (not entity-path prefix); mapping.rs strips URL prefixes.
-    let _ = citing_entity; // entity type used only for infer; edge uses the bare path_id
-    for result in &envelope.results {
-        if let Some(citing_id) = result.get("id").and_then(|v| v.as_str()) {
-            batch.edges.push((citing_id.to_string(), path_id.clone()));
-        }
-    }
-    Ok((envelope, batch))
+    let edge_pairs: Vec<(String, String)> = envelope
+        .results
+        .iter()
+        .filter_map(|r| {
+            r.get("id")
+                .and_then(|v| v.as_str())
+                .map(|citing_id| (citing_id.to_string(), path_id.clone()))
+        })
+        .collect();
+    Ok((envelope, mapping::to_emission(&records, &edge_pairs)))
 }
 
 /// List works referenced by the given work ID.
@@ -139,7 +145,7 @@ pub fn refs(
     client: &OpenAlexClient,
     id: &str,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Emission)> {
     let (_, path_id) = infer_entity(id)?;
     // Step 1: get just the referenced_works list
     let (raw, _) = client.get_one(Entity::Works, &path_id, Some("id,referenced_works"))?;
@@ -150,7 +156,6 @@ pub fn refs(
             arr.iter()
                 .filter_map(|v| v.as_str())
                 .map(|s| {
-                    // Strip URL prefix to get bare ID
                     s.strip_prefix("https://openalex.org/").unwrap_or(s).to_string()
                 })
                 .collect()
@@ -167,13 +172,13 @@ pub fn refs(
             None,
             opts,
         );
-        return Ok((envelope, PushBatch::empty()));
+        return Ok((envelope, Emission::empty()));
     }
 
     // Step 2: batch fetch in chunks of ≤50 using ids.openalex OR filter
     let mut all_results: Vec<Value> = Vec::new();
     let mut all_records: Vec<(Entity, Value)> = Vec::new();
-    let mut edges: Vec<(String, String)> = Vec::new();
+    let mut edge_pairs: Vec<(String, String)> = Vec::new();
     let citing_id = format!("https://openalex.org/{path_id}");
 
     for chunk in ref_ids.chunks(REFS_CHUNK_SIZE) {
@@ -189,7 +194,7 @@ pub fn refs(
         )?;
         for r in &page.results {
             if let Some(cited_id) = r.get("id").and_then(|v| v.as_str()) {
-                edges.push((citing_id.clone(), cited_id.to_string()));
+                edge_pairs.push((citing_id.clone(), cited_id.to_string()));
             }
         }
         all_records.extend(page.results.iter().map(|r| (Entity::Works, r.clone())));
@@ -206,18 +211,18 @@ pub fn refs(
         None,
         opts,
     );
-    Ok((envelope, PushBatch { records: all_records, edges }))
+    Ok((envelope, mapping::to_emission(&all_records, &edge_pairs)))
 }
 
 /// Collect pages from a list endpoint, respecting --all / --limit.
-/// Returns an envelope and a PushBatch of raw records.
+/// Returns an envelope and the raw (entity, record) pairs for further lowering.
 fn collect_pages(
     client: &OpenAlexClient,
     entity: Entity,
     base_params: ListParams<'_>,
     resolved_filter: Option<String>,
     opts: &OutputOpts,
-) -> Result<(Envelope, PushBatch)> {
+) -> Result<(Envelope, Vec<(Entity, Value)>)> {
     let limit = if opts.all { None } else { opts.limit };
     let mut all_results: Vec<Value> = Vec::new();
     let mut last_url: Option<String> = None;
@@ -262,7 +267,7 @@ fn collect_pages(
         last_url,
         opts,
     );
-    Ok((envelope, PushBatch { records, edges: Vec::new() }))
+    Ok((envelope, records))
 }
 
 fn page_size(opts: &OutputOpts) -> u32 {
