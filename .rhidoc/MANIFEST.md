@@ -50,9 +50,9 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.01.00 | `01-core/00-index.md` | The platform-agnostic knowledge-graph engine, decomposed into the three goals layers — Library (identity + payloads), Catalog, and Research Collections. | architecture, core, layers | — | — | — |
-| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by canonical id, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.04 | — |
-| doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one canonical GUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
-| doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a canonical GUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.00, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
+| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.04 | — |
+| doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one UUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
+| doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a UUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.00, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
 
 ### Cloudflare
 
@@ -66,7 +66,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
 |-----|------|---------|------|------|------|-------------|
 
-| doc02.03.00 | `03-skill/00-index.md` | The agent-facing surface — how a consuming agent drives the graph API. Builds coverage once via the Library/Catalog, then applies decisiveness as a query-time lens over a Research Collection. | architecture, skill, agent, consumer | — | — | — |
+| doc02.03.00 | `03-skill/00-index.md` | The agent-facing surface — how a consuming agent drives the graph API. Gathers works once via the Library/Catalog, then reads and judges at query time over a Research Collection. | architecture, skill, agent, consumer | — | — | — |
 
 ### CLI
 

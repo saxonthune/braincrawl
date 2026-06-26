@@ -13,7 +13,7 @@ Troubleshooting reference for provider configuration and common errors.
    (usually within a day). It is free.
 
 Without a key you can still call S2, but the **keyless shared pool is throttled to ~1
-req/s** and will 429 hard during `--all` snowballs. Get the key first.
+req/s** and will 429 hard during `--all` runs. Get the key first.
 
 ### Configuring the key
 
@@ -59,7 +59,7 @@ curl -fsS http://127.0.0.1:8787/health
 ### Common issues
 
 **Keyless 429 storms during `--all`**
-The shared pool is ~1 req/s. A full cited-by snowball on a well-cited paper will 429
+The shared pool is ~1 req/s. Following all citations on a well-cited paper will 429
 repeatedly. Get a key (above), or pass `--limit N` to cap the fetch.
 
 **"Cannot infer ID type" on a bare numeric**

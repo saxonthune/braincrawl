@@ -1,6 +1,6 @@
 ---
 title: API
-summary: The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a canonical GUID internally, so consumers never resolve identity themselves.
+summary: The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a UUID internally, so consumers never resolve identity themselves.
 tags: [architecture, core, api, contract]
 deps: [doc02.01.01, doc02.01.02]
 ---
@@ -12,12 +12,12 @@ a braincrawl instance. The consumer fetches metadata and content from upstream i
 braincrawl is the **place it puts that data and reads it back**, so research
 accumulates across questions and projects instead of being re-fetched.
 
-## Any id in, canonical out
+## Any id in, UUID out
 
 **Every id argument accepts any external identifier** — DOI, ISBN, OCLC, PMID,
-OpenAlex `W…`, or a braincrawl GUID. The API resolves it to the canonical GUID
+OpenAlex `W…`, or a braincrawl UUID. The API resolves it to the UUID
 internally before doing anything (see Id Resolution, `doc02.01.02`). Consumers never
-canonicalize, crosswalk, or dedupe identity themselves — they store and query by
+resolve, crosswalk, or dedupe identity themselves — they store and query by
 whatever id they happen to hold, and braincrawl guarantees all ids of one resource
 land on the same node.
 
@@ -26,22 +26,22 @@ land on the same node.
 ### Works & content (Library + identity)
 
 ```
-put_work(id, metadata, aliases[])      # upsert; resolves/mints canonical GUID, records aliases
-get_work(id)                           # → metadata; id = any alias or the GUID
-put_content(id, kind, bytes|url,       # kind = abstract | fulltext
-            rights, source, fetched_at)
-get_content(id, kind)                  # → bytes | url, per rights
+put_work(id, metadata, aliases[])      # upsert; resolves/mints UUID, records aliases
+get_work(id)                           # → metadata; id = any alias or the UUID
+put_content(id, kind, bytes,           # kind = abstract | fulltext
+            source, fetched_at)
+get_content(id, kind)                  # → bytes | pending | absent
 ```
 
 Writes are **idempotent upserts**: putting the same work twice converges on one node
-rather than duplicating. Content provenance and rights ride with each put (see
+rather than duplicating. Content provenance rides with each put (see
 Layers, `doc02.01.01`).
 
 ### Citation edges (Catalog)
 
 ```
-put_edges([{ src, dst, relation,       # src/dst accept any id; resolved to GUIDs
-             source, attrs }])         # unknown endpoints become stubs
+put_edges([{ src, dst, relation,       # src/dst accept any id; resolved to UUIDs
+             source, attrs }])         # unknown endpoints become catalog entries with no metadata
 get_edges(id, dir)                     # dir = forward (cited_by) | backward (references)
 ```
 

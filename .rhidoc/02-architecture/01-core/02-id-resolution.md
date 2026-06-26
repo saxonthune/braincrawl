@@ -1,6 +1,6 @@
 ---
 title: Id Resolution
-summary: A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one canonical GUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent.
+summary: A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one UUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent.
 tags: [architecture, core, identity, id-resolution, union-find]
 deps: [doc02.01.01, doc02.01.03]
 ---
@@ -9,17 +9,17 @@ deps: [doc02.01.01, doc02.01.03]
 
 Identity resolution is a **core feature**, not a consumer concern. A consumer hands
 braincrawl any external id (DOI, ISBN, OCLC, PMID, OpenAlex `W…`, …) and braincrawl
-routes every id naming the same resource to the same canonical node.
+routes every id naming the same resource to the same UUID.
 
-## Canonical id
+## UUID
 
-The canonical id is a braincrawl-minted **GUID** — opaque and provider-neutral. No
-external scheme (not even OpenAlex `W…`) is the canonical key; every external id is an
-alias pointing at the GUID.
+The UUID is a braincrawl-minted identifier — opaque and provider-neutral. No
+external scheme (not even OpenAlex `W…`) is the primary key; every external id is an
+alias pointing at the UUID.
 
 ## The model — incremental union-find
 
-Each external id is an element, each `node` is an equivalence class, and the GUID is
+Each external id is an element, each `node` is an equivalence class, and the UUID is
 the class representative. The `alias` table (`doc02.01.01`) is the union-find parent
 map, and `UNIQUE (namespace, value)` is the structural invariant: one external id
 belongs to exactly one class and can never fork.
@@ -28,13 +28,13 @@ Resolution operates on the **id bundle** a provider record carries — not a bar
 A provider record (an OpenAlex work, say) names several ids at once
 (`{openalex:W…, doi:…, pmid:…}`); that co-assertion is the evidence that links them.
 
-`resolve(record) → guid`:
+`resolve(record) → uuid`:
 
 1. Extract the bundle `{(namespace, value), …}` from the record.
-2. Look each up in `alias`; collect the set `G` of distinct GUIDs hit.
-3. `|G| == 0` → mint a GUID, insert the node and all aliases.
-4. `|G| == 1` → use it; insert any aliases not yet present.
-5. `|G| ≥ 2` → the bundle witnesses that these classes are one resource → **merge**.
+2. Look each up in `alias`; collect the set `U` of distinct UUIDs hit.
+3. `|U| == 0` → mint a UUID, insert the node and all aliases.
+4. `|U| == 1` → use it; insert any aliases not yet present.
+5. `|U| ≥ 2` → the bundle witnesses that these classes are one resource → **merge**.
 
 As long as id co-occurrence is truthful, this produces correct equivalence classes
 **regardless of record arrival order**.
@@ -46,7 +46,7 @@ mechanisms serialize them:
 
 - **Get-or-create on the unique constraint.** Alias writes are
   `INSERT … ON CONFLICT DO NOTHING` followed by `SELECT`. The constraint is the
-  serialization point — the losing writer reads the winner's GUID. This alone
+  serialization point — the losing writer reads the winner's UUID. This alone
   guarantees no fork per single alias.
 - **Single-writer coordinator keyed by the strongest id in the bundle** (deterministic
   priority `doi > pmid > openalex > …`). A per-id coordinator runs resolution of a
@@ -56,22 +56,22 @@ mechanisms serialize them:
 
 ## Merge — confluent by construction
 
-When step 5 (or a later bridging record) establishes that two GUIDs are one resource:
+When step 5 (or a later bridging record) establishes that two UUIDs are one resource:
 
-1. **Choose a deterministic survivor** (e.g. the lexicographically smaller GUID).
+1. **Choose a deterministic survivor** (e.g. the lexicographically smaller UUID).
    Deterministic selection makes merges **commutative**: whatever order workers apply
    them, the surviving representative is identical.
 2. **Repoint** `alias`, `node_assertion`, `edge.src_id`/`edge.dst_id`,
    `edge_assertion`, and `payloads` from the loser to the survivor, folding any
    primary-key collisions (duplicate edges collapse; same-source assertions keep the
    newest `fetched_at`).
-3. **Tombstone the loser with a `merged_into` pointer** (loser GUID → survivor GUID).
-   The tombstone is never deleted, because consumers may still hold the old GUID.
+3. **Tombstone the loser with a `merged_into` pointer** (loser UUID → survivor UUID).
+   The tombstone is never deleted, because consumers may still hold the old UUID.
    Resolution follows the `merged_into` chain (with path compression) to the live
    representative. This redirect is the union-find forest persisted to the metadata DB.
 
 Merges are therefore idempotent and order-independent: the moment a bridging record
-appears, two classes converge permanently and every consumer holding the old GUID
+appears, two classes converge permanently and every consumer holding the old UUID
 auto-resolves through the tombstone.
 
 ## The convergence boundary

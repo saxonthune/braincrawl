@@ -84,5 +84,5 @@ Citation traversal pushes edges: `cited-by` and `refs` emit `cites` edges
 
 Pushed records carry `source = "semanticscholar"` in their provenance. The DOI alias
 namespace is shared with OpenAlex (doc02.06.01.01) — when both providers fetch the same
-paper, the store's id-resolution layer (doc02.01.02) merges them onto one canonical node
+paper, the store's id-resolution layer (doc02.01.02) merges them onto one UUID
 via the DOI overlap. The namespace never merges identity itself.

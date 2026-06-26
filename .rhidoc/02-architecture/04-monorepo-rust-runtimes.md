@@ -27,8 +27,8 @@ The seam from `doc02.00` — core owns the model, infrastructure is one binding 
 is just plain Rust: **traits in core, backends that implement them**. There is no
 extra abstraction layer; the trait *is* the interface.
 
-- **Traits** live in the core crate, phrased in domain vocabulary (canonical id,
-  kind, rights), naming no platform. The Library/Catalog split from `doc02.01.01` maps to a
+- **Traits** live in the core crate, phrased in domain vocabulary (UUID,
+  kind, provenance), naming no platform. The Library/Catalog split from `doc02.01.01` maps to a
   `BlobStore` trait (opaque key → bytes) and `PayloadsRepo` / `MetadataStore` traits
   (the queryable facts, including each blob's key). Identity resolution is an
   `IdResolver` trait.

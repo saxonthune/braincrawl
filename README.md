@@ -3,17 +3,18 @@
 A reusable academic knowledge graph built from open scholarly metadata, with a
 clean split between shared general knowledge and per-consumer domain projections.
 
-- **L1 — Corpus**: works keyed by canonical id; abstracts inline, full text on demand.
-- **L2 — Metadata graph**: citation network, accreting cache over upstream providers, built once and shared.
-- **L3 — Consumer projection**: per-domain selection + annotations *referencing* L2, never copying it. Managed via `braincrawl l3` in a consolidated, config-driven store.
+- **Library (L1)**: works keyed by a UUID; abstracts inline, full text on demand.
+- **Catalog (L2)**: the citation graph — catalog entries (works, authors) and the edges between them — an accreting cache over upstream providers, built once and shared.
+- **Research Collection (L3)**: per-domain Research Documents that *reference* Catalog UUIDs, never copying them. Managed via `braincrawl l3` in a consolidated, config-driven store.
 
 Sources: OpenAlex (backbone), Semantic Scholar, Crossref, OpenCitations, Unpaywall.
 
-## Legal
+## Use
 
-Full-text storage is **open-access only** — resolved via OpenAlex OA fields and
-Unpaywall, gated structurally per work (`open` / `link_only` / `restricted`). The
-base never fetches or persists paywalled or pirated text.
+braincrawl fetches and stores scholarly metadata and content from third-party
+sources. You are responsible for ensuring your use complies with the copyright,
+licensing, and terms of service of those sources. The software is provided
+"as is", without warranty (see LICENSE §15–16).
 
 ## Build
 

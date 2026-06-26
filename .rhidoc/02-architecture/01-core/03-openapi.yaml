@@ -33,10 +33,9 @@ paths:
         content: { application/json: { schema: { $ref: "#/components/schemas/ContentPut" } } }
       responses: { "200": { content: { application/json: { schema: { $ref: "#/components/schemas/ContentRef" } } } } }
     get:
-      summary: get_content — rights-gated
+      summary: get_content
       responses:
-        "200": { description: bytes (rights=open or rights=restricted; both store and serve bytes) }
-        "302": { description: redirect to OA url (rights=link_only) }
+        "200": { description: bytes stored }
         "202": { description: materialization pending }
         "404": { description: absent }
 
@@ -46,6 +45,7 @@ paths:
       requestBody:
         content: { application/json: { schema: { type: object, properties: { edges: { type: array, items: { $ref: "#/components/schemas/EdgeAssertion" } } } } } }
       responses: { "200": { description: "{ written: N }" } }
+    # unknown dst endpoints become catalog entries with no metadata (fetched lazily later)
 
   /works/{id}/edges:
     get:
@@ -88,12 +88,10 @@ components:
         aliases:      { type: array, items: { $ref: "#/components/schemas/Alias" } }
     ContentPut:
       type: object
-      required: [rights, source, fetched_at]
+      required: [source, fetched_at]
       properties:
-        bytes:      { type: string, format: byte }   # for rights=open
-        url:        { type: string }                 # for rights=link_only
+        bytes:      { type: string, format: byte }
         mime:       { type: string }
-        rights:     { type: string, enum: [open, link_only, restricted] }
         source:     { type: string }
         fetched_at: { type: string, format: date-time }
     ContentRef:   { type: object, properties: { version: { type: integer }, r2_key: { type: string } } }
@@ -102,7 +100,7 @@ components:
       required: [src, dst, relation, source]
       properties:
         src:      { type: string }   # any id
-        dst:      { type: string }   # any id; unknown -> stub
+        dst:      { type: string }   # any id; unknown -> catalog entry with no metadata
         relation: { type: string }   # cites | authored_by | published_in | has_concept | ...
         source:   { type: string }
         attrs:    { type: object, additionalProperties: true }   # sparse: intent, context, is_influential, ref_index

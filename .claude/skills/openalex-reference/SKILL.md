@@ -50,9 +50,9 @@ Lookup order:
 - **Concepts are deprecated** — prefer `topics`/`primary_topic` on works.
 
 ## Relationship to braincrawl
-OpenAlex is a natural **upstream source** for braincrawl's corpus/metadata layers (doc02.01):
+OpenAlex is a natural **upstream source** for braincrawl's Library and Catalog (doc02.01):
 its works carry DOI/PMID/MAG/OpenAlex IDs that braincrawl's id-resolution (doc02.01.02) can
-union into one canonical GUID, and `referenced_works` maps directly onto braincrawl's citation
+union into one UUID, and `referenced_works` maps directly onto braincrawl's citation
 edges (doc02.01.03). When ingesting, hand OpenAlex's external IDs straight to braincrawl's
 upsert API and let it resolve identity — don't resolve it yourself.
 

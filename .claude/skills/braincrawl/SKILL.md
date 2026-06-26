@@ -1,25 +1,25 @@
 ---
 name: braincrawl
-description: "Drive the braincrawl research graph — run the local server, build shared Library/Catalog coverage with the CLI (OpenAlex search → citation snowball → neighborhood), and maintain per-domain Research Collections as annotation-over-reference Research Documents in the consolidated `braincrawl l3` store. Use when doing accumulating, coverage-first literature research (e.g. the Mesopotamia case study) instead of one-shot deep research."
+description: "Drive the braincrawl research graph — run the local server, gather catalog entries with the CLI (OpenAlex search → follow citations → neighborhood), and maintain per-domain Research Collections as annotation-over-reference Research Documents in the consolidated `braincrawl l3` store. Use when doing accumulating, inventory-first literature research (e.g. the Mesopotamia case study) instead of one-shot deep research."
 ---
 
 # braincrawl
 
-braincrawl builds a **reusable academic knowledge graph** and separates *coverage*
-(build the graph once — expensive, inventory-shaped) from *decisiveness* (query it —
+braincrawl builds a **reusable academic knowledge graph** and separates *gathering works*
+(build the graph once — expensive, inventory-shaped) from *reading and judging* (query it —
 cheap, repeatable, any lens you choose). See `GOALS.md` and `CASE-STUDY.md` for the why.
 
 Three layers:
 
 | Layer | What it is | Where it lives |
 |---|---|---|
-| **L1 — Library** | works keyed by canonical id + payloads (abstract now, fulltext on demand) | the **server's store** (shared) |
+| **L1 — Library** | works keyed by UUID + payloads (abstract now, fulltext on demand) | the **server's store** (shared) |
 | **L2 — Catalog** | nodes + citation edges, lazily accreted from OpenAlex | the **server's store** (shared) |
 | **L3 — Research Collection** | *your* questions, selections, annotations, domain edges | **the consolidated research document store** (one config-driven dir, one Research Document per item) |
 
 The Library and Catalog are general and shared across every project. The Research Collection is yours. **The Research Collection is
-annotation-over-reference: it stores canonical ids + your notes, never copies of the
-metadata.** Hydrate the Research Collection from the store at read time so it never drifts from the graph.
+annotation-over-reference: it stores UUIDs + your notes, never copies of the
+metadata.** Look it back up from the store at read time so it never drifts from the graph.
 
 > Status note: The Library and Catalog live in the server's DB; the Research Collection is **not** a server feature (no
 > `/collections` endpoints). Instead the `braincrawl l3` CLI manages a **consolidated,
@@ -27,11 +27,30 @@ metadata.** Hydrate the Research Collection from the store at read time so it ne
 > so research knowledge stops scattering into per-project repos. When server-side collections
 > land, the same docs migrate up.
 
+## 0. Read what you already hold before pulling anything
+
+**Provider pulls are the last resort, not the first move.** The Research Collection is the
+accumulated point of all prior sessions — start every question there. When the user asks
+about a topic (especially when they say "find research on X" or "what do we know about X"),
+the first action is to **survey and read the existing L3 docs**, not to pull from OpenAlex:
+
+```bash
+braincrawl l3 list --text          # scan slugs + titles for on-topic docs
+braincrawl l3 path <doc>           # then Read the matching file(s) directly
+```
+
+A single L3 doc routinely carries the whole answer — its Questions frontier, Findings, and
+domain edges are the distilled result of an earlier gathering pass. Only after reading the
+relevant docs and finding a genuine gap (a question the held docs don't reach) do you climb
+to provider pulls (§3). State the gap explicitly before pulling. How deeply you read (§4)
+makes this concrete: step 0 is "the L3 docs you already wrote," and you climb only as far as
+the question forces you. Don't pull when the answer is already on disk.
+
 ## 1. Use the one shared server (don't start your own)
 
 There is **one** braincrawl server per machine. It owns the accumulating Library and Catalog
 (a stable SQLite file + blob dir under `~/.local/share/braincrawl/`). Every consumer
-repo points at it so coverage compounds — a second project launching its own binary would
+repo points at it so gathered catalog entries compound — a second project launching its own binary would
 fork the shared store into a per-repo DB and defeat the whole accumulation thesis.
 
 **First thing, every session: check it's up.** It exposes an unauthenticated liveness
@@ -81,13 +100,13 @@ Global output flags (work on every command): `--text` (one result/line, tab-sepa
 `--abstract`, `--skip-push`.
 
 **Push-to-store is on by default.** Every `openalex` query writes the works (and, for
-`cited-by`/`refs`, the citation edges) into the Library and Catalog. That is how coverage accumulates — one
+`cited-by`/`refs`, the citation edges) into the Library and Catalog. That is how the catalog accretes — one
 project's reading is the next project's cache. Use `--skip-push` only for throwaway peeks.
 
 ### Set up Semantic Scholar
 
 Semantic Scholar (`braincrawl semanticscholar`) works without a key, but the **keyless
-shared pool is rate-limited to ~1 req/s and hits hard 429s during `--all` snowballs**.
+shared pool is rate-limited to ~1 req/s and hits hard 429s during `--all` runs**.
 A free API key raises your quota significantly. Precedence is the same as all other
 config: env > `~/.config/braincrawl/config.toml` > none. The env var is
 `BRAINCRAWL_SEMANTICSCHOLAR_API_KEY`.
@@ -95,18 +114,20 @@ config: env > `~/.config/braincrawl/config.toml` > none. The env var is
 **If the user wants to use `semanticscholar` and no key is configured, walk them through
 getting one** rather than silently running keyless. Point at `SETUP.md` (same directory as
 this skill) for step-by-step key acquisition, configuration, and verification. Do not just
-start snowballing — a keyless `--all` will cascade 429s.
+start an `--all` run — a keyless run will cascade 429s.
 
-## 3. Build coverage (the funnel = graph traversal)
+## 3. Get more catalog entries (the funnel = graph traversal)
 
 This is the inventory phase. Do not verify or kill anything here — just accrete.
+**Precondition: you reach this section only after §0 — the existing L3 docs don't cover the
+question, and you've named the gap.** If they do cover it, stop — you're done at step 0.
 
 ```bash
-# Seed — find landmark works (you don't know the seeds entering a new field)
+# First search — find landmark works (you don't know the starting work entering a new field)
 braincrawl --text --limit 5 openalex search works "salt silt ancient mesopotamian agriculture"
 # → W2031938753 "Salt and Silt in Ancient Mesopotamian Agriculture" (the landmark)
 
-# Snowball FORWARD (cited-by) — old/humanities works have almost no backward refs,
+# Follow citations FORWARD (cited-by) — old/humanities works have almost no backward refs,
 # but forward citations are rich. This pushes nodes AND edges into the Catalog.
 braincrawl --text --all openalex cited-by W2031938753
 
@@ -119,14 +140,14 @@ braincrawl --text graph neighborhood openalex:W2031938753 --dir backward --depth
 
 **Reach for Semantic Scholar when OpenAlex coverage is patchy** — older or humanities
 works often have missing abstracts and empty `refs` in OpenAlex, but S2 has them.
-S2 pushes into the **same** Library/Catalog and merges on DOI via the server, so coverage
-compounds across both providers automatically.
+S2 pushes into the **same** Library/Catalog and merges on DOI via the server, so the
+gathered catalog entries compound across both providers automatically.
 
 ```bash
 # S2 lookup by DOI or paperId
 braincrawl --text semanticscholar get DOI:10.1126/science.aaf2654 --abstract
 
-# Forward snowball via S2 (writes citation edges into the Catalog)
+# Follow citations forward via S2 (writes citation edges into the Catalog)
 braincrawl --text --all semanticscholar cited-by <paperId>
 
 # Backward refs via S2
@@ -139,10 +160,10 @@ braincrawl --text semanticscholar search papers "salt silt mesopotamian agricult
 S2 IDs: bare 40-hex `paperId`, `DOI:<doi>`, `ARXIV:<id>`, `CorpusId:<n>`. Bare numerics are
 ambiguous — prefix them. Authors: bare `authorId` or `ORCID:<orcid>`.
 
-**Watch for citation drift** (GOALS §"Graph-building strategy"). The most-cited
+**Watch for citations leading off-topic** (GOALS §"Graph-building strategy"). The most-cited
 descendants of an ancient-history paper are often modern plant-biology/agronomy works —
-forward-mining by raw influence marches out of the field. Control it at the edge query:
-filter forward expansion by concept/topic, e.g.
+following forward citations by raw influence marches out of the field. Control it at the
+edge query: filter forward expansion by concept/topic, e.g.
 
 ```bash
 # stay in-domain: works citing the landmark, filtered to an OpenAlex concept/topic
@@ -158,39 +179,42 @@ Other useful verbs: `openalex get <id>` (single entity; id can be `W…/A…/S�
 <query>`, `openalex autocomplete <entity> <prefix>`. Entities: works, authors, sources,
 institutions, topics, keywords, publishers, funders.
 
-## 4. Read by progressive disclosure (the query ladder — cheap layer first)
+## 4. Read by progressive disclosure (cheap first)
 
-Decisiveness is *reading*, and reading has a cost gradient. **Always answer a question at
-the cheapest rung that suffices, and only climb when the angle isn't covered.** Don't
-fulltext-fetch a paper whose title already disqualifies it; don't hydrate 40 abstracts when
+Reading and judging has a cost gradient. **Always answer a question at
+the cheapest step that suffices, and only go deeper when the angle isn't covered.** Don't
+fetch fulltext for a paper whose title already disqualifies it; don't fetch 40 abstracts when
 the in-degree ranking already names the three that matter.
 
-The ladder, cheapest → dearest:
+From cheapest to dearest:
 
+0. **Your L3 Research Collection** — the docs you already wrote (`l3 list` → Read the match).
+   Cheapest by far and usually enough: a doc's Findings + domain edges are a prior gathering
+   phase already distilled. Exhaust this step before any provider call (§0).
 1. **Catalog** — titles, authors, in-degree, citation edges. `graph neighborhood`,
    `openalex search/find`, `cited-by`/`refs`. Often a title + who-cites-whom is enough to
-   place a work or kill it. This rung is store-local (no provider call) once accreted.
+   place a work or rule it out. This step is store-local (no provider call) once gathered.
 2. **Abstracts** — `--abstract` (pair with `--fields title,publication_year,abstract` to
-   skip the JSON dump). The workhorse rung: usually answers "what does this argue, and does
+   skip the JSON dump). The workhorse step: usually answers "what does this argue, and does
    it bear on my question?" **Coverage is uneven** — old/closed works may have *no* abstract
-   (e.g. Jacobsen & Adams 1958), and some publishers (De Gruyter) return a boilerplate stub,
-   not real content. When OpenAlex is blank, S2 is the gap-filler (§3).
+   (e.g. Jacobsen & Adams 1958), and some publishers (De Gruyter) return a boilerplate
+   placeholder, not real content. When OpenAlex is blank, S2 is the gap-filler (§3).
 3. **AI-condensed summary** — fetch fulltext and have an agent distill it to the claim you
    need. *Not yet a CLI capability* (see "Capability gaps" below) — today you bridge it by
    fetching the source yourself (WebFetch/the open-access PDF) and condensing in-context.
-4. **Full text** — read the whole work. The dearest rung; reserve for the load-bearing few
+4. **Full text** — read the whole work. The dearest step; reserve for the load-bearing few
    a finding actually hangs on. The Library is designed to hold fulltext "on demand," but the CLI
    exposes no fulltext verb yet.
 
-Worked loop: a temple-formation question returned *nothing* on the held graph (rung 1
-miss) → seeded `openalex search "origins of the temple economy…"` → one `--abstract`
-hydrate of the landmark (rung 2) carried the full Gelb/Diakonoff vs Deimel answer. Rungs
+Worked loop: a temple-formation question returned *nothing* on the held graph (step 1
+miss) → ran `openalex search "origins of the temple economy…"` → one `--abstract`
+read of the landmark (step 2) carried the full Gelb/Diakonoff vs Deimel answer. Steps
 3–4 never needed. That is the target shape: climb only as far as the question forces you.
 
 **Capability gaps (as of this writing).** The CLI top-level verbs are `openalex`,
-`semanticscholar`, `graph`, `stats` — rungs 1–2 are implemented; **rungs 3–4 are not**
+`semanticscholar`, `graph`, `stats` — steps 1–2 are implemented; **steps 3–4 are not**
 (no fulltext fetch, no condense/summarize verb, no `store` subcommand despite older
-quick-ref mentions). Until they land, treat rung 3 as a manual bridge. When you hit a
+quick-ref mentions). Until they land, treat step 3 as a manual bridge. When you hit a
 question that genuinely needs fulltext, *say so explicitly* and name it as the capability
 to add rather than silently stopping at abstracts.
 
@@ -199,9 +223,9 @@ to add rather than silently stopping at abstracts.
 Research Documents are **not** scattered in per-project repos anymore. They live in **one
 consolidated store** — a single directory, one `<doc>.l3.md` markdown file per item —
 and you create, locate, and list them through the `braincrawl l3` CLI. Each document records
-*your* selections, questions, findings, and domain edges, each pointing at a **canonical
-/ OpenAlex id** in the shared store. It never copies titles, abstracts, or metadata except
-as a human-readable convenience — the id is the source of truth; re-hydrate from the store
+*your* selections, questions, findings, and domain edges, each pointing at a **UUID
+(or OpenAlex id)** in the shared store. It never copies titles, abstracts, or metadata except
+as a human-readable convenience — the id is the source of truth; look it back up from the store
 when you need the facts.
 
 ### The store location (config-driven)
@@ -227,7 +251,7 @@ contract is split:
   These are the *required* keys (`l3 check` warns on any missing). The set grows over time
   as conventions firm up — that is the one place the contract tightens.
 - **Body (free — this is the experimentation zone).** Everything below the frontmatter is
-  yours. The only body rule is the Research Collection invariant: **reference canonical ids, never copy
+  yours. The only body rule is the Research Collection invariant: **reference UUIDs, never copy
   metadata.** Many document designs coexist because each doc *declares* its `schema:`; the
   linter only checks what that schema requires. `schema: freeform` = no body lint at all
   (the escape hatch — full consolidation + indexing, zero layout constraint).
@@ -258,21 +282,21 @@ Maintenance loop, each research session:
    its absolute path, then read/edit that file.
 2. **Ask the Research Collection first.** Read your selection set. Can the open question be answered from ids
    you already hold? `braincrawl graph neighborhood openalex:<id> …` and `openalex get
-   <id> --abstract` hydrate them from the store — no re-fetch.
-3. **If not, expand coverage** (§3): seed/snowball into the Library/Catalog. New works land in the
+   <id> --abstract` read them back from the store — no re-fetch.
+3. **If not, gather more** (§3): find a starting work and follow citations into the Library/Catalog. New works land in the
    shared store automatically (push-on-by-default).
-4. **Project the keepers into the Research Collection.** Add the canonical ids that matter to your selection
+4. **Project the keepers into the Research Collection.** Add the UUIDs that matter to your selection
    set with tags + a one-line note; add domain edges (`supports`/`refutes`/`builds-on`)
    linked to your questions. Keep notes terse — they annotate, they don't restate.
-5. **Decide at query time, not now.** Verification is a *lens you choose later*, never an
-   up-front kill-gate. Coverage stays inclusive; decisiveness happens when you query.
+5. **Read and judge at query time, not now.** Verification is a *lens you choose later*, never an
+   up-front kill-gate. Gathering stays inclusive; reading and judging happens when you query.
 6. **Reindex** (`braincrawl l3 index`) if you want `INDEX.md` refreshed. The store is plain
    markdown under git — commit it like any repo.
 
 ### Rules that keep the Research Collection honest
-- **Reference, never copy.** Store ids, not metadata. Re-hydrate from the server.
-- **Canonical ids are the join key.** Prefer `openalex:W…`; the store resolves DOIs/ISBNs
-  to the same canonical node, so any id form is safe but be consistent.
+- **Reference, never copy.** Store ids, not metadata. Look it back up from the server when you need the facts.
+- **UUIDs are the join key.** Prefer `openalex:W…`; the store resolves DOIs/ISBNs
+  to the same UUID, so any id form is safe but be consistent.
 - **One doc per item, in the consolidated store.** Don't create `.l3.md` files by hand in
   random repos — go through `l3 new`/`l3 import` so nothing scatters.
 - **Edges and questions are yours.** Catalog edges are neutral citations; Research Collection edges
@@ -289,11 +313,11 @@ Maintenance loop, each research session:
 | Server up/down + health | `just server-status` |
 | Stop server | `just server-stop` |
 | Find landmark | `braincrawl --text openalex search works "<query>"` |
-| Forward snowball | `braincrawl --text --all openalex cited-by <Wid>` |
+| Follow citations forward | `braincrawl --text --all openalex cited-by <Wid>` |
 | Backward refs | `braincrawl --text openalex refs <Wid>` |
 | In-domain expand | `braincrawl --text openalex find works "cites:<Wid>" "concepts.id:<Cid>"` |
 | Read graph back | `braincrawl --text graph neighborhood openalex:<Wid> --dir backward --depth 1` |
-| Hydrate one work | `braincrawl openalex get <Wid> --abstract` |
+| Read one work from store | `braincrawl openalex get <Wid> --abstract` |
 | Peek store | `braincrawl store get openalex:<Wid>` |
 | **New Research Document** | `braincrawl l3 new <doc> --schema spine` |
 | **Locate Research Document** | `braincrawl l3 path <doc>` |
@@ -301,7 +325,7 @@ Maintenance loop, each research session:
 | **Lint Research Document** | `braincrawl l3 check <doc>` / `--all` |
 | **Adopt existing md** | `braincrawl l3 import <file>` |
 | **S2 lookup** | `braincrawl --text semanticscholar get DOI:<doi> --abstract` |
-| **S2 forward snowball** | `braincrawl --text --all semanticscholar cited-by <paperId>` |
+| **S2 follow citations forward** | `braincrawl --text --all semanticscholar cited-by <paperId>` |
 | **S2 backward refs** | `braincrawl --text semanticscholar refs <paperId>` |
 | **S2 paper search** | `braincrawl --text semanticscholar search papers "<query>"` |
 
