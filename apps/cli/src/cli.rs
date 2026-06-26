@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "braincrawl", about = "braincrawl research graph CLI")]
+#[command(name = "braincrawl", version, about = "braincrawl research graph CLI")]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,
@@ -52,13 +52,13 @@ pub enum Namespace {
     Opencitations(OpencitationsArgs),
     #[command(name = "fetch-content", about = "Acquire a work's fulltext artifact from the open web into the store")]
     FetchContent(FetchContentArgs),
-    #[command(name = "extract-text", about = "Extract text from a work's stored fulltext PDF payload")]
+    #[command(name = "extract-text", about = "Extract text from a work's stored fulltext PDF artifact")]
     ExtractText(ExtractTextArgs),
     #[command(name = "fetch-pdf", about = "Resolve and download a work's fulltext artifact to stdout (no store write)")]
     FetchPdf(FetchPdfArgs),
-    #[command(name = "push-pdf", about = "Store fulltext bytes from stdin or a file as a work's fulltext payload")]
+    #[command(name = "push-pdf", about = "Store fulltext bytes from stdin or a file as a work's fulltext artifact")]
     PushPdf(PushPdfArgs),
-    #[command(name = "get-pdf", about = "Read a work's stored fulltext payload bytes to stdout")]
+    #[command(name = "get-pdf", about = "Read a work's stored fulltext artifact bytes to stdout")]
     GetPdf(GetPdfArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
@@ -138,7 +138,7 @@ pub struct FetchContentArgs {
     /// Where to resolve the artifact URL from (auto|openalex|unpaywall)
     #[arg(long, default_value = "auto")]
     pub from: String,
-    /// Re-fetch even if a fulltext payload already exists
+    /// Re-fetch even if a fulltext artifact already exists
     #[arg(long)]
     pub force: bool,
     /// Only accept a PDF artifact (reject HTML or other content types)
@@ -176,10 +176,10 @@ pub struct PushPdfArgs {
     /// Content mime type (default: sniff %PDF, else application/octet-stream)
     #[arg(long)]
     pub mime: Option<String>,
-    /// Optional source label recorded with the payload
+    /// Optional source label recorded with the artifact
     #[arg(long)]
     pub source: Option<String>,
-    /// Optional source URL recorded with the payload
+    /// Optional source URL recorded with the artifact
     #[arg(long = "source-url")]
     pub source_url: Option<String>,
 }

@@ -18,11 +18,11 @@ const MAX_ARTIFACT_BYTES: usize = 50 * 1024 * 1024;
 /// Acquire the fulltext artifact for `id` from the open web and store it.
 ///
 /// Decision flow:
-/// 1. Idempotency — skip if a Bytes payload already exists (unless `force`).
+/// 1. Idempotency — skip if a Bytes artifact already exists (unless `force`).
 /// 2. Resolve a downloadable URL from stored OpenAlex attrs and/or Unpaywall.
 /// 3. Download the artifact (60 s timeout, 50 MB cap).
 /// 4. Validate %PDF magic if `require_pdf` or the mime/URL suggest PDF.
-/// 5. PUT to the store as a Fulltext payload.
+/// 5. PUT to the store as a Fulltext artifact.
 pub fn fetch_content(
     store: &StoreClient,
     unpaywall_email: Option<&str>,
@@ -93,8 +93,7 @@ pub fn fetch_content(
 // ── URL resolution ────────────────────────────────────────────────────────────
 
 /// Resolve and download the artifact for `id` WITHOUT writing to the store.
-/// Returns (bytes, mime, artifact_url). Errors if no downloadable URL exists
-/// (no LinkOnly fallback — that belongs to fetch_content).
+/// Returns (bytes, mime, artifact_url). Errors if no downloadable URL exists.
 pub fn fetch_artifact_bytes(
     store: &StoreClient,
     unpaywall_email: Option<&str>,

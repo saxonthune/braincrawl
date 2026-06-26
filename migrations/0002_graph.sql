@@ -1,6 +1,6 @@
 -- Identity, metadata, and citation-graph schema.
 -- The canonical id is a braincrawl-minted GUID (doc02.01.02) and is the join key
--- across every table, including payloads (0001_init).
+-- across every table, including artifacts (0001_init).
 --
 -- There are only two node-shaped tables and two edge-shaped tables: works,
 -- authors, venues, concepts, and topics are all `node`s, differing only in

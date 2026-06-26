@@ -22,7 +22,7 @@ pub enum NodeKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum PayloadKind {
+pub enum ArtifactRole {
     Abstract,
     Fulltext,
 }
@@ -35,9 +35,9 @@ pub struct StoredBlob {
 }
 
 #[derive(Clone)]
-pub struct PayloadDescriptor {
+pub struct Artifact {
     pub canonical_id: CanonicalId,
-    pub kind: PayloadKind,
+    pub role: ArtifactRole,
     pub version: u32,
     pub r2_key: String,
     pub content_hash: String,

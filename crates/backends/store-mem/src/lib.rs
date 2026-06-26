@@ -1,4 +1,4 @@
-//! `PayloadsRepo` + `MetadataStore` backed by `RefCell<HashMap>` (for tests).
+//! `ArtifactStore` + `MetadataStore` backed by `RefCell<HashMap>` (for tests).
 //!
 //! Implements real union-find/merge/dedup semantics against in-memory tables that mirror
 //! the SQL schema in migrations/0001_init.sql + 0002_graph.sql.
@@ -10,10 +10,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use async_trait::async_trait;
 use braincrawl_core::{
-    traits::{MetadataStore, PayloadsRepo},
+    traits::{MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor,
-        PayloadKind, Tally,
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, Artifact,
+        ArtifactRole, Tally,
     },
 };
 
@@ -56,8 +56,8 @@ struct MemStoreInner {
     node_assertions: HashMap<(String, String), NodeAssertionRow>,
     /// edge + edge_assertion: (src.0, dst.0, relation) → {source → assertion}
     edges: HashMap<(String, String, String), EdgeAssertions>,
-    /// payloads: (canonical_id.0, kind_str) → versions (ordered by version)
-    payloads: HashMap<(String, String), Vec<PayloadDescriptor>>,
+    /// artifacts: (canonical_id.0, role_str) → versions (ordered by version)
+    artifacts: HashMap<(String, String), Vec<Artifact>>,
 }
 
 impl MemStoreInner {
@@ -67,14 +67,14 @@ impl MemStoreInner {
             aliases: HashMap::new(),
             node_assertions: HashMap::new(),
             edges: HashMap::new(),
-            payloads: HashMap::new(),
+            artifacts: HashMap::new(),
         }
     }
 
-    fn kind_str(kind: &PayloadKind) -> &'static str {
-        match kind {
-            PayloadKind::Abstract => "abstract",
-            PayloadKind::Fulltext => "fulltext",
+    fn role_str(role: &ArtifactRole) -> &'static str {
+        match role {
+            ArtifactRole::Abstract => "abstract",
+            ArtifactRole::Fulltext => "fulltext",
         }
     }
 
@@ -128,20 +128,20 @@ impl Default for MemStore {
 }
 
 // ---------------------------------------------------------------------------
-// PayloadsRepo
+// ArtifactStore
 // ---------------------------------------------------------------------------
 
 #[async_trait(?Send)]
-impl PayloadsRepo for MemStore {
-    async fn current_payload(
+impl ArtifactStore for MemStore {
+    async fn current_artifact(
         &self,
         id: &CanonicalId,
-        kind: PayloadKind,
-    ) -> Result<Option<PayloadDescriptor>, DomainError> {
+        kind: ArtifactRole,
+    ) -> Result<Option<Artifact>, DomainError> {
         let inner = self.inner.borrow();
-        let key = (id.0.clone(), MemStoreInner::kind_str(&kind).to_string());
+        let key = (id.0.clone(), MemStoreInner::role_str(&kind).to_string());
         Ok(inner
-            .payloads
+            .artifacts
             .get(&key)
             .and_then(|rows| rows.iter().find(|d| d.is_current))
             .cloned())
@@ -150,23 +150,23 @@ impl PayloadsRepo for MemStore {
     async fn next_version(
         &self,
         id: &CanonicalId,
-        kind: PayloadKind,
+        kind: ArtifactRole,
     ) -> Result<u32, DomainError> {
         let inner = self.inner.borrow();
-        let key = (id.0.clone(), MemStoreInner::kind_str(&kind).to_string());
+        let key = (id.0.clone(), MemStoreInner::role_str(&kind).to_string());
         let next = inner
-            .payloads
+            .artifacts
             .get(&key)
             .map(|rows| rows.iter().map(|d| d.version).max().unwrap_or(0) + 1)
             .unwrap_or(1);
         Ok(next)
     }
 
-    async fn record(&self, descriptor: &PayloadDescriptor) -> Result<(), DomainError> {
+    async fn record(&self, descriptor: &Artifact) -> Result<(), DomainError> {
         let mut inner = self.inner.borrow_mut();
-        let kind_str = MemStoreInner::kind_str(&descriptor.kind).to_string();
-        let key = (descriptor.canonical_id.0.clone(), kind_str);
-        let rows = inner.payloads.entry(key).or_default();
+        let role_str = MemStoreInner::role_str(&descriptor.role).to_string();
+        let key = (descriptor.canonical_id.0.clone(), role_str);
+        let rows = inner.artifacts.entry(key).or_default();
         if descriptor.is_current {
             for row in rows.iter_mut() {
                 row.is_current = false;
@@ -249,7 +249,7 @@ impl MetadataStore for MemStore {
         inner.resolve_live_sync(&id.0).map(CanonicalId)
     }
 
-    /// Repoints aliases/assertions/edges/payloads from loser to survivor, folds PK
+    /// Repoints aliases/assertions/edges/artifacts from loser to survivor, folds PK
     /// collisions, tombstones the loser.
     async fn merge(
         &self,
@@ -323,18 +323,18 @@ impl MetadataStore for MemStore {
             }
         }
 
-        // 5. Repoint payloads; mark loser versions not-current if survivor has a current one.
-        let loser_payload_keys: Vec<(String, String)> = inner
-            .payloads
+        // 5. Repoint artifacts; mark loser versions not-current if survivor has a current one.
+        let loser_artifact_keys: Vec<(String, String)> = inner
+            .artifacts
             .keys()
             .filter(|(id, _)| *id == loser.0)
             .cloned()
             .collect();
-        for old_key in loser_payload_keys {
-            let mut rows = inner.payloads.remove(&old_key).unwrap();
+        for old_key in loser_artifact_keys {
+            let mut rows = inner.artifacts.remove(&old_key).unwrap();
             let new_key = (survivor.0.clone(), old_key.1.clone());
             let survivor_has_current = inner
-                .payloads
+                .artifacts
                 .get(&new_key)
                 .map(|rs| rs.iter().any(|d| d.is_current))
                 .unwrap_or(false);
@@ -344,7 +344,7 @@ impl MetadataStore for MemStore {
                 }
             }
             inner
-                .payloads
+                .artifacts
                 .entry(new_key)
                 .or_default()
                 .extend(rows);

@@ -1,4 +1,4 @@
-//! `PayloadsRepo` + `MetadataStore` backed by Cloudflare D1.
+//! `ArtifactStore` + `MetadataStore` backed by Cloudflare D1.
 //!
 //! Without the `cloudflare` feature, stubs are compiled for host builds.
 //! With the `cloudflare` feature, the real implementation uses `workers-rs`
@@ -18,8 +18,8 @@
 
 use async_trait::async_trait;
 use braincrawl_core::{
-    traits::{MetadataStore, PayloadsRepo},
-    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor, PayloadKind},
+    traits::{MetadataStore, ArtifactStore},
+    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, Artifact, ArtifactRole},
 };
 #[cfg(feature = "cloudflare")]
 use braincrawl_core::types::Tally;
@@ -47,18 +47,18 @@ fn parse_node_kind(s: &str) -> Result<NodeKind, DomainError> {
     }
 }
 
-fn payload_kind_str(k: &PayloadKind) -> &'static str {
+fn artifact_role_str(k: &ArtifactRole) -> &'static str {
     match k {
-        PayloadKind::Abstract => "abstract",
-        PayloadKind::Fulltext => "fulltext",
+        ArtifactRole::Abstract => "abstract",
+        ArtifactRole::Fulltext => "fulltext",
     }
 }
 
-fn parse_payload_kind(s: &str) -> Result<PayloadKind, DomainError> {
+fn parse_artifact_role(s: &str) -> Result<ArtifactRole, DomainError> {
     match s {
-        "abstract" => Ok(PayloadKind::Abstract),
-        "fulltext" => Ok(PayloadKind::Fulltext),
-        other => Err(DomainError::Backend(format!("unknown PayloadKind: {other}"))),
+        "abstract" => Ok(ArtifactRole::Abstract),
+        "fulltext" => Ok(ArtifactRole::Fulltext),
+        other => Err(DomainError::Backend(format!("unknown ArtifactRole: {other}"))),
     }
 }
 
@@ -73,14 +73,14 @@ pub struct D1Store;
 
 #[cfg(not(feature = "cloudflare"))]
 #[async_trait(?Send)]
-impl PayloadsRepo for D1Store {
-    async fn current_payload(&self, _id: &CanonicalId, _kind: PayloadKind) -> Result<Option<PayloadDescriptor>, DomainError> {
+impl ArtifactStore for D1Store {
+    async fn current_artifact(&self, _id: &CanonicalId, _kind: ArtifactRole) -> Result<Option<Artifact>, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
-    async fn next_version(&self, _id: &CanonicalId, _kind: PayloadKind) -> Result<u32, DomainError> {
+    async fn next_version(&self, _id: &CanonicalId, _kind: ArtifactRole) -> Result<u32, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
-    async fn record(&self, _descriptor: &PayloadDescriptor) -> Result<(), DomainError> {
+    async fn record(&self, _descriptor: &Artifact) -> Result<(), DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
 }
@@ -161,20 +161,20 @@ impl D1Store {
     }
 }
 
-// ── PayloadsRepo ──────────────────────────────────────────────────────────────
+// ── ArtifactStore ──────────────────────────────────────────────────────────────
 
 #[cfg(feature = "cloudflare")]
 #[async_trait(?Send)]
-impl PayloadsRepo for D1Store {
-    async fn current_payload(
+impl ArtifactStore for D1Store {
+    async fn current_artifact(
         &self,
         id: &CanonicalId,
-        kind: PayloadKind,
-    ) -> Result<Option<PayloadDescriptor>, DomainError> {
+        kind: ArtifactRole,
+    ) -> Result<Option<Artifact>, DomainError> {
         #[derive(serde::Deserialize)]
         struct Row {
             canonical_id: String,
-            kind: String,
+            role: String,
             version: i64,
             r2_key: String,
             content_hash: String,
@@ -187,15 +187,15 @@ impl PayloadsRepo for D1Store {
         }
         let stmt = prep(
             &self.db,
-            braincrawl_sql::payload::SELECT_CURRENT,
-            &[s(&id.0), s(payload_kind_str(&kind))],
+            braincrawl_sql::artifact::SELECT_CURRENT,
+            &[s(&id.0), s(artifact_role_str(&kind))],
         )?;
         let row = stmt.first::<Row>(None).await.map_err(be)?;
         match row {
             None => Ok(None),
-            Some(r) => Ok(Some(PayloadDescriptor {
+            Some(r) => Ok(Some(Artifact {
                 canonical_id: CanonicalId(r.canonical_id),
-                kind: parse_payload_kind(&r.kind)?,
+                role: parse_artifact_role(&r.role)?,
                 version: r.version as u32,
                 r2_key: r.r2_key,
                 content_hash: r.content_hash,
@@ -209,33 +209,33 @@ impl PayloadsRepo for D1Store {
         }
     }
 
-    async fn next_version(&self, id: &CanonicalId, kind: PayloadKind) -> Result<u32, DomainError> {
+    async fn next_version(&self, id: &CanonicalId, kind: ArtifactRole) -> Result<u32, DomainError> {
         #[derive(serde::Deserialize)]
         struct Row { next_version: i64 }
         let stmt = prep(
             &self.db,
-            braincrawl_sql::payload::NEXT_VERSION,
-            &[s(&id.0), s(payload_kind_str(&kind))],
+            braincrawl_sql::artifact::NEXT_VERSION,
+            &[s(&id.0), s(artifact_role_str(&kind))],
         )?;
         let row = stmt.first::<Row>(None).await.map_err(be)?;
         Ok(row.map(|r| r.next_version as u32).unwrap_or(1))
     }
 
-    async fn record(&self, d: &PayloadDescriptor) -> Result<(), DomainError> {
+    async fn record(&self, d: &Artifact) -> Result<(), DomainError> {
         let mut stmts = Vec::new();
         if d.is_current {
             stmts.push(prep(
                 &self.db,
-                braincrawl_sql::payload::FLIP_CURRENT_OFF,
-                &[s(&d.canonical_id.0), s(payload_kind_str(&d.kind))],
+                braincrawl_sql::artifact::FLIP_CURRENT_OFF,
+                &[s(&d.canonical_id.0), s(artifact_role_str(&d.role))],
             )?);
         }
         stmts.push(prep(
             &self.db,
-            braincrawl_sql::payload::INSERT,
+            braincrawl_sql::artifact::INSERT,
             &[
                 s(&d.canonical_id.0),
-                s(payload_kind_str(&d.kind)),
+                s(artifact_role_str(&d.role)),
                 n(d.version as i64),
                 s(&d.r2_key),
                 s(&d.content_hash),
@@ -392,10 +392,10 @@ impl MetadataStore for D1Store {
             // 7. Edge dst repoint.
             prep(&self.db, braincrawl_sql::edge::MERGE_EDGE_DST_DELETE_CONFLICTS, &[s(ls), s(sv)])?,
             prep(&self.db, braincrawl_sql::edge::MERGE_EDGE_DST_REPOINT, &[s(sv), s(ls)])?,
-            // 8. Payload merge.
-            prep(&self.db, braincrawl_sql::payload::MERGE_DEMOTE_LOSER_CURRENT, &[s(ls), s(sv)])?,
-            prep(&self.db, braincrawl_sql::payload::MERGE_REPOINT, &[s(sv), s(ls)])?,
-            prep(&self.db, braincrawl_sql::payload::MERGE_DELETE_LOSER, &[s(ls)])?,
+            // 8. Artifact merge.
+            prep(&self.db, braincrawl_sql::artifact::MERGE_DEMOTE_LOSER_CURRENT, &[s(ls), s(sv)])?,
+            prep(&self.db, braincrawl_sql::artifact::MERGE_REPOINT, &[s(sv), s(ls)])?,
+            prep(&self.db, braincrawl_sql::artifact::MERGE_DELETE_LOSER, &[s(ls)])?,
         ];
         self.db.batch(stmts).await.map_err(be)?;
         Ok(())

@@ -31,7 +31,7 @@ use braincrawl_blob_r2::R2BlobStore;
 use braincrawl_core::{
     traits::{Clock, Coordinator, IdGen, LockGuard},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, PayloadKind,
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, ArtifactRole,
         WorkRecord,
     },
     usecases::Store,
@@ -182,10 +182,10 @@ fn parse_alias(id_str: &str) -> Option<Alias> {
     })
 }
 
-fn parse_payload_kind(s: &str) -> Option<PayloadKind> {
+fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
     match s {
-        "abstract" => Some(PayloadKind::Abstract),
-        "fulltext" => Some(PayloadKind::Fulltext),
+        "abstract" => Some(ArtifactRole::Abstract),
+        "fulltext" => Some(ArtifactRole::Fulltext),
         _ => None,
     }
 }
@@ -212,14 +212,14 @@ fn bad_request(msg: &str) -> worker::Result<Response> {
 fn build_store(env: &Env) -> worker::Result<WorkerStore> {
     let bucket = env.bucket("BLOB_BUCKET")?;
     let meta_db = env.d1("DB")?;
-    let payload_db = env.d1("DB")?;
+    let artifact_db = env.d1("DB")?;
     let kv = env.kv("ID_RESOLVER_KV")?;
     let do_ns = env.durable_object("WORK_DO")?;
 
     Ok(Store {
         meta: D1Store::new(meta_db),
         blob: R2BlobStore::new(bucket),
-        payloads: D1Store::new(payload_db),
+        artifacts: D1Store::new(artifact_db),
         resolver: KvResolver::new(kv),
         coord: DoCoordinator::new(do_ns),
         clock: WasmClock,
@@ -305,14 +305,14 @@ async fn handle_get_edges(
 
 async fn handle_get_content(
     id_str: &str,
-    kind_str: &str,
+    role_str: &str,
     store: &WorkerStore,
 ) -> worker::Result<Response> {
     let a = match parse_alias(id_str) {
         Some(a) => a,
         None => return bad_request("expected namespace:value"),
     };
-    let kind = match parse_payload_kind(kind_str) {
+    let kind = match parse_artifact_role(role_str) {
         Some(k) => k,
         None => return bad_request("invalid kind"),
     };
@@ -330,7 +330,7 @@ async fn handle_get_content(
 
 async fn handle_put_content(
     id_str: &str,
-    kind_str: &str,
+    role_str: &str,
     url: &Url,
     mut req: Request,
     store: &WorkerStore,
@@ -339,7 +339,7 @@ async fn handle_put_content(
         Some(a) => a,
         None => return bad_request("expected namespace:value"),
     };
-    let kind = match parse_payload_kind(kind_str) {
+    let kind = match parse_artifact_role(role_str) {
         Some(k) => k,
         None => return bad_request("invalid kind"),
     };
@@ -415,8 +415,8 @@ async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response>
                 // GET /works/*id/content/{kind}
                 if let Some(pos) = rest.rfind("/content/") {
                     let id_str = &rest[..pos];
-                    let kind_str = &rest[pos + "/content/".len()..];
-                    return handle_get_content(id_str, kind_str, &store).await;
+                    let role_str = &rest[pos + "/content/".len()..];
+                    return handle_get_content(id_str, role_str, &store).await;
                 }
                 // GET /works/*id  — plain work lookup
                 return handle_get_work(rest, &store).await;
@@ -425,8 +425,8 @@ async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response>
                 // PUT /works/*id/content/{kind}
                 if let Some(pos) = rest.rfind("/content/") {
                     let id_str = &rest[..pos];
-                    let kind_str = &rest[pos + "/content/".len()..];
-                    return handle_put_content(id_str, kind_str, &url, req, &store).await;
+                    let role_str = &rest[pos + "/content/".len()..];
+                    return handle_put_content(id_str, role_str, &url, req, &store).await;
                 }
                 return Response::error("not found", 404);
             }

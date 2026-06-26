@@ -237,7 +237,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ContentOutcome::Bytes { bytes, mime } => {
                     if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
                         return Err(format!(
-                            "fulltext payload for {} is not a PDF (mime={})",
+                            "fulltext artifact for {} is not a PDF (mime={})",
                             args.id, mime
                         )
                         .into());
@@ -248,7 +248,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 ContentOutcome::Absent => {
                     return Err(format!(
-                        "no fulltext payload in store for {}; run fetch-content first",
+                        "no fulltext artifact in store for {}; run fetch-content first",
                         args.id
                     )
                     .into());
@@ -282,7 +282,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     println!("stored: {} bytes, mime={}", bytes_len, mime);
                 }
                 fetch_content::Outcome::AlreadyPresent => {
-                    println!("already-present: fulltext payload already in store (use --force to re-fetch)");
+                    println!("already-present: fulltext artifact already in store (use --force to re-fetch)");
                 }
                 fetch_content::Outcome::NoOaFound { reason } => {
                     return Err(format!("no-oa-found: {}", reason).into());
@@ -364,7 +364,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 ContentOutcome::Absent => {
                     return Err(format!(
-                        "no fulltext payload in store for {}; run fetch-content first",
+                        "no fulltext artifact in store for {}; run fetch-content first",
                         args.id
                     )
                     .into());

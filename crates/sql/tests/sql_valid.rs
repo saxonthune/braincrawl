@@ -1,4 +1,4 @@
-use braincrawl_sql::{alias, edge, edge_assertion, migrations, node, node_assertion, payload, stats};
+use braincrawl_sql::{alias, edge, edge_assertion, migrations, node, node_assertion, artifact, stats};
 use braincrawl_sql::{alias_pair_list, in_list};
 use rusqlite::{params, Connection};
 
@@ -49,14 +49,14 @@ fn all_queries_prepare() {
         // edge_assertion
         ("edge_assertion::UPSERT", edge_assertion::UPSERT),
         ("edge_assertion::SELECT_BY_EDGE", edge_assertion::SELECT_BY_EDGE),
-        // payload
-        ("payload::SELECT_CURRENT", payload::SELECT_CURRENT),
-        ("payload::NEXT_VERSION", payload::NEXT_VERSION),
-        ("payload::FLIP_CURRENT_OFF", payload::FLIP_CURRENT_OFF),
-        ("payload::INSERT", payload::INSERT),
-        ("payload::MERGE_DEMOTE_LOSER_CURRENT", payload::MERGE_DEMOTE_LOSER_CURRENT),
-        ("payload::MERGE_REPOINT", payload::MERGE_REPOINT),
-        ("payload::MERGE_DELETE_LOSER", payload::MERGE_DELETE_LOSER),
+        // artifact
+        ("artifact::SELECT_CURRENT", artifact::SELECT_CURRENT),
+        ("artifact::NEXT_VERSION", artifact::NEXT_VERSION),
+        ("artifact::FLIP_CURRENT_OFF", artifact::FLIP_CURRENT_OFF),
+        ("artifact::INSERT", artifact::INSERT),
+        ("artifact::MERGE_DEMOTE_LOSER_CURRENT", artifact::MERGE_DEMOTE_LOSER_CURRENT),
+        ("artifact::MERGE_REPOINT", artifact::MERGE_REPOINT),
+        ("artifact::MERGE_DELETE_LOSER", artifact::MERGE_DELETE_LOSER),
         // stats
         ("stats::WORKS", stats::WORKS),
         ("stats::WORKS_DESCRIBED", stats::WORKS_DESCRIBED),
@@ -159,25 +159,25 @@ fn happy_path() {
         .unwrap();
     assert_eq!(ea_src, "openalex");
 
-    // Payload: next_version → flip_current_off → insert → select_current.
+    // Artifact: next_version → flip_current_off → insert → select_current.
     let next: i64 =
-        conn.query_row(payload::NEXT_VERSION, params!["n1", "abstract"], |r| r.get(0))
+        conn.query_row(artifact::NEXT_VERSION, params!["n1", "abstract"], |r| r.get(0))
             .unwrap();
     assert_eq!(next, 1);
 
-    conn.execute(payload::FLIP_CURRENT_OFF, params!["n1", "abstract"]).unwrap();
+    conn.execute(artifact::FLIP_CURRENT_OFF, params!["n1", "abstract"]).unwrap();
     conn.execute(
-        payload::INSERT,
-        params!["n1", "abstract", 1i64, "n1/abstract/v1", "sha256:abc", 100i64, "text/plain", "open", Option::<String>::None, Option::<String>::None, ts, 1i64],
+        artifact::INSERT,
+        params!["n1", "abstract", 1i64, "n1/abstract/v1", "sha256:abc", 100i64, "text/plain", Option::<String>::None, Option::<String>::None, ts, 1i64],
     )
     .unwrap();
 
-    let (kind, ver, is_curr): (String, i64, i64) = conn
-        .query_row(payload::SELECT_CURRENT, params!["n1", "abstract"], |r| {
-            Ok((r.get(1)?, r.get(2)?, r.get(11)?))
+    let (role, ver, is_curr): (String, i64, i64) = conn
+        .query_row(artifact::SELECT_CURRENT, params!["n1", "abstract"], |r| {
+            Ok((r.get(1)?, r.get(2)?, r.get(10)?))
         })
         .unwrap();
-    assert_eq!(kind, "abstract");
+    assert_eq!(role, "abstract");
     assert_eq!(ver, 1);
     assert_eq!(is_curr, 1);
 

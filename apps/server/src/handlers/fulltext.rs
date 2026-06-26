@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use braincrawl_core::{
     traits::FetchHandler,
-    types::{Alias, ContentOutcome, DomainError, Job, JobKind, PayloadKind},
+    types::{Alias, ContentOutcome, DomainError, Job, JobKind, ArtifactRole},
 };
 
 use crate::LocalStore;
@@ -31,10 +31,10 @@ impl FetchHandler for FulltextHandler {
             DomainError::Backend(format!("invalid target_id: {}", job.target_id))
         })?;
 
-        // Idempotency: skip if bytes payload already present.
+        // Idempotency: skip if bytes artifact already present.
         if let ContentOutcome::Bytes { .. } = self
             .store
-            .get_content(alias.clone(), PayloadKind::Fulltext)
+            .get_content(alias.clone(), ArtifactRole::Fulltext)
             .await?
         {
             return Ok(());
@@ -97,7 +97,7 @@ impl FulltextHandler {
         self.store
             .put_content(
                 alias,
-                PayloadKind::Fulltext,
+                ArtifactRole::Fulltext,
                 bytes,
                 mime,
                 Some(source.to_string()),

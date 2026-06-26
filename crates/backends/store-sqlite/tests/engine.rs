@@ -42,7 +42,7 @@ fn make_store(dir: &std::path::Path) -> TestStore {
     Store {
         meta: SqliteStore::open(&db_path).expect("open meta"),
         blob: FsBlobStore::new(blob_root),
-        payloads: SqliteStore::open(&db_path).expect("open payloads"),
+        artifacts: SqliteStore::open(&db_path).expect("open artifacts"),
         resolver: MemResolver::new(),
         coord: LocalCoordinator,
         clock: SystemClock,
@@ -244,7 +244,7 @@ async fn test_content_roundtrip() {
 
     s.put_content(
         alias("doi", "10.1/w"),
-        braincrawl_core::types::PayloadKind::Abstract,
+        braincrawl_core::types::ArtifactRole::Abstract,
         b"hello world".to_vec(),
         "text/plain".to_string(),
         Some("s".to_string()),
@@ -257,7 +257,7 @@ async fn test_content_roundtrip() {
     let outcome = s
         .get_content(
             alias("doi", "10.1/w"),
-            braincrawl_core::types::PayloadKind::Abstract,
+            braincrawl_core::types::ArtifactRole::Abstract,
         )
         .await
         .unwrap();
@@ -270,7 +270,7 @@ async fn test_content_roundtrip() {
     let absent = s
         .get_content(
             alias("doi", "10.1/nothing"),
-            braincrawl_core::types::PayloadKind::Abstract,
+            braincrawl_core::types::ArtifactRole::Abstract,
         )
         .await
         .unwrap();

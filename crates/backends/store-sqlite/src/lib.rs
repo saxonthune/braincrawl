@@ -1,4 +1,4 @@
-//! `PayloadsRepo` + `MetadataStore` backed by local SQLite via rusqlite.
+//! `ArtifactStore` + `MetadataStore` backed by local SQLite via rusqlite.
 //!
 //! Uses `std::sync::Mutex<Connection>` so that `SqliteStore: Send + Sync`.
 //! On a single-threaded runtime the mutex is never actually contended.
@@ -10,10 +10,10 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use braincrawl_core::{
-    traits::{JobEnqueuer, JobQueue, MetadataStore, PayloadsRepo},
+    traits::{JobEnqueuer, JobQueue, MetadataStore, ArtifactStore},
     types::{
         Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind,
-        JobSpec, NodeKind, PayloadDescriptor, PayloadKind, Tally,
+        JobSpec, NodeKind, Artifact, ArtifactRole, Tally,
     },
 };
 use rusqlite::{params, Connection, OptionalExtension};
@@ -41,18 +41,18 @@ fn parse_node_kind(s: &str) -> Result<NodeKind, DomainError> {
     }
 }
 
-fn payload_kind_str(k: &PayloadKind) -> &'static str {
+fn artifact_role_str(k: &ArtifactRole) -> &'static str {
     match k {
-        PayloadKind::Abstract => "abstract",
-        PayloadKind::Fulltext => "fulltext",
+        ArtifactRole::Abstract => "abstract",
+        ArtifactRole::Fulltext => "fulltext",
     }
 }
 
-fn parse_payload_kind(s: &str) -> Result<PayloadKind, DomainError> {
+fn parse_artifact_role(s: &str) -> Result<ArtifactRole, DomainError> {
     match s {
-        "abstract" => Ok(PayloadKind::Abstract),
-        "fulltext" => Ok(PayloadKind::Fulltext),
-        other => Err(DomainError::Backend(format!("unknown PayloadKind: {other}"))),
+        "abstract" => Ok(ArtifactRole::Abstract),
+        "fulltext" => Ok(ArtifactRole::Fulltext),
+        other => Err(DomainError::Backend(format!("unknown ArtifactRole: {other}"))),
     }
 }
 
@@ -95,7 +95,7 @@ fn apply_migrations(conn: &Connection) -> Result<(), DomainError> {
 
 // ─── SqliteStore ──────────────────────────────────────────────────────────────
 
-/// SQLite-backed `MetadataStore` + `PayloadsRepo`.
+/// SQLite-backed `MetadataStore` + `ArtifactStore`.
 ///
 /// `std::sync::Mutex<Connection>` makes the type `Send + Sync`; on a
 /// single-threaded runtime the mutex is never actually contended.
@@ -116,19 +116,19 @@ impl SqliteStore {
     }
 }
 
-// ─── PayloadsRepo ─────────────────────────────────────────────────────────────
+// ─── ArtifactStore ─────────────────────────────────────────────────────────────
 
 #[async_trait(?Send)]
-impl PayloadsRepo for SqliteStore {
-    async fn current_payload(
+impl ArtifactStore for SqliteStore {
+    async fn current_artifact(
         &self,
         id: &CanonicalId,
-        kind: PayloadKind,
-    ) -> Result<Option<PayloadDescriptor>, DomainError> {
+        kind: ArtifactRole,
+    ) -> Result<Option<Artifact>, DomainError> {
         let conn = self.conn.lock().unwrap();
-        let ks = payload_kind_str(&kind);
+        let ks = artifact_role_str(&kind);
         conn.query_row(
-            braincrawl_sql::payload::SELECT_CURRENT,
+            braincrawl_sql::artifact::SELECT_CURRENT,
             params![id.0, ks],
             |row| {
                 Ok((
@@ -147,9 +147,9 @@ impl PayloadsRepo for SqliteStore {
             },
         )
         .map(|(cid, ks2, ver, r2k, ch, bs, mime, src, su, fa, ic)| {
-            Some(PayloadDescriptor {
+            Some(Artifact {
                 canonical_id: CanonicalId(cid),
-                kind: parse_payload_kind(&ks2).unwrap_or(PayloadKind::Abstract),
+                role: parse_artifact_role(&ks2).unwrap_or(ArtifactRole::Abstract),
                 version: ver as u32,
                 r2_key: r2k,
                 content_hash: ch,
@@ -164,12 +164,12 @@ impl PayloadsRepo for SqliteStore {
         .or_else(|e| if is_no_rows(&e) { Ok(None) } else { Err(be(e)) })
     }
 
-    async fn next_version(&self, id: &CanonicalId, kind: PayloadKind) -> Result<u32, DomainError> {
+    async fn next_version(&self, id: &CanonicalId, kind: ArtifactRole) -> Result<u32, DomainError> {
         let conn = self.conn.lock().unwrap();
-        let ks = payload_kind_str(&kind);
+        let ks = artifact_role_str(&kind);
         let v: i64 = conn
             .query_row(
-                braincrawl_sql::payload::NEXT_VERSION,
+                braincrawl_sql::artifact::NEXT_VERSION,
                 params![id.0, ks],
                 |row| row.get(0),
             )
@@ -177,18 +177,18 @@ impl PayloadsRepo for SqliteStore {
         Ok(v as u32)
     }
 
-    async fn record(&self, d: &PayloadDescriptor) -> Result<(), DomainError> {
+    async fn record(&self, d: &Artifact) -> Result<(), DomainError> {
         let conn = self.conn.lock().unwrap();
-        let ks = payload_kind_str(&d.kind);
+        let ks = artifact_role_str(&d.role);
         if d.is_current {
             conn.execute(
-                braincrawl_sql::payload::FLIP_CURRENT_OFF,
+                braincrawl_sql::artifact::FLIP_CURRENT_OFF,
                 params![d.canonical_id.0, ks],
             )
             .map_err(be)?;
         }
         conn.execute(
-            braincrawl_sql::payload::INSERT,
+            braincrawl_sql::artifact::INSERT,
             params![
                 d.canonical_id.0,
                 ks,
@@ -383,18 +383,18 @@ impl MetadataStore for SqliteStore {
                 params![survivor.0, loser.0],
             )
             .map_err(be)?;
-            // 8. Payload merge.
+            // 8. Artifact merge.
             conn.execute(
-                braincrawl_sql::payload::MERGE_DEMOTE_LOSER_CURRENT,
+                braincrawl_sql::artifact::MERGE_DEMOTE_LOSER_CURRENT,
                 params![loser.0, survivor.0],
             )
             .map_err(be)?;
             conn.execute(
-                braincrawl_sql::payload::MERGE_REPOINT,
+                braincrawl_sql::artifact::MERGE_REPOINT,
                 params![survivor.0, loser.0],
             )
             .map_err(be)?;
-            conn.execute(braincrawl_sql::payload::MERGE_DELETE_LOSER, params![loser.0])
+            conn.execute(braincrawl_sql::artifact::MERGE_DELETE_LOSER, params![loser.0])
                 .map_err(be)?;
             Ok(())
         })();

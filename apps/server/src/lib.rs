@@ -32,7 +32,7 @@ use braincrawl_coord_local::{LocalCoordinator, SystemClock, UuidGen};
 use braincrawl_core::{
     traits::{IdResolver, JobEnqueuer},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec, PayloadKind,
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec, ArtifactRole,
         WorkRecord,
     },
     usecases::Store,
@@ -98,12 +98,12 @@ pub type LocalStore = Store<
 /// Construct the local `Store` from a SQLite path and blob root directory.
 pub fn make_store(db_path: &str, blob_root: &str) -> Result<LocalStore, String> {
     let meta = SqliteStore::open(db_path).map_err(|e| e.to_string())?;
-    let payloads = SqliteStore::open(db_path).map_err(|e| e.to_string())?;
+    let artifacts = SqliteStore::open(db_path).map_err(|e| e.to_string())?;
     let blob = FsBlobStore::new(blob_root);
     Ok(Store {
         meta,
         blob,
-        payloads,
+        artifacts,
         resolver: NoopResolver,
         coord: LocalCoordinator,
         clock: SystemClock,
@@ -171,10 +171,10 @@ fn parse_alias(id_str: &str) -> Option<Alias> {
     })
 }
 
-fn parse_payload_kind(s: &str) -> Option<PayloadKind> {
+fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
     match s {
-        "abstract" => Some(PayloadKind::Abstract),
-        "fulltext" => Some(PayloadKind::Fulltext),
+        "abstract" => Some(ArtifactRole::Abstract),
+        "fulltext" => Some(ArtifactRole::Fulltext),
         _ => None,
     }
 }
@@ -278,12 +278,12 @@ async fn handler_works_get(
     // /works/*path/content/{kind}
     if let Some(pos) = path.rfind("/content/") {
         let id_str = &path[..pos];
-        let kind_str = &path[pos + "/content/".len()..];
+        let role_str = &path[pos + "/content/".len()..];
         let a = match parse_alias(id_str) {
             Some(a) => a,
             None => return (StatusCode::BAD_REQUEST, "invalid id").into_response(),
         };
-        let kind = match parse_payload_kind(kind_str) {
+        let kind = match parse_artifact_role(role_str) {
             Some(k) => k,
             None => return (StatusCode::BAD_REQUEST, "invalid kind").into_response(),
         };
@@ -324,12 +324,12 @@ async fn handler_works_put(
     // /works/*path/content/{kind}
     if let Some(pos) = path.rfind("/content/") {
         let id_str = &path[..pos];
-        let kind_str = &path[pos + "/content/".len()..];
+        let role_str = &path[pos + "/content/".len()..];
         let a = match parse_alias(id_str) {
             Some(a) => a,
             None => return (StatusCode::BAD_REQUEST, "invalid id").into_response(),
         };
-        let kind = match parse_payload_kind(kind_str) {
+        let kind = match parse_artifact_role(role_str) {
             Some(k) => k,
             None => return (StatusCode::BAD_REQUEST, "invalid kind").into_response(),
         };

@@ -1,9 +1,9 @@
--- payloads: one row per stored blob; the source of truth for blob keys.
-CREATE TABLE payloads (
+-- artifacts: one row per stored blob; the source of truth for blob keys.
+CREATE TABLE artifacts (
   canonical_id TEXT NOT NULL,
-  kind         TEXT NOT NULL,            -- 'abstract' | 'fulltext'
+  role         TEXT NOT NULL,            -- 'abstract' | 'fulltext'
   version      INTEGER NOT NULL,
-  r2_key       TEXT NOT NULL,            -- {canonical_id}/{kind}/v{version}
+  r2_key       TEXT NOT NULL,            -- {canonical_id}/{role}/v{version}
   content_hash TEXT NOT NULL,
   byte_size    INTEGER NOT NULL,
   mime         TEXT NOT NULL,
@@ -11,6 +11,6 @@ CREATE TABLE payloads (
   source_url   TEXT,
   fetched_at   TEXT NOT NULL,
   is_current   INTEGER NOT NULL DEFAULT 1,
-  PRIMARY KEY (canonical_id, kind, version)
+  PRIMARY KEY (canonical_id, role, version)
 );
-CREATE INDEX payloads_current ON payloads (canonical_id, kind) WHERE is_current = 1;
+CREATE INDEX artifacts_current ON artifacts (canonical_id, role) WHERE is_current = 1;

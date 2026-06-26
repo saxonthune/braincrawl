@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::types::{
     Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind, JobSpec,
-    NodeKind, PayloadDescriptor, PayloadKind, StoredBlob,
+    NodeKind, Artifact, ArtifactRole, StoredBlob,
 };
 
 /// Opaque key → bytes. Knows nothing of `kind`/`version`.
@@ -14,14 +14,14 @@ pub trait BlobStore {
 }
 
 #[async_trait(?Send)]
-pub trait PayloadsRepo {
-    async fn current_payload(
+pub trait ArtifactStore {
+    async fn current_artifact(
         &self,
         id: &CanonicalId,
-        kind: PayloadKind,
-    ) -> Result<Option<PayloadDescriptor>, DomainError>;
-    async fn next_version(&self, id: &CanonicalId, kind: PayloadKind) -> Result<u32, DomainError>;
-    async fn record(&self, descriptor: &PayloadDescriptor) -> Result<(), DomainError>;
+        kind: ArtifactRole,
+    ) -> Result<Option<Artifact>, DomainError>;
+    async fn next_version(&self, id: &CanonicalId, kind: ArtifactRole) -> Result<u32, DomainError>;
+    async fn record(&self, descriptor: &Artifact) -> Result<(), DomainError>;
 }
 
 /// The queryable graph facts.
@@ -55,7 +55,7 @@ pub trait MetadataStore {
     /// Follow the `merged_into` chain to the live representative (path-compressed).
     async fn resolve_live(&self, id: &CanonicalId) -> Result<CanonicalId, DomainError>;
 
-    /// Repoint alias/node_assertion/edge/edge_assertion/payloads, fold PK collisions,
+    /// Repoint alias/node_assertion/edge/edge_assertion/artifacts, fold PK collisions,
     /// tombstone the loser.
     async fn merge(
         &self,

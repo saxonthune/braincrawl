@@ -5,7 +5,7 @@
 //! Store<M, B, P, R, C, Clk, Id>
 //!   M   : MetadataStore
 //!   B   : BlobStore
-//!   P   : PayloadsRepo
+//!   P   : ArtifactStore
 //!   R   : IdResolver   (wired to Cloudflare KV in Phase 5; unused here)
 //!   C   : Coordinator
 //!   Clk : Clock
@@ -34,10 +34,10 @@
 //! order).  The `provenance` map records which source won each field.
 
 use crate::{
-    traits::{BlobStore, Clock, Coordinator, IdGen, IdResolver, MetadataStore, PayloadsRepo},
+    traits::{BlobStore, Clock, Coordinator, IdGen, IdResolver, MetadataStore, ArtifactStore},
     types::{
         Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, GraphStats,
-        Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, PayloadDescriptor, PayloadKind,
+        Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, Artifact, ArtifactRole,
         WorkRecord, WorkView,
     },
 };
@@ -52,7 +52,7 @@ pub struct Store<M, B, P, R, C, Clk, Id>
 where
     M: MetadataStore,
     B: BlobStore,
-    P: PayloadsRepo,
+    P: ArtifactStore,
     R: IdResolver,
     C: Coordinator,
     Clk: Clock,
@@ -60,7 +60,7 @@ where
 {
     pub meta: M,
     pub blob: B,
-    pub payloads: P,
+    pub artifacts: P,
     /// Id resolution cache (KV in Phase 5; unused in Phase 2).
     pub resolver: R,
     pub coord: C,
@@ -76,7 +76,7 @@ impl<M, B, P, R, C, Clk, Id> Store<M, B, P, R, C, Clk, Id>
 where
     M: MetadataStore,
     B: BlobStore,
-    P: PayloadsRepo,
+    P: ArtifactStore,
     R: IdResolver,
     C: Coordinator,
     Clk: Clock,
@@ -179,33 +179,33 @@ where
         }))
     }
 
-    /// Store content bytes and record a payload descriptor.
+    /// Store content bytes and record an artifact descriptor.
     #[allow(clippy::too_many_arguments)]
     pub async fn put_content(
         &self,
         id: Alias,
-        kind: PayloadKind,
+        kind: ArtifactRole,
         body: Vec<u8>,
         mime: String,
         source: Option<String>,
         source_url: Option<String>,
         fetched_at: String,
-    ) -> Result<PayloadDescriptor, DomainError> {
+    ) -> Result<Artifact, DomainError> {
         let canonical = self.resolve_alias_to_live(&id).await?;
-        let version = self.payloads.next_version(&canonical, kind.clone()).await?;
-        let kind_str = match kind {
-            PayloadKind::Abstract => "abstract",
-            PayloadKind::Fulltext => "fulltext",
+        let version = self.artifacts.next_version(&canonical, kind.clone()).await?;
+        let role_str = match kind {
+            ArtifactRole::Abstract => "abstract",
+            ArtifactRole::Fulltext => "fulltext",
         };
-        let r2_key = format!("{}/{}/v{}", canonical.0, kind_str, version);
+        let r2_key = format!("{}/{}/v{}", canonical.0, role_str, version);
         let content_hash = fnv1a_hash(&body);
         let byte_size = body.len() as u64;
 
         self.blob.put(&r2_key, body, &mime).await?;
 
-        let descriptor = PayloadDescriptor {
+        let descriptor = Artifact {
             canonical_id: canonical,
-            kind,
+            role: kind,
             version,
             r2_key,
             content_hash,
@@ -216,7 +216,7 @@ where
             fetched_at,
             is_current: true,
         };
-        self.payloads.record(&descriptor).await?;
+        self.artifacts.record(&descriptor).await?;
         Ok(descriptor)
     }
 
@@ -224,7 +224,7 @@ where
     pub async fn get_content(
         &self,
         id: Alias,
-        kind: PayloadKind,
+        kind: ArtifactRole,
     ) -> Result<ContentOutcome, DomainError> {
         let raw = match self.meta.get_alias(&id).await? {
             None => return Ok(ContentOutcome::Absent),
@@ -236,7 +236,7 @@ where
             Err(e) => return Err(e),
         };
 
-        let descriptor = match self.payloads.current_payload(&canonical, kind).await? {
+        let descriptor = match self.artifacts.current_artifact(&canonical, kind).await? {
             None => return Ok(ContentOutcome::Absent),
             Some(d) => d,
         };
@@ -537,7 +537,7 @@ fn merge_assertions(
 /// FNV-1a 64-bit hash used for `content_hash` in `put_content`.
 ///
 /// Must match the algorithm in `braincrawl-blob-mem` so that the hash stored in the
-/// `PayloadDescriptor` equals the hash returned by `BlobStore::get`.
+/// `Artifact` equals the hash returned by `BlobStore::get`.
 fn fnv1a_hash(bytes: &[u8]) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
     for &b in bytes {

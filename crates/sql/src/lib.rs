@@ -16,7 +16,7 @@
 //! 5. `edge::MERGE_EDGE_SRC_DELETE_CONFLICTS`, `edge::MERGE_EDGE_SRC_REPOINT`
 //! 6. `edge::MERGE_EA_DST_UPSERT`, `edge::MERGE_EA_DST_DELETE_LOSER`
 //! 7. `edge::MERGE_EDGE_DST_DELETE_CONFLICTS`, `edge::MERGE_EDGE_DST_REPOINT`
-//! 8. `payload::MERGE_DEMOTE_LOSER_CURRENT`, `payload::MERGE_REPOINT`, `payload::MERGE_DELETE_LOSER`
+//! 8. `artifact::MERGE_DEMOTE_LOSER_CURRENT`, `artifact::MERGE_REPOINT`, `artifact::MERGE_DELETE_LOSER`
 //!
 //! Note: `edge_assertion` has a FK on `edge`. If FK enforcement is on, run edge_assertion
 //! upserts before the corresponding edge mutations to avoid transient FK violations, and
@@ -287,69 +287,69 @@ pub mod edge_assertion {
         WHERE src_id = ? AND dst_id = ? AND relation = ?";
 }
 
-// ── payload ───────────────────────────────────────────────────────────────
+// ── artifact ────────────────────────────────────────────────────────────────
 
-pub mod payload {
-    /// Fetch the current payload descriptor for (canonical_id, kind).
-    /// Params: (canonical_id, kind)
+pub mod artifact {
+    /// Fetch the current artifact descriptor for (canonical_id, role).
+    /// Params: (canonical_id, role)
     pub const SELECT_CURRENT: &str = "\
-        SELECT canonical_id, kind, version, r2_key, content_hash, byte_size, \
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
                mime, source, source_url, fetched_at, is_current \
-        FROM payloads \
-        WHERE canonical_id = ? AND kind = ? AND is_current = 1";
+        FROM artifacts \
+        WHERE canonical_id = ? AND role = ? AND is_current = 1";
 
-    /// Compute the next version number for (canonical_id, kind).
+    /// Compute the next version number for (canonical_id, role).
     /// Returns 1 when no rows exist yet.
-    /// Params: (canonical_id, kind)
+    /// Params: (canonical_id, role)
     pub const NEXT_VERSION: &str = "\
         SELECT COALESCE(MAX(version), 0) + 1 AS next_version \
-        FROM payloads \
-        WHERE canonical_id = ? AND kind = ?";
+        FROM artifacts \
+        WHERE canonical_id = ? AND role = ?";
 
     /// Demote any prior current version before inserting a new one.
-    /// Params: (canonical_id, kind)
+    /// Params: (canonical_id, role)
     pub const FLIP_CURRENT_OFF: &str = "\
-        UPDATE payloads SET is_current = 0 \
-        WHERE canonical_id = ? AND kind = ? AND is_current = 1";
+        UPDATE artifacts SET is_current = 0 \
+        WHERE canonical_id = ? AND role = ? AND is_current = 1";
 
-    /// Insert a new payload row.
-    /// Params: (canonical_id, kind, version, r2_key, content_hash, byte_size,
+    /// Insert a new artifact row.
+    /// Params: (canonical_id, role, version, r2_key, content_hash, byte_size,
     ///          mime, source, source_url, fetched_at, is_current)
     pub const INSERT: &str = "\
-        INSERT INTO payloads \
-          (canonical_id, kind, version, r2_key, content_hash, byte_size, \
+        INSERT INTO artifacts \
+          (canonical_id, role, version, r2_key, content_hash, byte_size, \
            mime, source, source_url, fetched_at, is_current) \
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     // ── merge ──────────────────────────────────────────────────────────────
 
-    /// Merge step 1: demote loser's current payloads for any kind where the survivor
+    /// Merge step 1: demote loser's current artifacts for any role where the survivor
     /// already has a current version.
     /// Params: (loser_canonical_id, survivor_canonical_id)
     pub const MERGE_DEMOTE_LOSER_CURRENT: &str = "\
-        UPDATE payloads SET is_current = 0 \
+        UPDATE artifacts SET is_current = 0 \
         WHERE canonical_id = ? \
-          AND kind IN ( \
-            SELECT kind FROM payloads WHERE canonical_id = ? AND is_current = 1 \
+          AND role IN ( \
+            SELECT role FROM artifacts WHERE canonical_id = ? AND is_current = 1 \
           )";
 
-    /// Merge step 2: repoint all loser payload rows to the survivor.
-    /// PK collisions (same kind + version) are silently ignored.
+    /// Merge step 2: repoint all loser artifact rows to the survivor.
+    /// PK collisions (same role + version) are silently ignored.
     /// Params: (survivor_canonical_id, loser_canonical_id)
     pub const MERGE_REPOINT: &str = "\
-        INSERT INTO payloads \
-          (canonical_id, kind, version, r2_key, content_hash, byte_size, \
+        INSERT INTO artifacts \
+          (canonical_id, role, version, r2_key, content_hash, byte_size, \
            mime, source, source_url, fetched_at, is_current) \
-        SELECT ?, kind, version, r2_key, content_hash, byte_size, \
+        SELECT ?, role, version, r2_key, content_hash, byte_size, \
                mime, source, source_url, fetched_at, is_current \
-        FROM payloads WHERE canonical_id = ? \
-        ON CONFLICT(canonical_id, kind, version) DO NOTHING";
+        FROM artifacts WHERE canonical_id = ? \
+        ON CONFLICT(canonical_id, role, version) DO NOTHING";
 
-    /// Merge step 3: delete all loser payload rows after repointing.
+    /// Merge step 3: delete all loser artifact rows after repointing.
     /// Run after [`MERGE_REPOINT`].
     /// Params: (loser_canonical_id)
     pub const MERGE_DELETE_LOSER: &str = "\
-        DELETE FROM payloads WHERE canonical_id = ?";
+        DELETE FROM artifacts WHERE canonical_id = ?";
 }
 
 // ── stats ─────────────────────────────────────────────────────────────────

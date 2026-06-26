@@ -144,7 +144,7 @@ impl StoreClient {
         Ok(Some(resp.json()?))
     }
 
-    /// PUT /works/{alias}/content/{kind} — store a content payload.
+    /// PUT /works/{alias}/content/{kind} — store a content artifact.
     ///
     /// Params are sent as query parameters per the server's handler_works_put:
     /// `mime` is required; `source`, `source_url`, `fetched_at` optional.
@@ -171,7 +171,7 @@ impl StoreClient {
         Ok(())
     }
 
-    /// GET /works/{alias}/content/{kind} — retrieve a content payload.
+    /// GET /works/{alias}/content/{kind} — retrieve a content artifact.
     ///
     /// Maps server responses to `ContentOutcome`:
     ///   200 → Bytes, 202 → Pending, 404 → Absent.
