@@ -183,11 +183,7 @@ fn parse_alias(id_str: &str) -> Option<Alias> {
 }
 
 fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
-    match s {
-        "abstract" => Some(ArtifactRole::Abstract),
-        "fulltext" => Some(ArtifactRole::Fulltext),
-        _ => None,
-    }
+    ArtifactRole::parse(s)
 }
 
 

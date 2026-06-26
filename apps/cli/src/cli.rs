@@ -56,10 +56,10 @@ pub enum Namespace {
     ExtractText(ExtractTextArgs),
     #[command(name = "fetch-pdf", about = "Resolve and download a work's fulltext artifact to stdout (no store write)")]
     FetchPdf(FetchPdfArgs),
-    #[command(name = "push-pdf", about = "Store fulltext bytes from stdin or a file as a work's fulltext artifact")]
-    PushPdf(PushPdfArgs),
-    #[command(name = "get-pdf", about = "Read a work's stored fulltext artifact bytes to stdout")]
-    GetPdf(GetPdfArgs),
+    #[command(name = "push", about = "Store bytes from stdin or a file as an artifact of the given role")]
+    Push(PushArgs),
+    #[command(name = "get", about = "Read a stored artifact's bytes to stdout")]
+    Get(GetArgs),
     #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
     Graph(GraphArgs),
     #[command(about = "Show aggregate statistics about the metadata network")]
@@ -168,7 +168,7 @@ pub struct FetchPdfArgs {
 }
 
 #[derive(Args)]
-pub struct PushPdfArgs {
+pub struct PushArgs {
     /// Work id in ns:value form (e.g. openalex:W2304167012)
     pub id: String,
     /// Read bytes from this file instead of stdin
@@ -182,15 +182,21 @@ pub struct PushPdfArgs {
     /// Optional source URL recorded with the artifact
     #[arg(long = "source-url")]
     pub source_url: Option<String>,
+    /// Artifact role slug (e.g. fulltext, abstract, map)
+    #[arg(long, default_value = "fulltext")]
+    pub role: String,
 }
 
 #[derive(Args)]
-pub struct GetPdfArgs {
+pub struct GetArgs {
     /// Work id in ns:value form (e.g. openalex:W2304167012)
     pub id: String,
     /// Write bytes to this path instead of stdout
     #[arg(long, short = 'o')]
     pub output: Option<String>,
+    /// Artifact role slug (e.g. fulltext, abstract, map)
+    #[arg(long, default_value = "fulltext")]
+    pub role: String,
 }
 
 #[derive(Args)]

@@ -193,10 +193,7 @@ where
     ) -> Result<Artifact, DomainError> {
         let canonical = self.resolve_alias_to_live(&id).await?;
         let version = self.artifacts.next_version(&canonical, kind.clone()).await?;
-        let role_str = match kind {
-            ArtifactRole::Abstract => "abstract",
-            ArtifactRole::Fulltext => "fulltext",
-        };
+        let role_str = kind.as_str();
         let r2_key = format!("{}/{}/v{}", canonical.0, role_str, version);
         let content_hash = fnv1a_hash(&body);
         let byte_size = body.len() as u64;

@@ -25,6 +25,34 @@ pub enum NodeKind {
 pub enum ArtifactRole {
     Abstract,
     Fulltext,
+    Other(String),
+}
+
+impl ArtifactRole {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ArtifactRole::Abstract => "abstract",
+            ArtifactRole::Fulltext => "fulltext",
+            ArtifactRole::Other(s) => s.as_str(),
+        }
+    }
+
+    /// Parse a role string. Accepts `"abstract"`, `"fulltext"`, or any non-empty
+    /// slug matching `[a-z0-9_-]+`. Returns `None` for empty, uppercase, or unsafe
+    /// strings (slashes, dots, whitespace) — these would break blob-key paths.
+    pub fn parse(s: &str) -> Option<ArtifactRole> {
+        match s {
+            "abstract" => Some(ArtifactRole::Abstract),
+            "fulltext" => Some(ArtifactRole::Fulltext),
+            other => {
+                if !other.is_empty() && other.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_' | '-')) {
+                    Some(ArtifactRole::Other(other.to_string()))
+                } else {
+                    None
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone)]

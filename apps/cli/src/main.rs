@@ -311,7 +311,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             eprintln!("fetched: {} bytes, mime={}, url={}", bytes.len(), mime, url);
         }
-        Namespace::PushPdf(args) => {
+        Namespace::Push(args) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());
             let bytes: Vec<u8> = if let Some(path) = &args.file {
@@ -328,7 +328,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let mime = args.mime.as_deref().unwrap_or_else(|| fetch_content::sniff_mime(&bytes));
             store.put_content(
                 &args.id,
-                "fulltext",
+                &args.role,
                 bytes.clone(),
                 mime,
                 args.source.as_deref(),
@@ -349,11 +349,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             run_provider(&provider, cmd, &store, &opts)?;
         }
-        Namespace::GetPdf(args) => {
+        Namespace::Get(args) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());
             use braincrawl_cli::store_client::ContentOutcome;
-            match store.get_content(&args.id, "fulltext")? {
+            match store.get_content(&args.id, &args.role)? {
                 ContentOutcome::Bytes { bytes, mime } => {
                     if let Some(path) = &args.output {
                         std::fs::write(path, &bytes)?;
@@ -364,15 +364,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 ContentOutcome::Absent => {
                     return Err(format!(
-                        "no fulltext artifact in store for {}; run fetch-content first",
-                        args.id
+                        "no artifact with role '{}' in store for {}",
+                        args.role, args.id
                     )
                     .into());
                 }
                 ContentOutcome::Pending => {
                     return Err(format!(
-                        "fulltext for {} is still being fetched",
-                        args.id
+                        "artifact with role '{}' for {} is still being fetched",
+                        args.role, args.id
                     )
                     .into());
                 }

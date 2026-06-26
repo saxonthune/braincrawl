@@ -237,6 +237,43 @@ async fn test_have() {
 // ── 7. put_content / get_content roundtrip ───────────────────────────────────
 
 #[tokio::test]
+async fn test_content_roundtrip_custom_role() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = make_store(dir.path());
+    s.put_work(work("s", vec![alias("doi", "10.1/w")])).await.unwrap();
+
+    let role = braincrawl_core::types::ArtifactRole::Other("map".to_string());
+    s.put_content(
+        alias("doi", "10.1/w"),
+        role.clone(),
+        b"map bytes".to_vec(),
+        "image/png".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+    )
+    .await
+    .unwrap();
+
+    let outcome = s
+        .get_content(alias("doi", "10.1/w"), role)
+        .await
+        .unwrap();
+    match outcome {
+        ContentOutcome::Bytes { bytes, mime, .. } => {
+            assert_eq!(bytes, b"map bytes");
+            assert_eq!(mime, "image/png");
+        }
+        other => panic!("expected Bytes, got {:?}", std::mem::discriminant(&other)),
+    }
+
+    assert!(braincrawl_core::types::ArtifactRole::parse("map").is_some());
+    assert!(braincrawl_core::types::ArtifactRole::parse("Map").is_none());
+    assert!(braincrawl_core::types::ArtifactRole::parse("a/b").is_none());
+    assert!(braincrawl_core::types::ArtifactRole::parse("").is_none());
+}
+
+#[tokio::test]
 async fn test_content_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
     let s = make_store(dir.path());

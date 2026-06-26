@@ -71,11 +71,8 @@ impl MemStoreInner {
         }
     }
 
-    fn role_str(role: &ArtifactRole) -> &'static str {
-        match role {
-            ArtifactRole::Abstract => "abstract",
-            ArtifactRole::Fulltext => "fulltext",
-        }
+    fn role_str(role: &ArtifactRole) -> &str {
+        role.as_str()
     }
 
     /// Follow the `merged_into` chain to the live representative with path compression.

@@ -47,19 +47,13 @@ fn parse_node_kind(s: &str) -> Result<NodeKind, DomainError> {
     }
 }
 
-fn artifact_role_str(k: &ArtifactRole) -> &'static str {
-    match k {
-        ArtifactRole::Abstract => "abstract",
-        ArtifactRole::Fulltext => "fulltext",
-    }
+fn artifact_role_str(k: &ArtifactRole) -> &str {
+    k.as_str()
 }
 
 fn parse_artifact_role(s: &str) -> Result<ArtifactRole, DomainError> {
-    match s {
-        "abstract" => Ok(ArtifactRole::Abstract),
-        "fulltext" => Ok(ArtifactRole::Fulltext),
-        other => Err(DomainError::Backend(format!("unknown ArtifactRole: {other}"))),
-    }
+    ArtifactRole::parse(s)
+        .ok_or_else(|| DomainError::Backend(format!("unknown ArtifactRole: {s}")))
 }
 
 fn be(e: impl std::fmt::Display) -> DomainError {
