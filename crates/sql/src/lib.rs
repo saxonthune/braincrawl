@@ -294,7 +294,7 @@ pub mod payload {
     /// Params: (canonical_id, kind)
     pub const SELECT_CURRENT: &str = "\
         SELECT canonical_id, kind, version, r2_key, content_hash, byte_size, \
-               mime, rights, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current \
         FROM payloads \
         WHERE canonical_id = ? AND kind = ? AND is_current = 1";
 
@@ -314,12 +314,12 @@ pub mod payload {
 
     /// Insert a new payload row.
     /// Params: (canonical_id, kind, version, r2_key, content_hash, byte_size,
-    ///          mime, rights, source, source_url, fetched_at, is_current)
+    ///          mime, source, source_url, fetched_at, is_current)
     pub const INSERT: &str = "\
         INSERT INTO payloads \
           (canonical_id, kind, version, r2_key, content_hash, byte_size, \
-           mime, rights, source, source_url, fetched_at, is_current) \
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+           mime, source, source_url, fetched_at, is_current) \
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     // ── merge ──────────────────────────────────────────────────────────────
 
@@ -339,9 +339,9 @@ pub mod payload {
     pub const MERGE_REPOINT: &str = "\
         INSERT INTO payloads \
           (canonical_id, kind, version, r2_key, content_hash, byte_size, \
-           mime, rights, source, source_url, fetched_at, is_current) \
+           mime, source, source_url, fetched_at, is_current) \
         SELECT ?, kind, version, r2_key, content_hash, byte_size, \
-               mime, rights, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current \
         FROM payloads WHERE canonical_id = ? \
         ON CONFLICT(canonical_id, kind, version) DO NOTHING";
 

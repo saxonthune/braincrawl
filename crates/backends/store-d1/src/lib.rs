@@ -19,7 +19,7 @@
 use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, PayloadsRepo},
-    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor, PayloadKind, Rights},
+    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, PayloadDescriptor, PayloadKind},
 };
 #[cfg(feature = "cloudflare")]
 use braincrawl_core::types::Tally;
@@ -59,23 +59,6 @@ fn parse_payload_kind(s: &str) -> Result<PayloadKind, DomainError> {
         "abstract" => Ok(PayloadKind::Abstract),
         "fulltext" => Ok(PayloadKind::Fulltext),
         other => Err(DomainError::Backend(format!("unknown PayloadKind: {other}"))),
-    }
-}
-
-fn rights_str(r: &Rights) -> &'static str {
-    match r {
-        Rights::Open => "open",
-        Rights::LinkOnly => "link_only",
-        Rights::Restricted => "restricted",
-    }
-}
-
-fn parse_rights(s: &str) -> Result<Rights, DomainError> {
-    match s {
-        "open" => Ok(Rights::Open),
-        "link_only" => Ok(Rights::LinkOnly),
-        "restricted" => Ok(Rights::Restricted),
-        other => Err(DomainError::Backend(format!("unknown Rights: {other}"))),
     }
 }
 
@@ -197,7 +180,6 @@ impl PayloadsRepo for D1Store {
             content_hash: String,
             byte_size: i64,
             mime: String,
-            rights: String,
             source: Option<String>,
             source_url: Option<String>,
             fetched_at: String,
@@ -219,7 +201,6 @@ impl PayloadsRepo for D1Store {
                 content_hash: r.content_hash,
                 byte_size: r.byte_size as u64,
                 mime: r.mime,
-                rights: parse_rights(&r.rights)?,
                 source: r.source,
                 source_url: r.source_url,
                 fetched_at: r.fetched_at,
@@ -260,7 +241,6 @@ impl PayloadsRepo for D1Store {
                 s(&d.content_hash),
                 n(d.byte_size as i64),
                 s(&d.mime),
-                s(rights_str(&d.rights)),
                 opt_s(d.source.as_deref()),
                 opt_s(d.source_url.as_deref()),
                 s(&d.fetched_at),

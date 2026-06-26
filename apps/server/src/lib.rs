@@ -22,7 +22,7 @@ use axum::{
     extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::StatusCode,
     middleware::Next,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     routing::{get, post, put},
     Json, Router,
 };
@@ -33,7 +33,7 @@ use braincrawl_core::{
     traits::{IdResolver, JobEnqueuer},
     types::{
         Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec, PayloadKind,
-        Rights, WorkRecord,
+        WorkRecord,
     },
     usecases::Store,
 };
@@ -179,15 +179,6 @@ fn parse_payload_kind(s: &str) -> Option<PayloadKind> {
     }
 }
 
-fn parse_rights(s: &str) -> Option<Rights> {
-    match s {
-        "open" => Some(Rights::Open),
-        "link_only" => Some(Rights::LinkOnly),
-        "restricted" => Some(Rights::Restricted),
-        _ => None,
-    }
-}
-
 fn domain_status(e: &DomainError) -> StatusCode {
     match e {
         DomainError::NotFound => StatusCode::NOT_FOUND,
@@ -304,7 +295,6 @@ async fn handler_works_get(
                 let headers = [(axum::http::header::CONTENT_TYPE, mime)];
                 (StatusCode::OK, headers, bytes).into_response()
             }
-            Ok(ContentOutcome::RedirectUrl(url)) => Redirect::to(&url).into_response(),
             Ok(ContentOutcome::Pending) => StatusCode::ACCEPTED.into_response(),
             Ok(ContentOutcome::Absent) => StatusCode::NOT_FOUND.into_response(),
             Err(e) => (domain_status(&e), e.to_string()).into_response(),
@@ -347,10 +337,6 @@ async fn handler_works_put(
             Some(m) => m,
             None => return (StatusCode::BAD_REQUEST, "missing mime").into_response(),
         };
-        let rights = match params.get("rights").and_then(|s| parse_rights(s)) {
-            Some(r) => r,
-            None => return (StatusCode::BAD_REQUEST, "invalid rights").into_response(),
-        };
         let source = params.get("source").cloned();
         let source_url = params.get("source_url").cloned();
         let fetched_at = params
@@ -360,7 +346,7 @@ async fn handler_works_put(
         let bytes = body.to_vec();
         let result = run_blocking(move || async move {
             store
-                .put_content(a, kind, bytes, rights, mime, source, source_url, fetched_at)
+                .put_content(a, kind, bytes, mime, source, source_url, fetched_at)
                 .await
         })
         .await;

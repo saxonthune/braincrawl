@@ -13,7 +13,7 @@ use braincrawl_core::{
     traits::{JobEnqueuer, JobQueue, MetadataStore, PayloadsRepo},
     types::{
         Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind,
-        JobSpec, NodeKind, PayloadDescriptor, PayloadKind, Rights, Tally,
+        JobSpec, NodeKind, PayloadDescriptor, PayloadKind, Tally,
     },
 };
 use rusqlite::{params, Connection, OptionalExtension};
@@ -53,23 +53,6 @@ fn parse_payload_kind(s: &str) -> Result<PayloadKind, DomainError> {
         "abstract" => Ok(PayloadKind::Abstract),
         "fulltext" => Ok(PayloadKind::Fulltext),
         other => Err(DomainError::Backend(format!("unknown PayloadKind: {other}"))),
-    }
-}
-
-fn rights_str(r: &Rights) -> &'static str {
-    match r {
-        Rights::Open => "open",
-        Rights::LinkOnly => "link_only",
-        Rights::Restricted => "restricted",
-    }
-}
-
-fn parse_rights(s: &str) -> Result<Rights, DomainError> {
-    match s {
-        "open" => Ok(Rights::Open),
-        "link_only" => Ok(Rights::LinkOnly),
-        "restricted" => Ok(Rights::Restricted),
-        other => Err(DomainError::Backend(format!("unknown Rights: {other}"))),
     }
 }
 
@@ -156,15 +139,14 @@ impl PayloadsRepo for SqliteStore {
                     row.get::<_, String>(4)?,
                     row.get::<_, i64>(5)?,
                     row.get::<_, String>(6)?,
-                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(7)?,
                     row.get::<_, Option<String>>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, String>(10)?,
-                    row.get::<_, i32>(11)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, i32>(10)?,
                 ))
             },
         )
-        .map(|(cid, ks2, ver, r2k, ch, bs, mime, rs, src, su, fa, ic)| {
+        .map(|(cid, ks2, ver, r2k, ch, bs, mime, src, su, fa, ic)| {
             Some(PayloadDescriptor {
                 canonical_id: CanonicalId(cid),
                 kind: parse_payload_kind(&ks2).unwrap_or(PayloadKind::Abstract),
@@ -173,7 +155,6 @@ impl PayloadsRepo for SqliteStore {
                 content_hash: ch,
                 byte_size: bs as u64,
                 mime,
-                rights: parse_rights(&rs).unwrap_or(Rights::Open),
                 source: src,
                 source_url: su,
                 fetched_at: fa,
@@ -199,7 +180,6 @@ impl PayloadsRepo for SqliteStore {
     async fn record(&self, d: &PayloadDescriptor) -> Result<(), DomainError> {
         let conn = self.conn.lock().unwrap();
         let ks = payload_kind_str(&d.kind);
-        let rs = rights_str(&d.rights);
         if d.is_current {
             conn.execute(
                 braincrawl_sql::payload::FLIP_CURRENT_OFF,
@@ -217,7 +197,6 @@ impl PayloadsRepo for SqliteStore {
                 d.content_hash,
                 d.byte_size as i64,
                 d.mime,
-                rs,
                 d.source,
                 d.source_url,
                 d.fetched_at,

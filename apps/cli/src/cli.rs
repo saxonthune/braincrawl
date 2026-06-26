@@ -176,9 +176,6 @@ pub struct PushPdfArgs {
     /// Content mime type (default: sniff %PDF, else application/octet-stream)
     #[arg(long)]
     pub mime: Option<String>,
-    /// Rights value: open | link_only | restricted
-    #[arg(long, default_value = "open")]
-    pub rights: String,
     /// Optional source label recorded with the payload
     #[arg(long)]
     pub source: Option<String>,

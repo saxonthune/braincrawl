@@ -260,13 +260,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     )
                     .into());
                 }
-                ContentOutcome::Redirect(url) => {
-                    return Err(format!(
-                        "only a link is stored for {} (link-only): {}",
-                        args.id, url
-                    )
-                    .into());
-                }
             }
         }
         Namespace::FetchContent(fc) => {
@@ -290,9 +283,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 fetch_content::Outcome::AlreadyPresent => {
                     println!("already-present: fulltext payload already in store (use --force to re-fetch)");
-                }
-                fetch_content::Outcome::LinkOnly { url } => {
-                    println!("link-only: {}", url);
                 }
                 fetch_content::Outcome::NoOaFound { reason } => {
                     return Err(format!("no-oa-found: {}", reason).into());
@@ -341,11 +331,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 "fulltext",
                 bytes.clone(),
                 mime,
-                &args.rights,
                 args.source.as_deref(),
                 args.source_url.as_deref(),
             )?;
-            eprintln!("pushed: {} bytes, mime={}, rights={}", bytes.len(), mime, args.rights);
+            eprintln!("pushed: {} bytes, mime={}", bytes.len(), mime);
         }
         Namespace::Arxiv(arxiv) => {
             let provider = ArxivProvider::new();
@@ -384,13 +373,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     return Err(format!(
                         "fulltext for {} is still being fetched",
                         args.id
-                    )
-                    .into());
-                }
-                ContentOutcome::Redirect(url) => {
-                    return Err(format!(
-                        "only a link is stored for {} (link-only): {}",
-                        args.id, url
                     )
                     .into());
                 }

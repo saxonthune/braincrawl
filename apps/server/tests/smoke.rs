@@ -143,7 +143,7 @@ async fn test_content_roundtrip() {
     // PUT content
     let res = client
         .put(format!(
-            "{base}/works/doi:10.1/content/abstract?mime=text/plain&rights=open&fetched_at=2024-01-01T00:00:00Z"
+            "{base}/works/doi:10.1/content/abstract?mime=text/plain&fetched_at=2024-01-01T00:00:00Z"
         ))
         .body("hello braincrawl")
         .send()
@@ -261,7 +261,7 @@ async fn test_large_content_put() {
 
     let res = client
         .put(format!(
-            "{base}/works/doi:10.2/large/content/fulltext?mime=application/pdf&rights=open&fetched_at=2024-01-01T00:00:00Z"
+            "{base}/works/doi:10.2/large/content/fulltext?mime=application/pdf&fetched_at=2024-01-01T00:00:00Z"
         ))
         .body(large_body.clone())
         .send()

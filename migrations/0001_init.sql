@@ -1,4 +1,4 @@
--- payloads: one row per stored blob; the source of truth for blob keys + rights.
+-- payloads: one row per stored blob; the source of truth for blob keys.
 CREATE TABLE payloads (
   canonical_id TEXT NOT NULL,
   kind         TEXT NOT NULL,            -- 'abstract' | 'fulltext'
@@ -7,7 +7,6 @@ CREATE TABLE payloads (
   content_hash TEXT NOT NULL,
   byte_size    INTEGER NOT NULL,
   mime         TEXT NOT NULL,
-  rights       TEXT NOT NULL,            -- 'open' | 'link_only' | 'restricted'
   source       TEXT,
   source_url   TEXT,
   fetched_at   TEXT NOT NULL,

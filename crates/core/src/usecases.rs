@@ -38,7 +38,7 @@ use crate::{
     types::{
         Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, GraphStats,
         Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, PayloadDescriptor, PayloadKind,
-        Rights, WorkRecord, WorkView,
+        WorkRecord, WorkView,
     },
 };
 
@@ -180,16 +180,12 @@ where
     }
 
     /// Store content bytes and record a payload descriptor.
-    ///
-    /// - `Open` | `Restricted` → stores blob bytes + descriptor; both return bytes on read.
-    /// - `LinkOnly`            → stores descriptor only (no blob bytes); `source_url` used on read.
     #[allow(clippy::too_many_arguments)]
     pub async fn put_content(
         &self,
         id: Alias,
         kind: PayloadKind,
         body: Vec<u8>,
-        rights: Rights,
         mime: String,
         source: Option<String>,
         source_url: Option<String>,
@@ -205,9 +201,7 @@ where
         let content_hash = fnv1a_hash(&body);
         let byte_size = body.len() as u64;
 
-        if rights != Rights::LinkOnly {
-            self.blob.put(&r2_key, body, &mime).await?;
-        }
+        self.blob.put(&r2_key, body, &mime).await?;
 
         let descriptor = PayloadDescriptor {
             canonical_id: canonical,
@@ -217,7 +211,6 @@ where
             content_hash,
             byte_size,
             mime,
-            rights,
             source,
             source_url,
             fetched_at,
@@ -227,7 +220,7 @@ where
         Ok(descriptor)
     }
 
-    /// Retrieve content, mapped to rights-gated outcomes.
+    /// Retrieve content.
     pub async fn get_content(
         &self,
         id: Alias,
@@ -248,19 +241,13 @@ where
             Some(d) => d,
         };
 
-        match descriptor.rights {
-            Rights::LinkOnly => match descriptor.source_url {
-                Some(url) => Ok(ContentOutcome::RedirectUrl(url)),
-                None => Ok(ContentOutcome::Pending),
-            },
-            Rights::Open | Rights::Restricted => match self.blob.get(&descriptor.r2_key).await? {
-                None => Ok(ContentOutcome::Pending),
-                Some(b) => Ok(ContentOutcome::Bytes {
-                    bytes: b.bytes,
-                    mime: b.mime,
-                    content_hash: b.content_hash,
-                }),
-            },
+        match self.blob.get(&descriptor.r2_key).await? {
+            None => Ok(ContentOutcome::Pending),
+            Some(b) => Ok(ContentOutcome::Bytes {
+                bytes: b.bytes,
+                mime: b.mime,
+                content_hash: b.content_hash,
+            }),
         }
     }
 

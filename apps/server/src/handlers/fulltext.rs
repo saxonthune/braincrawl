@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use braincrawl_core::{
     traits::FetchHandler,
-    types::{Alias, ContentOutcome, DomainError, Job, JobKind, PayloadKind, Rights},
+    types::{Alias, ContentOutcome, DomainError, Job, JobKind, PayloadKind},
 };
 
 use crate::LocalStore;
@@ -99,7 +99,6 @@ impl FulltextHandler {
                 alias,
                 PayloadKind::Fulltext,
                 bytes,
-                Rights::Open,
                 mime,
                 Some(source.to_string()),
                 Some(url.to_string()),

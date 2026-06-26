@@ -27,13 +27,6 @@ pub enum PayloadKind {
     Fulltext,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Rights {
-    Open,
-    LinkOnly,
-    Restricted,
-}
-
 #[derive(Clone)]
 pub struct StoredBlob {
     pub bytes: Vec<u8>,
@@ -50,7 +43,6 @@ pub struct PayloadDescriptor {
     pub content_hash: String,
     pub byte_size: u64,
     pub mime: String,
-    pub rights: Rights,
     pub source: Option<String>,
     pub source_url: Option<String>,
     pub fetched_at: String,
@@ -232,17 +224,15 @@ pub struct Job {
 
 /// Outcome of `get_content`, mirroring HTTP status semantics.
 ///
-/// - `Bytes`       → 200 OK (open or restricted content, bytes returned)
-/// - `RedirectUrl` → 302 Found (link_only; redirect to source URL)
-/// - `Pending`     → 202 Accepted (descriptor exists; blob not yet stored)
-/// - `Absent`      → 404 Not Found
+/// - `Bytes`   → 200 OK (bytes returned)
+/// - `Pending` → 202 Accepted (descriptor exists; blob not yet stored)
+/// - `Absent`  → 404 Not Found
 pub enum ContentOutcome {
     Bytes {
         bytes: Vec<u8>,
         mime: String,
         content_hash: String,
     },
-    RedirectUrl(String),
     Pending,
     Absent,
 }

@@ -3,7 +3,7 @@
 use braincrawl_blob_mem::MemBlobStore;
 use braincrawl_coord_local::{LocalCoordinator, SystemClock, UuidGen};
 use braincrawl_core::{
-    types::{Alias, ContentOutcome, EdgeDir, EdgeInput, NodeKind, Rights, WorkRecord},
+    types::{Alias, ContentOutcome, EdgeDir, EdgeInput, NodeKind, WorkRecord},
     usecases::Store,
 };
 use braincrawl_resolver_mem::MemResolver;
@@ -409,20 +409,18 @@ async fn test_neighborhood_unknown_seed_skipped() {
 }
 
 // ---------------------------------------------------------------------------
-// 7. put_content / get_content rights gating
+// 7. put_content / get_content roundtrip
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_content_rights_gating() {
+async fn test_content_roundtrip() {
     let s = make_store();
     s.put_work(work("s", vec![alias("doi", "10.1/w")])).await.unwrap();
 
-    // Open content — bytes must be stored and returned.
     s.put_content(
         alias("doi", "10.1/w"),
         braincrawl_core::types::PayloadKind::Abstract,
         b"hello world".to_vec(),
-        Rights::Open,
         "text/plain".to_string(),
         Some("s".to_string()),
         None,
@@ -440,35 +438,7 @@ async fn test_content_rights_gating() {
         .unwrap();
     assert!(
         matches!(outcome, ContentOutcome::Bytes { .. }),
-        "open content must return Bytes"
-    );
-
-    // Restricted content — bytes must be stored and returned (restricted = stored, non-redistributable).
-    s.put_work(work("s", vec![alias("doi", "10.1/restricted")]))
-        .await
-        .unwrap();
-    s.put_content(
-        alias("doi", "10.1/restricted"),
-        braincrawl_core::types::PayloadKind::Fulltext,
-        b"secret".to_vec(),
-        Rights::Restricted,
-        "text/plain".to_string(),
-        None,
-        None,
-        "2024-01-01T00:00:00Z".to_string(),
-    )
-    .await
-    .expect("restricted put_content must succeed");
-    let restricted_outcome = s
-        .get_content(
-            alias("doi", "10.1/restricted"),
-            braincrawl_core::types::PayloadKind::Fulltext,
-        )
-        .await
-        .unwrap();
-    assert!(
-        matches!(restricted_outcome, ContentOutcome::Bytes { .. }),
-        "restricted content must return Bytes"
+        "stored content must return Bytes"
     );
 
     // get_content on a never-stored alias → Absent.

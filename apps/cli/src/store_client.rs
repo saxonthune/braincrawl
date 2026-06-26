@@ -14,8 +14,6 @@ pub type Result<T> = std::result::Result<T, ClientError>;
 #[derive(Debug)]
 pub enum ContentOutcome {
     Bytes { bytes: Vec<u8>, mime: String },
-    /// LinkOnly: server returned a redirect; value is the Location URL.
-    Redirect(String),
     Pending,
     Absent,
 }
@@ -25,22 +23,14 @@ pub enum ContentOutcome {
 pub struct StoreClient {
     base_url: String,
     http: reqwest::blocking::Client,
-    /// Separate client that does not follow redirects, used for get_content so
-    /// a LinkOnly 3xx response is observable rather than transparently followed.
-    http_no_redirect: reqwest::blocking::Client,
     token: Option<String>,
 }
 
 impl StoreClient {
     pub fn new(base_url: impl Into<String>) -> Self {
-        let http_no_redirect = reqwest::blocking::ClientBuilder::new()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("failed to build no-redirect HTTP client");
         StoreClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             http: reqwest::blocking::Client::new(),
-            http_no_redirect,
             token: None,
         }
     }
@@ -157,22 +147,19 @@ impl StoreClient {
     /// PUT /works/{alias}/content/{kind} — store a content payload.
     ///
     /// Params are sent as query parameters per the server's handler_works_put:
-    /// `mime` and `rights` are required; `source`, `source_url`, `fetched_at` optional.
-    /// Accepted `rights` values: `"open"`, `"link_only"`, `"restricted"`.
-    #[allow(clippy::too_many_arguments)]
+    /// `mime` is required; `source`, `source_url`, `fetched_at` optional.
     pub fn put_content(
         &self,
         alias: &str,
         kind: &str,
         bytes: Vec<u8>,
         mime: &str,
-        rights: &str,
         source: Option<&str>,
         source_url: Option<&str>,
     ) -> Result<()> {
         let url = format!("{}/works/{}/content/{}", self.base_url, alias, kind);
         let fetched_at = rfc3339_now();
-        let params = build_put_content_params(mime, rights, source, source_url, &fetched_at);
+        let params = build_put_content_params(mime, source, source_url, &fetched_at);
         let resp = self
             .apply_auth(self.http.put(&url).query(&params).body(bytes))
             .send()?;
@@ -186,13 +173,12 @@ impl StoreClient {
 
     /// GET /works/{alias}/content/{kind} — retrieve a content payload.
     ///
-    /// Uses a non-redirect-following client so a `LinkOnly` 3xx is observable.
     /// Maps server responses to `ContentOutcome`:
-    ///   200 → Bytes, 3xx+Location → Redirect, 202 → Pending, 404 → Absent.
+    ///   200 → Bytes, 202 → Pending, 404 → Absent.
     pub fn get_content(&self, alias: &str, kind: &str) -> Result<ContentOutcome> {
         let url = format!("{}/works/{}/content/{}", self.base_url, alias, kind);
         let resp = self
-            .apply_auth(self.http_no_redirect.get(&url))
+            .apply_auth(self.http.get(&url))
             .send()?;
         let status = resp.status().as_u16();
         match status {
@@ -208,15 +194,6 @@ impl StoreClient {
             }
             202 => Ok(ContentOutcome::Pending),
             404 => Ok(ContentOutcome::Absent),
-            301 | 302 | 303 | 307 | 308 => {
-                let location = resp
-                    .headers()
-                    .get(reqwest::header::LOCATION)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("")
-                    .to_string();
-                Ok(ContentOutcome::Redirect(location))
-            }
             _ => {
                 let body = resp.text().unwrap_or_default();
                 Err(ClientError::Server { status, body })
@@ -229,12 +206,11 @@ impl StoreClient {
 /// Extracted as a pure function so it can be unit-tested without live HTTP.
 pub(crate) fn build_put_content_params<'a>(
     mime: &'a str,
-    rights: &'a str,
     source: Option<&'a str>,
     source_url: Option<&'a str>,
     fetched_at: &'a str,
 ) -> Vec<(&'a str, &'a str)> {
-    let mut params = vec![("mime", mime), ("rights", rights), ("fetched_at", fetched_at)];
+    let mut params = vec![("mime", mime), ("fetched_at", fetched_at)];
     if let Some(s) = source {
         params.push(("source", s));
     }
@@ -293,9 +269,8 @@ mod tests {
 
     #[test]
     fn put_params_required_fields() {
-        let params = build_put_content_params("application/pdf", "open", None, None, "2024-06-01T00:00:00Z");
+        let params = build_put_content_params("application/pdf", None, None, "2024-06-01T00:00:00Z");
         assert!(params.iter().any(|&(k, v)| k == "mime" && v == "application/pdf"));
-        assert!(params.iter().any(|&(k, v)| k == "rights" && v == "open"));
         assert!(params.iter().any(|&(k, v)| k == "fetched_at" && v == "2024-06-01T00:00:00Z"));
         assert!(!params.iter().any(|&(k, _)| k == "source"));
         assert!(!params.iter().any(|&(k, _)| k == "source_url"));
@@ -305,19 +280,11 @@ mod tests {
     fn put_params_optional_fields_present() {
         let params = build_put_content_params(
             "application/pdf",
-            "open",
             Some("openalex-oa"),
             Some("https://example.com/paper.pdf"),
             "2024-06-01T00:00:00Z",
         );
         assert!(params.iter().any(|&(k, v)| k == "source" && v == "openalex-oa"));
         assert!(params.iter().any(|&(k, v)| k == "source_url" && v == "https://example.com/paper.pdf"));
-    }
-
-    #[test]
-    fn put_params_link_only_rights() {
-        let params = build_put_content_params("text/html", "link_only", Some("openalex-oa"), Some("https://example.com/landing"), "2024-06-01T00:00:00Z");
-        assert!(params.iter().any(|&(k, v)| k == "rights" && v == "link_only"));
-        assert!(params.iter().any(|&(k, v)| k == "source_url" && v == "https://example.com/landing"));
     }
 }

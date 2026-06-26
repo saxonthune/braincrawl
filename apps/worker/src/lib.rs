@@ -31,7 +31,7 @@ use braincrawl_blob_r2::R2BlobStore;
 use braincrawl_core::{
     traits::{Clock, Coordinator, IdGen, LockGuard},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, PayloadKind, Rights,
+        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, PayloadKind,
         WorkRecord,
     },
     usecases::Store,
@@ -190,14 +190,6 @@ fn parse_payload_kind(s: &str) -> Option<PayloadKind> {
     }
 }
 
-fn parse_rights(s: &str) -> Option<Rights> {
-    match s {
-        "open" => Some(Rights::Open),
-        "link_only" => Some(Rights::LinkOnly),
-        "restricted" => Some(Rights::Restricted),
-        _ => None,
-    }
-}
 
 fn domain_status(e: &DomainError) -> u16 {
     match e {
@@ -330,10 +322,6 @@ async fn handle_get_content(
             headers.set("Content-Type", &mime)?;
             Ok(Response::from_bytes(bytes)?.with_headers(headers))
         }
-        Ok(ContentOutcome::RedirectUrl(url_str)) => {
-            let url = Url::parse(&url_str).map_err(|e| worker::Error::from(e.to_string()))?;
-            Response::redirect(url)
-        }
         Ok(ContentOutcome::Pending) => Ok(Response::empty()?.with_status(202)),
         Ok(ContentOutcome::Absent) => Response::error("not found", 404),
         Err(e) => err_response(&e),
@@ -360,10 +348,6 @@ async fn handle_put_content(
         Some(m) => m,
         None => return bad_request("missing mime"),
     };
-    let rights = match params.get("rights").and_then(|s| parse_rights(s)) {
-        Some(r) => r,
-        None => return bad_request("invalid rights"),
-    };
     let source = params.get("source").cloned();
     let source_url = params.get("source_url").cloned();
     let fetched_at = params
@@ -372,7 +356,7 @@ async fn handle_put_content(
         .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
     let bytes = req.bytes().await?;
     match store
-        .put_content(a, kind, bytes, rights, mime, source, source_url, fetched_at)
+        .put_content(a, kind, bytes, mime, source, source_url, fetched_at)
         .await
     {
         Ok(_) => Response::empty(),

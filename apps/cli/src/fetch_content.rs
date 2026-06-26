@@ -10,7 +10,6 @@ pub enum Source {
 pub enum Outcome {
     Stored { bytes_len: usize, mime: String },
     AlreadyPresent,
-    LinkOnly { url: String },
     NoOaFound { reason: String },
 }
 
@@ -23,8 +22,7 @@ const MAX_ARTIFACT_BYTES: usize = 50 * 1024 * 1024;
 /// 2. Resolve a downloadable URL from stored OpenAlex attrs and/or Unpaywall.
 /// 3. Download the artifact (60 s timeout, 50 MB cap).
 /// 4. Validate %PDF magic if `require_pdf` or the mime/URL suggest PDF.
-/// 5. PUT to the store as a Fulltext/Open payload.
-/// 6. If only a landing page is available, store a LinkOnly descriptor instead.
+/// 5. PUT to the store as a Fulltext payload.
 pub fn fetch_content(
     store: &StoreClient,
     unpaywall_email: Option<&str>,
@@ -51,24 +49,11 @@ pub fn fetch_content(
     let (artifact_url, source_label) = match resolved {
         Some(pair) => pair,
         None => {
-            // No downloadable URL — try to record a landing page as LinkOnly
-            if let Some(landing) = resolve_landing_url(&work) {
-                store.put_content(
-                    id,
-                    "fulltext",
-                    vec![],
-                    "text/html",
-                    "link_only",
-                    Some("openalex-oa"),
-                    Some(&landing),
-                )?;
-                return Ok(Outcome::LinkOnly { url: landing });
-            }
             let reason = match from {
                 Source::Unpaywall if unpaywall_email.is_none() => {
                     "unpaywall requires BRAINCRAWL_UNPAYWALL_EMAIL to be set".to_string()
                 }
-                _ => "no open-access artifact or landing page found in stored attrs or Unpaywall"
+                _ => "no open-access artifact found in stored attrs or Unpaywall"
                     .to_string(),
             };
             return Ok(Outcome::NoOaFound { reason });
@@ -98,7 +83,6 @@ pub fn fetch_content(
         "fulltext",
         bytes.clone(),
         &mime,
-        "open",
         Some(source_label),
         Some(&artifact_url),
     )?;
@@ -203,22 +187,6 @@ pub fn resolve_oa_url_from_attrs(work: &serde_json::Value) -> Option<String> {
         &attrs["primary_location"]["pdf_url"],
         &attrs["open_access"]["oa_url"],
         &attrs["best_oa_location"]["pdf_url"],
-    ] {
-        if let Some(s) = url_ptr.as_str() {
-            if !s.is_empty() {
-                return Some(s.to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Extract a landing-page URL for a LinkOnly descriptor (no downloadable artifact).
-fn resolve_landing_url(work: &serde_json::Value) -> Option<String> {
-    let attrs = &work["attrs"];
-    for url_ptr in [
-        &attrs["primary_location"]["landing_page_url"],
-        &attrs["open_access"]["oa_url"],
     ] {
         if let Some(s) = url_ptr.as_str() {
             if !s.is_empty() {
