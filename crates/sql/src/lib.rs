@@ -27,6 +27,8 @@
 pub const MIGRATION_0001: &str = include_str!("../../../migrations/0001_init.sql");
 pub const MIGRATION_0002: &str = include_str!("../../../migrations/0002_graph.sql");
 pub const MIGRATION_0003: &str = include_str!("../../../migrations/0003_jobs.sql");
+pub const MIGRATION_0004: &str =
+    include_str!("../../../migrations/0004_rename_payloads_to_artifacts.sql");
 
 /// Ordered `(name, sql)` pairs for startup application by backends.
 pub fn migrations() -> &'static [(&'static str, &'static str)] {
@@ -34,6 +36,7 @@ pub fn migrations() -> &'static [(&'static str, &'static str)] {
         ("0001_init", MIGRATION_0001),
         ("0002_graph", MIGRATION_0002),
         ("0003_jobs", MIGRATION_0003),
+        ("0004_rename_payloads_to_artifacts", MIGRATION_0004),
     ]
 }
 
