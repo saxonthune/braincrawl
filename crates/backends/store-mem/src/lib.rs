@@ -558,6 +558,13 @@ impl MetadataStore for MemStore {
             *assertions_by_source.entry(source.clone()).or_insert(0) += 1;
         }
 
+        let library_bytes: u64 = inner
+            .artifacts
+            .values()
+            .flat_map(|versions| versions.iter())
+            .map(|a| a.byte_size)
+            .sum();
+
         Ok(GraphStats {
             works,
             works_described,
@@ -568,6 +575,10 @@ impl MetadataStore for MemStore {
             edges_total,
             edges_by_relation: into_tallies(edges_by_relation),
             assertions_by_source: into_tallies(assertions_by_source),
+            library_bytes,
+            // In-memory store has no on-disk file.
+            catalog_bytes: 0,
+            total_bytes: library_bytes,
         })
     }
 }

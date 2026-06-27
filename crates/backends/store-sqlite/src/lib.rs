@@ -664,6 +664,10 @@ impl MetadataStore for SqliteStore {
         let edges_by_relation = tally(q::EDGES_BY_RELATION)?;
         let assertions_by_source = tally(q::ASSERTIONS_BY_SOURCE)?;
 
+        let library_bytes = count(q::LIBRARY_BYTES)?;
+        // Real on-disk size of the SQLite file (data + indexes + free pages).
+        let catalog_bytes = count("PRAGMA page_count")? * count("PRAGMA page_size")?;
+
         Ok(GraphStats {
             works,
             works_described,
@@ -674,6 +678,9 @@ impl MetadataStore for SqliteStore {
             edges_total,
             edges_by_relation,
             assertions_by_source,
+            library_bytes,
+            catalog_bytes,
+            total_bytes: library_bytes + catalog_bytes,
         })
     }
 }

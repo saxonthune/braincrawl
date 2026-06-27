@@ -613,6 +613,7 @@ impl MetadataStore for D1Store {
                 prep(&self.db, q::NODES_TOTAL, &[])?,
                 prep(&self.db, q::TOMBSTONES, &[])?,
                 prep(&self.db, q::EDGES_TOTAL, &[])?,
+                prep(&self.db, q::LIBRARY_BYTES, &[])?,
                 prep(&self.db, q::NODES_BY_KIND, &[])?,
                 prep(&self.db, q::EDGES_BY_RELATION, &[])?,
                 prep(&self.db, q::ASSERTIONS_BY_SOURCE, &[])?,
@@ -637,6 +638,7 @@ impl MetadataStore for D1Store {
         let nodes_total = count("nodes_total")?;
         let tombstones = count("tombstones")?;
         let edges_total = count("edges_total")?;
+        let library_bytes = count("library_bytes")?;
 
         let mut tally = |label: &str| -> Result<Vec<Tally>, DomainError> {
             let rows = iter
@@ -663,6 +665,10 @@ impl MetadataStore for D1Store {
             edges_total,
             edges_by_relation,
             assertions_by_source,
+            library_bytes,
+            // D1 reports storage via its own platform metrics, not a queryable file size.
+            catalog_bytes: 0,
+            total_bytes: library_bytes,
         })
     }
 }

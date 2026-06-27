@@ -399,6 +399,11 @@ pub mod stats {
     pub const ASSERTIONS_BY_SOURCE: &str = "\
         SELECT source AS key, COUNT(*) AS count FROM node_assertion \
         GROUP BY source ORDER BY COUNT(*) DESC, source ASC";
+
+    /// Total stored artifact bytes (the blob/R2 content footprint). Returns column
+    /// `count`. Params: none.
+    pub const LIBRARY_BYTES: &str =
+        "SELECT COALESCE(SUM(byte_size), 0) AS count FROM artifacts";
 }
 
 // ── variable-arity helpers ────────────────────────────────────────────────

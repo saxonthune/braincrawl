@@ -173,6 +173,12 @@ pub struct GraphStats {
     pub edges_by_relation: Vec<Tally>,
     /// Node-assertion counts by provider source, descending by count.
     pub assertions_by_source: Vec<Tally>,
+    /// Stored artifact content bytes — the blob store / R2 footprint (`SUM(byte_size)`).
+    pub library_bytes: u64,
+    /// On-disk size of the metadata database. 0 for backends with no on-disk file.
+    pub catalog_bytes: u64,
+    /// `library_bytes + catalog_bytes` — the corpus's total storage footprint.
+    pub total_bytes: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

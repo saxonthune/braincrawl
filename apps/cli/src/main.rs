@@ -445,7 +445,27 @@ fn render_stats(value: &serde_json::Value, opts: &OutputOpts) {
     tally(&mut out, "edges by relation", "edges_by_relation");
     let _ = writeln!(out);
     tally(&mut out, "assertions by source", "assertions_by_source");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "storage:");
+    let _ = writeln!(out, "  library:        {}", human_bytes(n("library_bytes")));
+    let _ = writeln!(out, "  catalog:        {}", human_bytes(n("catalog_bytes")));
+    let _ = writeln!(out, "  total:          {}", human_bytes(n("total_bytes")));
     print!("{out}");
+}
+
+/// Format a byte count as a human-readable size, e.g. `1.4 MiB (1462272 bytes)`.
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+    if bytes < 1024 {
+        return format!("{bytes} bytes");
+    }
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    format!("{size:.1} {} ({bytes} bytes)", UNITS[unit])
 }
 
 fn run_provider(
