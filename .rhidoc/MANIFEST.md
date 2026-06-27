@@ -33,7 +33,8 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc01.00 | `00-index.md` |  |  | — | — | — |
-| doc01.01 | `01-glossary.md` | Plain-language names for braincrawl's three layers — Library, Catalog, and Research Collection. | glossary, vocabulary, terms, product | — | — | — |
+| doc01.01 | `01-glossary.md` | Plain-language names for braincrawl's three layers — Library, Catalog, and Research Collection. | glossary, vocabulary, terms, product | — | doc01.02 | — |
+| doc01.02 | `02-mental-model.md` | The agent as signal converter — it builds the Library and Catalog, and translates between the user and the library so a human reads only the best works directly. | product, mental-model, agent, role | doc01.01 | — | — |
 
 ## 02-architecture — Architecture
 
@@ -84,7 +85,7 @@ Quick lookup for file-path→doc mapping:
 
 | Tag | Relevant Docs |
 |-----|---------------|
-| `agent` | doc02.03.00 |
+| `agent` | doc01.02, doc02.03.00 |
 | `ai` | doc00.04 |
 | `api` | doc02.01.03 |
 | `architecture` | doc02.00, doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03, doc02.02.00, doc02.03.00, doc02.04, doc02.05 |
@@ -108,14 +109,16 @@ Quick lookup for file-path→doc mapping:
 | `infrastructure` | doc02.02.00 |
 | `layers` | doc02.01.00, doc02.01.01 |
 | `maintenance` | doc00.02 |
+| `mental-model` | doc01.02 |
 | `meta` | doc00.00, doc00.01 |
 | `monorepo` | doc02.00, doc02.04 |
 | `openalex` | doc02.06.01.01 |
 | `overview` | doc02.00 |
 | `philosophy` | doc00.02 |
-| `product` | doc01.01 |
+| `product` | doc01.01, doc01.02 |
 | `providers` | doc02.06.00, doc02.06.01.00, doc02.06.01.01, doc02.06.01.02 |
 | `retrieval` | doc00.04 |
+| `role` | doc01.02 |
 | `routing` | doc02.06.00 |
 | `runtime` | doc02.04 |
 | `rust` | doc02.04 |

@@ -5,6 +5,13 @@
 default:
     @just --list
 
+# Two things other agents depend on go stale independently — the `braincrawl` CLI
+# on your PATH (refreshed by `install`) and the *running* shared server, which keeps
+# executing its old binary until `restart` rebuilds and relaunches it.
+#
+# One-stop: refresh the PATH CLI + rebuild & restart the server. Run after pulling/changes.
+upgrade: install restart
+
 # Build (if needed) and launch the shared server in the background
 server-start:
     ./scripts/braincrawl-server.sh start
