@@ -9,6 +9,8 @@
 //! - `POST /works/have`
 //! - `PUT /works`
 //! - `PUT /edges`
+//! - `POST /graph/neighborhood`
+//! - `GET /stats`
 //! - `GET /works/*id`                   → get_work
 //! - `GET /works/*id/edges`             → get_edges
 //! - `GET /works/*id/content/{kind}`    → get_content
@@ -225,6 +227,35 @@ fn build_store(env: &Env) -> worker::Result<WorkerStore> {
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 
+#[derive(Deserialize)]
+struct NeighborhoodHttpRequest {
+    seeds: Vec<String>,
+    dir: String,
+    depth: u32,
+    max_nodes: u32,
+}
+
+async fn handle_neighborhood(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
+    let body: NeighborhoodHttpRequest = req.json().await?;
+    let dir = match body.dir.as_str() {
+        "forward" => EdgeDir::Forward,
+        "backward" => EdgeDir::Backward,
+        _ => return bad_request("dir must be forward or backward"),
+    };
+    let seeds: Vec<Alias> = body.seeds.iter().filter_map(|s| parse_alias(s)).collect();
+    match store.neighborhood(seeds, dir, body.depth, body.max_nodes).await {
+        Ok(neighborhood) => Response::from_json(&neighborhood),
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_stats(store: &WorkerStore) -> worker::Result<Response> {
+    match store.stats().await {
+        Ok(stats) => Response::from_json(&stats),
+        Err(e) => err_response(&e),
+    }
+}
+
 async fn handle_have(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
     #[derive(Deserialize)]
     struct HaveRequest { ids: Vec<String> }
@@ -398,6 +429,16 @@ async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response>
     // PUT /edges
     if method == Method::Put && path == "/edges" {
         return handle_put_edges(req, &store).await;
+    }
+
+    // POST /graph/neighborhood
+    if method == Method::Post && path == "/graph/neighborhood" {
+        return handle_neighborhood(req, &store).await;
+    }
+
+    // GET /stats
+    if method == Method::Get && path == "/stats" {
+        return handle_stats(&store).await;
     }
 
     // /works/*path

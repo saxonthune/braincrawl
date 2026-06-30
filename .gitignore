@@ -2,3 +2,4 @@
 /.temp/
 /CLAUDE.local.md
 /.claude/worktrees/
+apps/worker/.dev.vars

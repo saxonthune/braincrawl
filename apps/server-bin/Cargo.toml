@@ -14,3 +14,8 @@ braincrawl-core = { workspace = true }
 braincrawl-auth = { workspace = true }
 axum = "0.7"
 tokio = { version = "1", features = ["rt", "net", "macros", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "net", "macros", "time"] }
+braincrawl-conformance = { path = "../../crates/conformance" }

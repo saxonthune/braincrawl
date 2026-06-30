@@ -71,6 +71,11 @@ watch:
 test:
     cargo test
 
+# Edge/CI gate: requires wrangler + network. Boots the Worker under wrangler dev
+# --local (emulated D1/R2/KV) and runs the shared conformance suite against it.
+worker-test:
+    ./scripts/worker-conformance.sh
+
 # Regenerate the Luminous CLI-grammar canvas in .luminous/ from the clap definition
 luminous-cli:
     cargo run -p braincrawl-cli --example luminous_cli_grammar
