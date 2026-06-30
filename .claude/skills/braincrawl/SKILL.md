@@ -148,10 +148,12 @@ braincrawl --text openalex refs W2031938753
 braincrawl --text graph neighborhood openalex:W2031938753 --dir backward --depth 1 --max-nodes 50
 ```
 
-**Watch for citations leading off-topic** (GOALS §"Graph-building strategy"). The most-cited
-descendants of an ancient-history paper are often modern plant-biology/agronomy works —
-following forward citations by raw influence marches out of the field. Control it at the
-edge query: filter forward expansion by concept/topic, e.g.
+**Watch for citation scatter** (GOALS §"Graph-building strategy"). A heavily-cited source is
+referenced across many unrelated domains, so its most-cited forward citations are often off
+in another field — the descendants of an ancient-history paper are mostly modern
+plant-biology/agronomy works, and following them by raw influence marches out of the field.
+This is *scatter*, not **drift** (a copy diverging from its source) — see the glossary,
+`doc01.01`. The control is **topic-gating**: filter forward expansion by concept/topic, e.g.
 
 ```bash
 # stay in-domain: works citing the landmark, filtered to an OpenAlex concept/topic
@@ -227,27 +229,17 @@ The store root resolves from `BRAINCRAWL_L3_REPO` (env) > `l3_repo` in
 l3_repo = "~/code/github/saxonthune/braincrawl-l3"   # a dedicated git repo is recommended
 ```
 
-### The contract: a frozen envelope, a free body
+### The contract and conventions live in `l3-conventions.md`
 
-The reason the Research Collection can stay consolidated *and* keep evolving its document design is that the
-contract is split:
+What belongs in an L3 doc — the frozen envelope (`doc`/`schema`/`updated`), the
+reference-never-copy invariant, and the still-churning body conventions — is **not** restated
+here. It lives in one source of truth alongside this skill:
 
-- **Envelope (frozen, tooling reads it without parsing the body).** Three frontmatter keys:
-  - `doc:` — kebab-case slug, the **primary key** and filename stem. (Replaces the old
-    `domain:` key.)
-  - `schema:` — a label naming the body convention in use (free string).
-  - `updated:` — date, stamped by the CLI.
-  These are the *required* keys (`l3 check` warns on any missing). The set grows over time
-  as conventions firm up — that is the one place the contract tightens.
-- **Body (free — this is the experimentation zone).** Everything below the frontmatter is
-  yours. The only body rule is the Research Collection invariant: **reference UUIDs, never copy
-  metadata.** Many document designs coexist because each doc *declares* its `schema:`; the
-  linter only checks what that schema requires. `schema: freeform` = no body lint at all
-  (the escape hatch — full consolidation + indexing, zero layout constraint).
+> `.claude/skills/braincrawl/l3-conventions.md`  (spec ref: `doc02.01.04`)
 
-`l3 new --schema spine` and `--schema dialectical` stamp a starter skeleton (Questions /
-Selection set / Domain edges / Findings); any other schema (incl. `freeform`) just stamps
-the envelope + an H1. To trial a new design, pick a new `schema:` label and write freely.
+Read it before writing or editing an L3 doc. It has a **settled contract** (the laws every
+doc obeys) and an **experimental ledger** (candidate conventions held as leans, not laws,
+fed by `l3-feedback-*` reports). Don't duplicate either back into this file.
 
 ### CLI surface
 
@@ -283,15 +275,10 @@ Maintenance loop, each research session:
    markdown under git — commit it like any repo.
 
 ### Rules that keep the Research Collection honest
-- **Reference, never copy.** Store ids, not metadata. Look it back up from the server when you need the facts.
-- **UUIDs are the join key.** Prefer `openalex:W…`; the store resolves DOIs/ISBNs
-  to the same UUID, so any id form is safe but be consistent.
-- **One doc per item, in the consolidated store.** Don't create `.l3.md` files by hand in
-  random repos — go through `l3 new`/`l3 import` so nothing scatters.
-- **Edges and questions are yours.** Catalog edges are neutral citations; Research Collection edges
-  (`supports`/`refutes`/domain relations) carry your interpretation.
-- **`doc`/`schema`/`updated` are the envelope; the body is free.** Experiment with layout
-  under a new `schema:` label; never break the three envelope keys.
+
+The invariants (reference-never-copy, UUIDs as join key, one-doc-per-item, your-edges-are-
+yours, the frozen envelope) are the **settled contract** in `l3-conventions.md` — read them
+there rather than from a copy here.
 
 ## Quick reference
 

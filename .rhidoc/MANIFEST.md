@@ -51,9 +51,10 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.01.00 | `01-core/00-index.md` | The platform-agnostic knowledge-graph engine, decomposed into the three goals layers — Library (identity + payloads), Catalog, and Research Collections. | architecture, core, layers | — | — | — |
-| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.04 | — |
+| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.01.04, doc02.04 | — |
 | doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one UUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
 | doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a UUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.00, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
+| doc02.01.04 | `01-core/04-l3-conventions.md` | The L3 Research Collection body has no formalized contract yet — only the envelope (doc/schema/updated) is frozen. Candidate body conventions are collected and churned in an experimental working ledger inside the braincrawl Claude skill, not here, until one earns its way into the spec. This doc is the stable pointer to that live space. | architecture, core, l3, research-collection, conventions, experimental | doc02.01.01 | — | — |
 
 ### Cloudflare
 
@@ -88,7 +89,7 @@ Quick lookup for file-path→doc mapping:
 | `agent` | doc01.02, doc02.03.00 |
 | `ai` | doc00.04 |
 | `api` | doc02.01.03 |
-| `architecture` | doc02.00, doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03, doc02.02.00, doc02.03.00, doc02.04, doc02.05 |
+| `architecture` | doc02.00, doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03, doc02.01.04, doc02.02.00, doc02.03.00, doc02.04, doc02.05 |
 | `auth` | doc02.05 |
 | `braincrawl` | doc02.06.00 |
 | `citations` | doc02.06.01.01, doc02.06.01.02 |
@@ -96,10 +97,11 @@ Quick lookup for file-path→doc mapping:
 | `cloudflare` | doc02.02.00, doc02.04 |
 | `consumer` | doc02.03.00 |
 | `contract` | doc02.01.03 |
-| `conventions` | doc00.03 |
-| `core` | doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03 |
+| `conventions` | doc00.03, doc02.01.04 |
+| `core` | doc02.01.00, doc02.01.01, doc02.01.02, doc02.01.03, doc02.01.04 |
 | `deployment` | doc02.02.00 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
+| `experimental` | doc02.01.04 |
 | `external` | doc02.06.01.00 |
 | `fork` | doc02.06.01.00, doc02.06.01.01, doc02.06.01.02 |
 | `glossary` | doc01.01 |
@@ -107,6 +109,7 @@ Quick lookup for file-path→doc mapping:
 | `identity` | doc02.01.02 |
 | `index` | doc00.00 |
 | `infrastructure` | doc02.02.00 |
+| `l3` | doc02.01.04 |
 | `layers` | doc02.01.00, doc02.01.01 |
 | `maintenance` | doc00.02 |
 | `mental-model` | doc01.02 |
@@ -117,6 +120,7 @@ Quick lookup for file-path→doc mapping:
 | `philosophy` | doc00.02 |
 | `product` | doc01.01, doc01.02 |
 | `providers` | doc02.06.00, doc02.06.01.00, doc02.06.01.01, doc02.06.01.02 |
+| `research-collection` | doc02.01.04 |
 | `retrieval` | doc00.04 |
 | `role` | doc01.02 |
 | `routing` | doc02.06.00 |

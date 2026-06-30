@@ -19,6 +19,9 @@ braincrawl separates knowledge built once and shared — the first two layers �
 - A **citation** is the primary edge between catalog entries — one work citing another.
 - braincrawl tries to map different identification schemes into a single **UUID**.
 - An **identifier** (or alias) is one identification scheme — such as a DOI, ISBN, or OCLC number — that braincrawl maps to a UUID.
+## Graph traversal
+- **Citation scatter** — a heavily-cited source is referenced by works across many unrelated domains, so following its forward citations (`cited-by`) by raw influence pulls in off-topic works and marches out of the field. It is a single-hop property of an influential node, not a gradual wandering — and not to be called **drift**, which in braincrawl means a copy diverging from its source of truth.
+- **Topic-gating** — the control for scatter: filter forward expansion by an OpenAlex concept/topic so the citing works stay in-domain. Rank canon by in-degree *within* the topic-gated subgraph, not by global citation count.
 ## The library: artifacts
 An **artifact** is a stored piece of content attached to a catalog entry — an abstract, a fulltext, an LLM-summary projection, or another asset.
 

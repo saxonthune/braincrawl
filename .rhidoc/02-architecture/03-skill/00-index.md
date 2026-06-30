@@ -16,8 +16,8 @@ traversal**, so separate *gathering works* (build) from *reading and judging* (q
 1. **Find a starting work** — search or semantic entry to find landmark works (you
    don't know the entry point when entering a new field).
 2. **Get more catalog entries** — follow citations forward through the citation graph
-   in the Catalog (`doc02.01.01`), gating expansion by concept/topic to keep the
-   citations from leading off-topic. Inventory-shaped, non-decisive on purpose.
+   in the Catalog (`doc02.01.01`), topic-gating expansion by concept/topic to contain
+   citation scatter (`doc01.01`). Inventory-shaped, non-decisive on purpose.
 3. **Project** — maintain a Research Collection (annotation-over-reference) of the
    selection set with domain annotations and edges.
 4. **Read and judge at query time** — verification stops being an up-front kill-gate
