@@ -43,6 +43,7 @@ An **artifact** is a stored piece of content attached to a catalog entry — an 
 - An artifact's **role** says what the content is to the work: `abstract`, `fulltext`, or a custom slug such as `map`. Its **mime** says how the bytes are encoded — `application/pdf`, `image/png`. The two are independent.
 - An artifact also records its **provenance**: a source label, a source URL, and when it was fetched. Each push of the same role is kept in sequence, with the latest marked current.
 - An artifact attaches to a catalog entry that already exists; pushing content never creates the entry. Writing to the catalog is a separate door.
+- **`chunk`** is a self-contained CLI tool braincrawl provides that partitions a stored fulltext into citation-carrying pieces, each carrying page provenance — a secondary derived artifact of a work.
 ## Providers
 A provider has two roles: pulling information from the provider's store, and pushing it to the user's braincrawl store.
 

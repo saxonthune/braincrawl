@@ -1,4 +1,5 @@
 pub mod arxiv;
+pub mod chunk;
 pub mod cli;
 pub mod config;
 pub mod fetch_content;

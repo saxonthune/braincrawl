@@ -68,6 +68,33 @@ pub enum Namespace {
     L3(L3Args),
     #[command(about = "Query the arXiv preprint API")]
     Arxiv(ArxivArgs),
+    #[command(about = "Partition a work's stored fulltext into a citation-carrying chunks artifact")]
+    Chunk(ChunkArgs),
+}
+
+#[derive(Args)]
+pub struct ChunkArgs {
+    /// Work id in ns:value form (stored fulltext → writes the chunks artifact)
+    pub id: Option<String>,
+    /// External PDF file — PIPE-ONLY: emits JSON to stdout, never stored
+    #[arg(long)]
+    pub file: Option<String>,
+    /// Output artifact role slug
+    #[arg(long, default_value = "chunks")]
+    pub role: String,
+    #[arg(long = "max-tokens", default_value_t = 512)]
+    pub max_tokens: usize,
+    #[arg(long, default_value_t = 64)]
+    pub overlap: usize,
+    /// Stream JSON to stdout instead of storing
+    #[arg(long)]
+    pub stdout: bool,
+    /// Chunk faithful pages and skip image-only ones instead of refusing
+    #[arg(long = "allow-partial")]
+    pub allow_partial: bool,
+    /// Re-chunk even if a chunks artifact already exists
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Args)]

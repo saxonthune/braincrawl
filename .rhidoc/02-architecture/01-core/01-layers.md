@@ -41,7 +41,7 @@ A `payloads` table in the Catalog records one row per stored blob and answers bo
 | Column | Role |
 |---|---|
 | `canonical_id` | which work |
-| `kind` | `abstract` \| `fulltext` — what the blob is |
+| `kind` | an open-ended role slug — what the blob is (`abstract`, `fulltext`, or a derived artifact such as `chunks`) |
 | `version` | bumped on re-fetch; old bytes keep their key |
 | `r2_key` | `{canonical_id}/{kind}/v{version}` |
 | `content_hash` | dedup / change detection |
@@ -51,8 +51,10 @@ A `payloads` table in the Catalog records one row per stored blob and answers bo
 
 Consequences:
 
-- **abstract vs fulltext vs nothing** is the `kind` column; "nothing" is the absence
-  of any `payloads` row (which is what makes a work a metadata-only node).
+- A work holds raw `fulltext` plus arbitrarily many secondary derived or compressed
+  artifacts (`chunks` is the first) under the same open-ended `kind` slug; "nothing"
+  is the absence of any `payloads` row (which is what makes a work a metadata-only
+  node).
 - **Versioned per-blob metadata** (fetch date, source) is a new row per re-fetch with
   `version + 1`; full history is retained.
 - **Node materialization status** (citation target with no metadata → metadata only →

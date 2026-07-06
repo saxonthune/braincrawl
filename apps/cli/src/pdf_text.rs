@@ -9,6 +9,15 @@ pub fn extract_text(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> 
     Ok(normalize(raw))
 }
 
+/// Extract UTF-8 text from born-digital PDF bytes, one normalized String per page.
+pub fn extract_pages(bytes: &[u8]) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    if !is_valid_pdf(bytes) {
+        return Err("bytes do not begin with %PDF magic — not a valid PDF".into());
+    }
+    let raw_pages = pdf_extract::extract_text_from_mem_by_pages(bytes)?;
+    Ok(raw_pages.into_iter().map(normalize).collect())
+}
+
 fn normalize(raw: String) -> String {
     let trimmed: Vec<&str> = raw.lines().map(|l| l.trim_end()).collect();
     let mut out = String::with_capacity(raw.len());
@@ -72,5 +81,19 @@ mod tests {
             text.contains("Hello braincrawl"),
             "expected 'Hello braincrawl' in extracted text, got: {text:?}"
         );
+    }
+
+    #[test]
+    fn extract_pages_on_fixture() {
+        let bytes = include_bytes!("../tests/fixtures/hello.pdf");
+        let pages = extract_pages(bytes).expect("paginated extraction should succeed");
+        assert!(!pages.is_empty());
+        assert!(pages.iter().any(|p| p.contains("Hello braincrawl")));
+    }
+
+    #[test]
+    fn extract_pages_rejects_non_pdf() {
+        let err = extract_pages(b"<html>not a pdf</html>").unwrap_err();
+        assert!(err.to_string().contains("%PDF"));
     }
 }

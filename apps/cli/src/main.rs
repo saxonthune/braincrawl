@@ -1,6 +1,7 @@
 use braincrawl_cli::arxiv::ArxivProvider;
-use braincrawl_cli::cli::{ArxivCmd, Cli, CrossrefCmd, GraphCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
+use braincrawl_cli::cli::{ArxivCmd, ChunkArgs, Cli, CrossrefCmd, GraphCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
 use std::io::Write as IoWrite;
+use braincrawl_cli::chunk;
 use braincrawl_cli::pdf_text;
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
@@ -349,6 +350,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             run_provider(&provider, cmd, &store, &opts)?;
         }
+        Namespace::Chunk(args) => {
+            run_chunk(&config, &args)?;
+        }
         Namespace::Get(args) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());
@@ -380,6 +384,106 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    Ok(())
+}
+
+fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error::Error>> {
+    use braincrawl_cli::store_client::ContentOutcome;
+
+    if args.id.is_some() == args.file.is_some() {
+        return Err(
+            "chunk requires exactly one of a work id or --file (not both, not neither)".into(),
+        );
+    }
+
+    let store = StoreClient::new(&config.server_url).with_token(config.auth_token.clone());
+
+    let bytes: Vec<u8> = if let Some(path) = &args.file {
+        std::fs::read(path)?
+    } else {
+        let id = args.id.as_ref().unwrap();
+        match store.get_content(id, "fulltext")? {
+            ContentOutcome::Bytes { bytes, mime } => {
+                if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
+                    return Err(format!(
+                        "fulltext artifact for {} is not a PDF (mime={})",
+                        id, mime
+                    )
+                    .into());
+                }
+                bytes
+            }
+            ContentOutcome::Absent => {
+                return Err(format!(
+                    "no fulltext artifact in store for {}; run fetch-content first",
+                    id
+                )
+                .into());
+            }
+            ContentOutcome::Pending => {
+                return Err(format!("fulltext for {} is still being fetched", id).into());
+            }
+        }
+    };
+
+    let pages = pdf_text::extract_pages(&bytes)?;
+    let pages_total = pages.len();
+    let unfaithful = chunk::unfaithful_pages(&pages);
+
+    if !unfaithful.is_empty() && !args.allow_partial {
+        return Err(format!(
+            "{}/{} pages have no text layer (scanned/image-only); chunk provides no OCR. \
+             Re-run with --allow-partial to chunk the rest.",
+            unfaithful.len(),
+            pages_total
+        )
+        .into());
+    }
+
+    let mut working_pages = pages;
+    for &page_num in &unfaithful {
+        working_pages[page_num - 1] = String::new();
+    }
+
+    let chunks = chunk::chunk_pages(&working_pages, args.max_tokens, args.overlap);
+    let pages_faithful = pages_total - unfaithful.len();
+    let chunk_count = chunks.len();
+
+    let output = serde_json::json!({
+        "work": args.id,
+        "chunker": {
+            "max_tokens": args.max_tokens,
+            "overlap": args.overlap,
+            "tokenizer": "cl100k_base",
+        },
+        "pages_total": pages_total,
+        "pages_faithful": pages_faithful,
+        "pages_skipped": unfaithful,
+        "chunks": chunks,
+    });
+
+    if args.stdout || args.file.is_some() {
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    let id = args.id.as_ref().unwrap();
+    if !args.force {
+        if let Ok(ContentOutcome::Bytes { .. }) = store.get_content(id, &args.role) {
+            eprintln!(
+                "already-present: {} artifact already in store (use --force to re-chunk)",
+                args.role
+            );
+            return Ok(());
+        }
+    }
+
+    let json_bytes = serde_json::to_vec(&output)?;
+    store.put_content(id, &args.role, json_bytes, "application/json", Some("chunk"), None)?;
+    eprintln!(
+        "chunked: {} chunk(s), pages_faithful {}/{}",
+        chunk_count, pages_faithful, pages_total
+    );
     Ok(())
 }
 
