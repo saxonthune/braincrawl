@@ -139,6 +139,7 @@ resource Work {
         OpenCitationsRefs
         FetchContent
         ExtractText
+        Chunk
         FetchPdf
         PushPdf
         GetPdf
@@ -293,6 +294,32 @@ operation ExtractText {
     input := with [CommonOutput] {
         @required
         id: WorkId
+    }
+    output := {
+        work: WorkRecord
+    }
+}
+
+/// `chunk <id>` — partition a work's stored fulltext into a citation-carrying
+/// `chunks` artifact (structure-first, token-capped, small overlap; each chunk
+/// carries provenance). One of many secondary derived artifacts a work may hold —
+/// not part of any abstract/fulltext dichotomy. Store target is a PUSHED work only;
+/// an unstored external `file` is pipe-only (stdout, never stored). Reports whether
+/// it can faithfully chunk (born-digital text layer) and refuses scanned/image-only
+/// input rather than emitting unfaithful chunks — no OCR.
+operation Chunk {
+    input := with [CommonOutput] {
+        id: WorkId
+        /// optional external PDF file — pipe-only: emits to stdout, never stored
+        file: String
+        /// output artifact role (default "chunks")
+        role: String
+        maxTokens: Integer
+        overlap: Integer
+        /// stream JSON to stdout instead of storing (forced when `file` is used)
+        stdout: Boolean
+        /// re-chunk even if a chunks artifact already exists
+        force: Boolean
     }
     output := {
         work: WorkRecord

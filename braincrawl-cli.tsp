@@ -169,6 +169,39 @@ interface Content {
   /** extract-text <id> */
   extractText(id: WorkId, ...CommonOutput): WorkRecord;
 
+  /**
+   * chunk <id> — partition a work's stored fulltext into a citation-carrying
+   * `chunks` artifact (structure-first, token-capped, small overlap; each chunk
+   * carries provenance for citing back into the source). One of many secondary
+   * derived artifacts a work may hold — not part of any abstract/fulltext dichotomy.
+   *
+   * Store target is a PUSHED work only: chunking writes the `chunks` role back to
+   * the store. An unstored external `file` is PIPE-ONLY — it emits to stdout and is
+   * never stored (to store, push the PDF first). `chunk` reports whether it can
+   * faithfully chunk the PDF (born-digital text layer) and refuses image-only /
+   * scanned input rather than emitting chunks it can't stand behind — no OCR.
+   */
+  chunk(
+    id?: WorkId,
+
+    /** optional external PDF file — pipe-only: emits to stdout, never stored */
+    file?: string,
+
+    /** output artifact role (default "chunks") */
+    role?: string,
+
+    maxTokens?: int32,
+    overlap?: int32,
+
+    /** stream JSON to stdout instead of storing (forced when `file` is used) */
+    stdout?: boolean,
+
+    /** re-chunk even if a chunks artifact already exists */
+    force?: boolean,
+
+    ...CommonOutput
+  ): WorkRecord;
+
   /** fetch-pdf <id> — to stdout/file, no store write */
   fetchPdf(
     id: WorkId,
