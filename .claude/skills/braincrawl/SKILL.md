@@ -23,7 +23,7 @@ Three layers:
 | Layer | What it is | Where it lives |
 |---|---|---|
 | **L1 — Library** | works keyed by UUID + payloads (abstract now, fulltext on demand) | the **server's store** (shared) |
-| **L2 — Catalog** | nodes + citation edges, lazily accreted from OpenAlex | the **server's store** (shared) |
+| **L2 — Catalog** | nodes + citation edges, gathered lazily from OpenAlex | the **server's store** (shared) |
 | **L3 — Research Collection** | *your* questions, selections, annotations, domain edges | **the consolidated research document store** (one config-driven dir, one Research Document per item) |
 
 The Library and Catalog are general and shared across every project. The Research Collection is yours. **The Research Collection is
@@ -122,7 +122,7 @@ Global output flags (work on every command): `--text` (one result/line, tab-sepa
 `--abstract`, `--skip-push`.
 
 **Push-to-store is on by default.** Every `openalex` query writes the works (and, for
-`cited-by`/`refs`, the citation edges) into the Library and Catalog. That is how the catalog accretes — one
+`cited-by`/`refs`, the citation edges) to the Library and Catalog. That is how the catalog grows — one
 project's reading is the next project's cache. Use `--skip-push` only for throwaway peeks.
 
 ## 3. Get more catalog entries (the funnel = graph traversal)
@@ -132,12 +132,12 @@ This is the inventory phase. Do not verify or kill anything here — just gather
 question, and you've named the gap.** If they do cover it, stop — you're done at step 0.
 
 ```bash
-# First search — find landmark works (you don't know the starting work entering a new field)
+# First search — find heavily cited works (you don't know the starting work entering a new field)
 braincrawl --text --limit 5 openalex search works "salt silt ancient mesopotamian agriculture"
-# → W2031938753 "Salt and Silt in Ancient Mesopotamian Agriculture" (the landmark)
+# → W2031938753 "Salt and Silt in Ancient Mesopotamian Agriculture" (a heavily cited work)
 
 # Follow citations FORWARD (cited-by) — old/humanities works have almost no backward refs,
-# but forward citations are rich. This pushes nodes AND edges into the Catalog.
+# but forward citations are rich. This pushes nodes AND edges to the Catalog.
 braincrawl --text --all openalex cited-by W2031938753
 
 # Backward refs when they exist (modern works)
@@ -155,7 +155,7 @@ This is *scatter*, not **drift** (a copy diverging from its source) — see the 
 `doc01.01`. The control is **topic-gating**: filter forward expansion by concept/topic, e.g.
 
 ```bash
-# stay in-domain: works citing the landmark, filtered to an OpenAlex concept/topic
+# stay in-domain: works citing that work, filtered to an OpenAlex concept/topic
 braincrawl --text openalex find works "cites:W2031938753" "concepts.id:C<your-field-concept>"
 ```
 
@@ -199,7 +199,7 @@ From cheapest to dearest:
 
 Worked loop: a temple-formation question returned *nothing* on the held graph (step 1
 miss) → ran `openalex search "origins of the temple economy…"` → one `--abstract`
-read of the landmark (step 2) carried the full Gelb/Diakonoff vs Deimel answer. Steps
+read of that work (step 2) carried the full Gelb/Diakonoff vs Deimel answer. Steps
 3–4 never needed. That is the target shape: climb only as far as the question forces you.
 
 **Verify the CLI surface before assuming a capability is missing.** This doc names verbs by
@@ -264,9 +264,9 @@ Maintenance loop, each research session:
 2. **Ask the Research Collection first.** Read your selection set. Can the open question be answered from ids
    you already hold? `braincrawl graph neighborhood openalex:<id> …` and `openalex get
    <id> --abstract` read them back from the store — no re-fetch.
-3. **If not, gather more** (§3): find a starting work and follow citations into the Library/Catalog. New works land in the
+3. **If not, gather more** (§3): find a starting work and follow its citations. New works land in the
    shared store automatically (push-on-by-default).
-4. **Project the selected works into the Research Collection.** Add the UUIDs that matter to your selection
+4. **Reference the selected works in your Research Document.** Add the UUIDs that matter to your selection
    set with tags + a one-line note; add domain edges (`supports`/`refutes`/`builds-on`)
    linked to your questions. Keep notes terse — they annotate, they don't restate.
 5. **Read and judge at query time, not now.** Verification is a *lens you choose later*, never an

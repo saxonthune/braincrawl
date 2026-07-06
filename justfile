@@ -1,5 +1,6 @@
-# braincrawl — task runner. The server lifecycle is a thin wrapper around
-# scripts/braincrawl-server.sh (the shared local L1/L2 server other repos point at).
+# braincrawl — task runner. The shared local L1/L2 server runs as a systemd user
+# service (braincrawl-server.service); these recipes drive it via `systemctl --user`.
+# The service is enabled with lingering, so it also starts at boot.
 
 # List available recipes
 default:
@@ -12,32 +13,33 @@ default:
 # One-stop: refresh the PATH CLI + rebuild & restart the server. Run after pulling/changes.
 upgrade: install restart
 
-# Build (if needed) and launch the shared server in the background
+# Start the shared server (systemd user service)
 server-start:
-    ./scripts/braincrawl-server.sh start
+    systemctl --user start braincrawl-server
 
 # Stop the shared server
 server-stop:
-    ./scripts/braincrawl-server.sh stop
+    systemctl --user stop braincrawl-server
 
-# Restart the shared server
+# Restart the shared server (does NOT rebuild — use `just restart` to pick up changes)
 server-restart:
-    ./scripts/braincrawl-server.sh restart
+    systemctl --user restart braincrawl-server
 
 # NB: this only refreshes the running server. To update the `braincrawl` CLI on
-# your PATH after CLI changes, run `just install` (the server script never touches it).
+# your PATH after CLI changes, run `just install` (the service never touches it).
 #
-# Rebuild the release binaries, then restart the server (picks up code changes)
+# Rebuild the release binaries, then restart the service (picks up code changes)
 restart: build-release
-    ./scripts/braincrawl-server.sh restart
+    systemctl --user restart braincrawl-server
 
 # Show whether the server is up + /health
 server-status:
-    ./scripts/braincrawl-server.sh status
+    systemctl --user status braincrawl-server --no-pager
+    @curl -fsS http://127.0.0.1:8787/health && echo
 
-# Tail the server log
+# Tail the server log (journald)
 server-logs:
-    ./scripts/braincrawl-server.sh logs
+    journalctl --user -u braincrawl-server -f
 
 # Build the server + CLI binaries (debug)
 build:

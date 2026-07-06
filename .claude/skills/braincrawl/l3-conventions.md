@@ -70,9 +70,9 @@ from here.
 - **Status:** leaning-discourage
 - **Source:** `l3-feedback-catalog-state-in-l3`
 - **Behavior:** annotating selection entries with facts about L1/L2 — "✅ fulltext stored",
-  "node pinned this session", "⚠️ NO open fulltext found", "(pinned + FULLTEXT stored
+  "node created this session", "⚠️ NO open fulltext found", "(node created + FULLTEXT stored
   <date>)".
-- **Lean:** discourage. These are look-up-able store facts; writing them into L3 duplicates
+- **Lean:** discourage. These are look-up-able store facts; recording them in an L3 doc duplicates
   catalog state and goes stale silently when an artifact is evicted or re-fetched — the exact
   drift reference-never-copy exists to prevent. L3 entry stays `id + note + edges`.
 - **The real need underneath:** "which of my selected works can I read deeply right now?" is
@@ -81,3 +81,30 @@ from here.
   an L3 convention.
 - **Not yet landed because:** wants confirmation across more than one session before it goes
   into the settled contract, and the store-query alternative isn't built yet.
+
+### Attributed voice for a source's theoretical claims
+
+- **Status:** leaning-allow
+- **Source:** `feedback-attributed-voice-for-source-claims`
+- **Behavior:** whether a source's contested theoretical construct may be written in the doc's
+  own assertive voice ("value is a real abstraction") or must be attributed to the source who
+  claims it ("Sohn-Rethel's *real abstraction* holds that…").
+- **Lean:** attribute. Split the doc into two voices by what is being stated:
+  - **Assertive voice** — the doc may state as settled only *graph facts* (ids, edges,
+    citation structure it looks up from the store) and *the user's own positions*.
+  - **Attributed voice** — *any source's theoretical claim* is reported, never asserted: name
+    the claimant with the claim. This is reference-never-copy carried from a source's metadata
+    to its ontology — don't adopt a source's contested construct as the doc's own truth.
+- **Point-of-use marker.** A convention fires only while *authoring*; a later session *reading*
+  the doc needs the skepticism to travel with the term. At a contested construct's first
+  appearance, attach an inline marker carrying the concept, the claim, the user's stance, and
+  the attribute-don't-assert instruction:
+
+  > **⟨attributed⟩ `real abstraction` — Sohn-Rethel.** Claims value is a real abstraction. User
+  > stance: skeptical — grants that other idealisms can be shown to fall out of it, denies that
+  > it is itself real. Attribute to the source; never assert in the doc's own voice.
+
+- **Trigger case:** `materialist-signal-theory.l3.md` — the Sohn-Rethel "real abstraction"
+  entries and the Q3 findings that leaned on it as "the answer."
+- **Not yet landed because:** the register split and the marker shape both want a few real
+  sessions before graduating into the settled contract.

@@ -5,6 +5,7 @@ tags: [glossary, vocabulary, terms, product, facts, coverage]
 deps: []
 ---
 # Glossary
+This glossary is a **controlled vocabulary**: one preferred term per concept, kept precise so it does not drift. Adhere to it — use the term it defines rather than a coined synonym — and contribute to it: when you need a concept it does not yet name, propose an addition here instead of minting a term in passing.
 ## Facts — the grammar
 This glossary's relationships are written as **verbalized facts** (ORM-style): one affirmable subject–verb–object(–…) sentence per relationship, with an optional `predicate(role, role)` shadow where a fact wants to be linted or queried. Four kinds, one grammar:
 
@@ -35,6 +36,8 @@ braincrawl separates knowledge built once and shared — the first two layers �
 - `has-entries-on(catalog, topic)` — the catalog holds entries on a topic, or it does not.
 - **Coverage** — `coverage(topic) := count{ artifact : relates-to(artifact, topic) }`. Coverage is a *number* — the count of artifacts related to a topic — not a state. "Thin" or "strong" coverage merely describes that number. `has-entries-on` and `coverage` are looked up from the store at read time, never written into a Research Document (where they would drift — see the L3 reference-never-copy invariant).
 ## Graph traversal
+- **Fetching citations** — following a work's citation edges to pull related works into the Catalog: forward with `cited-by`, backward with `refs`. The plain names for the action are **fetch citations** and **search citations**; the opening lookup for a heavily cited work is a **search**. There is no other name for it — not "snowball", "seed", or "coverage push".
+- **Heavily cited work** — a work with high in-degree, the plain name for an important node. Say **work** or **heavily cited work**, not "hub" or "keystone".
 - **Citation scatter** — a heavily-cited source is referenced by works across many unrelated domains, so following its forward citations (`cited-by`) by raw influence pulls in off-topic works and marches out of the field. It is a single-hop property of an influential node, not a gradual wandering — and not to be called **drift**, which in braincrawl means a copy diverging from its source of truth.
 - **Topic-gating** — the control for scatter: filter forward expansion by an OpenAlex concept/topic so the citing works stay in-domain. Rank canon by in-degree *within* the topic-gated subgraph, not by global citation count.
 ## The library: artifacts
