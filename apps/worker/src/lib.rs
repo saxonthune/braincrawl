@@ -161,13 +161,12 @@ pub struct WorkDurableObject {
     env: Env,
 }
 
-#[durable_object]
 impl DurableObject for WorkDurableObject {
     fn new(state: State, env: Env) -> Self {
         Self { state, env }
     }
 
-    async fn fetch(&mut self, _req: Request) -> worker::Result<Response> {
+    async fn fetch(&self, _req: Request) -> worker::Result<Response> {
         // Single-threaded; concurrent requests for the same key queue here.
         // Stub: acknowledge immediately. Rate-budget hook: not yet implemented.
         Response::ok("ok")
@@ -345,7 +344,7 @@ async fn handle_get_content(
     };
     match store.get_content(a, kind).await {
         Ok(ContentOutcome::Bytes { bytes, mime, content_hash: _ }) => {
-            let mut headers = Headers::new();
+            let headers = Headers::new();
             headers.set("Content-Type", &mime)?;
             Ok(Response::from_bytes(bytes)?.with_headers(headers))
         }

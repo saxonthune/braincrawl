@@ -1,8 +1,14 @@
 use reqwest::blocking::Client;
 use serde_json::Value;
+use std::time::Duration;
 
 pub fn run_all(base_url: &str, token: Option<&str>) -> Result<(), String> {
-    let client = Client::new();
+    // A bounded timeout turns a wedged server into a fast, legible failure
+    // instead of an indefinite hang.
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
     // stats must run first: it checks the empty-store zeros before other cases insert data
     stats(&client, base_url, token)?;
     put_and_get_work(&client, base_url, token)?;

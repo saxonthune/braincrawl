@@ -33,8 +33,7 @@ metadata.** Look it back up from the store at read time so it never drifts from 
 > Status note: The Library and Catalog live in the server's DB; the Research Collection is **not** a server feature (no
 > `/collections` endpoints). Instead the `braincrawl l3` CLI manages a **consolidated,
 > local document store** — one markdown file per doc under a single config-driven root —
-> so research knowledge stops scattering into per-project repos. When server-side collections
-> land, the same docs migrate up.
+> so research knowledge stops scattering into per-project repos.
 
 ## 0. Read what you already hold before pulling anything
 
@@ -128,7 +127,7 @@ project's reading is the next project's cache. Use `--skip-push` only for throwa
 
 ## 3. Get more catalog entries (the funnel = graph traversal)
 
-This is the inventory phase. Do not verify or kill anything here — just accrete.
+This is the inventory phase. Do not verify or kill anything here — just gather.
 **Precondition: you reach this section only after §0 — the existing L3 docs don't cover the
 question, and you've named the gap.** If they do cover it, stop — you're done at step 0.
 
@@ -190,24 +189,25 @@ From cheapest to dearest:
    (e.g. Jacobsen & Adams 1958), and some publishers (De Gruyter) return a boilerplate
    placeholder, not real content. When OpenAlex is blank, bridge it by fetching the source
    yourself (WebFetch / the open-access PDF) and reading the abstract in-context.
-3. **AI-condensed summary** — fetch fulltext and have an agent distill it to the claim you
-   need. *Not yet a CLI capability* (see "Capability gaps" below) — today you bridge it by
-   fetching the source yourself (WebFetch/the open-access PDF) and condensing in-context.
+3. **AI-condensed summary** — get a work's fulltext into the store and distill it to the
+   claim you need. Acquire from the open web with `fetch-content`, or ingest a local file
+   with `push` (e.g. a user-provided PDF), then `extract-text` to pull the text back and
+   condense it in-context. When the source isn't reachable that way, bridge with WebFetch.
 4. **Full text** — read the whole work. The dearest step; reserve for the load-bearing few
-   a finding actually hangs on. The Library is designed to hold fulltext "on demand," but the CLI
-   exposes no fulltext verb yet.
+   a finding actually hangs on. The Library holds fulltext "on demand" — same `fetch-content`/
+   `push` + `extract-text` path as step 3; just read more of the extracted text.
 
 Worked loop: a temple-formation question returned *nothing* on the held graph (step 1
 miss) → ran `openalex search "origins of the temple economy…"` → one `--abstract`
 read of the landmark (step 2) carried the full Gelb/Diakonoff vs Deimel answer. Steps
 3–4 never needed. That is the target shape: climb only as far as the question forces you.
 
-**Capability gaps (as of this writing).** The CLI top-level verbs are `openalex`,
-`graph`, `stats` — steps 1–2 are implemented; **steps 3–4 are not**
-(no fulltext fetch, no condense/summarize verb, no `store` subcommand despite older
-quick-ref mentions). Until they land, treat step 3 as a manual bridge. When you hit a
-question that genuinely needs fulltext, *say so explicitly* and name it as the capability
-to add rather than silently stopping at abstracts.
+**Verify the CLI surface before assuming a capability is missing.** This doc names verbs by
+way of example, not as an exhaustive or current inventory — the binary evolves. Run
+`braincrawl --help` to see today's top-level commands, and `braincrawl <command> --help`
+for a subcommand's flags, rather than trusting a hard-coded "X is not implemented" claim
+here. If a step genuinely has no verb after you've checked, *say so explicitly* and name the
+capability to add rather than silently stopping short.
 
 ## 5. Maintain your Research Collection (the consolidated store you own)
 
@@ -266,7 +266,7 @@ Maintenance loop, each research session:
    <id> --abstract` read them back from the store — no re-fetch.
 3. **If not, gather more** (§3): find a starting work and follow citations into the Library/Catalog. New works land in the
    shared store automatically (push-on-by-default).
-4. **Project the keepers into the Research Collection.** Add the UUIDs that matter to your selection
+4. **Project the selected works into the Research Collection.** Add the UUIDs that matter to your selection
    set with tags + a one-line note; add domain edges (`supports`/`refutes`/`builds-on`)
    linked to your questions. Keep notes terse — they annotate, they don't restate.
 5. **Read and judge at query time, not now.** Verification is a *lens you choose later*, never an
@@ -282,23 +282,14 @@ there rather than from a copy here.
 
 ## Quick reference
 
-| Task | Command |
-|---|---|
-| **Check server is up** | `curl -fsS http://127.0.0.1:8787/health` |
-| Start server (braincrawl repo) | `just server-start` |
-| Server up/down + health | `just server-status` |
-| Stop server | `just server-stop` |
-| Find landmark | `braincrawl --text openalex search works "<query>"` |
-| Follow citations forward | `braincrawl --text --all openalex cited-by <Wid>` |
-| Backward refs | `braincrawl --text openalex refs <Wid>` |
-| In-domain expand | `braincrawl --text openalex find works "cites:<Wid>" "concepts.id:<Cid>"` |
-| Read graph back | `braincrawl --text graph neighborhood openalex:<Wid> --dir backward --depth 1` |
-| Read one work from store | `braincrawl openalex get <Wid> --abstract` |
-| Peek store | `braincrawl store get openalex:<Wid>` |
-| **New Research Document** | `braincrawl l3 new <doc> --schema spine` |
-| **Locate Research Document** | `braincrawl l3 path <doc>` |
-| **List Research Documents** | `braincrawl l3 list` |
-| **Lint Research Document** | `braincrawl l3 check <doc>` / `--all` |
-| **Adopt existing md** | `braincrawl l3 import <file>` |
+The CLI is self-documenting, so there is **no hand-maintained command table here** — it would
+only drift from the binary. Generate the current reference on demand from the source of truth:
+
+- `braincrawl --help` — current top-level commands (`openalex`, `graph`, `l3`, `fetch-content`,
+  `extract-text`, `push`, `get`, …).
+- `braincrawl <command> --help` — a subcommand's flags and arguments (e.g.
+  `braincrawl openalex --help`, `braincrawl l3 --help`, `braincrawl push --help`).
+- Server lifecycle is **not** part of this CLI — it lives in the braincrawl repo's `just`
+  recipes (`server-start` / `server-status` / `server-stop`, see §1) and the `/health` probe.
 
 For OpenAlex filter/field details, see the `openalex-reference` skill.

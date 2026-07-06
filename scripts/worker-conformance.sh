@@ -1,56 +1,79 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Self-contained edge gate: boots the Worker under `wrangler dev` against an
+# isolated, freshly-wiped local D1/R2/KV state, runs the shared conformance suite
+# against it, and tears the whole process group down. It never touches the shared
+# braincrawl server (default port 8787) or its corpus.
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKER_DIR="$REPO_ROOT/apps/worker"
 TEST_TOKEN="conformance-test-token-local"
+# Never 8787 — that's the shared dev server holding the real corpus.
+PORT="${WORKER_TEST_PORT:-8799}"
+BASE="http://127.0.0.1:$PORT"
+# Isolated emulator state, wiped each run so the suite's `stats == 0` precondition
+# holds and so we never read or mutate the shared server's data.
+PERSIST_DIR="$WORKER_DIR/.wrangler-conformance-state"
+LOG="$WORKER_DIR/.wrangler-conformance.log"
+# wrangler's `[build]` step is a `cargo build`, which locks the *entire* target
+# dir. Sharing target/ with the host `cargo test` below makes the test block on
+# that lock indefinitely. A separate target dir gives each its own lock.
+export CARGO_TARGET_DIR="$REPO_ROOT/target/worker-wasm"
 
+WRANGLER_PGID=""
 cleanup() {
-    if [[ -n "${WRANGLER_PID:-}" ]]; then
-        kill "$WRANGLER_PID" 2>/dev/null || true
+    if [[ -n "$WRANGLER_PGID" ]]; then
+        kill -TERM -"$WRANGLER_PGID" 2>/dev/null || true
     fi
+    rm -f "$WORKER_DIR/.dev.vars"
 }
 trap cleanup EXIT
 
-# 1. Inject the test secret for wrangler dev --local
-cat > "$WORKER_DIR/.dev.vars" <<EOF
-AUTH_TOKEN=$TEST_TOKEN
-EOF
+# 1. Fresh emulator state.
+rm -rf "$PERSIST_DIR"
 
-# 2. Apply D1 migrations locally (wrangler reads wrangler.toml from cwd)
-(cd "$WORKER_DIR" && wrangler d1 migrations apply braincrawl-db --local)
+# 2. Inject the test secret for wrangler dev.
+printf 'AUTH_TOKEN=%s\n' "$TEST_TOKEN" > "$WORKER_DIR/.dev.vars"
 
-# 3. Start wrangler dev in the background
-(cd "$WORKER_DIR" && wrangler dev --local --port 8787) &
-WRANGLER_PID=$!
+# 3. Apply D1 migrations into the isolated state.
+(cd "$WORKER_DIR" && wrangler d1 migrations apply braincrawl-db --local --persist-to "$PERSIST_DIR")
 
-# 4. Readiness probe: poll POST /works/have until the worker responds
-echo "Waiting for worker to become ready..."
-for i in $(seq 1 60); do
+# 4. Start wrangler dev in its own process group so cleanup can reap the whole
+#    tree (wrangler + workerd children) and never leak the port.
+setsid bash -c "cd '$WORKER_DIR' && exec wrangler dev --local --port $PORT --persist-to '$PERSIST_DIR'" \
+    >"$LOG" 2>&1 &
+WRANGLER_PGID=$!
+
+# 5. Readiness probe: poll POST /works/have until the worker responds.
+echo "Waiting for worker to become ready on $BASE ..."
+status="000"
+for _ in $(seq 1 60); do
     status=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X POST http://127.0.0.1:8787/works/have \
+        -X POST "$BASE/works/have" \
         -H "Authorization: Bearer $TEST_TOKEN" \
         -H "Content-Type: application/json" \
         -d '{"ids":[]}' 2>/dev/null || echo "000")
     if [[ "$status" == "200" ]]; then
-        echo "Worker ready after ${i}s."
+        echo "Worker ready."
         break
     fi
     sleep 1
 done
 if [[ "$status" != "200" ]]; then
-    echo "Worker did not become ready in time (last status: $status)" >&2
+    echo "Worker did not become ready in time (last status: $status). Log:" >&2
+    tail -30 "$LOG" >&2 || true
     exit 1
 fi
 
-# 5. Run the conformance suite
-BRAINCRAWL_CONFORMANCE_URL=http://127.0.0.1:8787 \
+# 6. Run the conformance suite against the live worker.
+BRAINCRAWL_CONFORMANCE_URL="$BASE" \
 BRAINCRAWL_CONFORMANCE_TOKEN="$TEST_TOKEN" \
     cargo test -p braincrawl-conformance --test external -- --nocapture
 
-# 6. Negative auth check: request without token must return 401
+# 7. Negative auth check: request without token must return 401.
 unauth_status=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X POST http://127.0.0.1:8787/works/have \
+    -X POST "$BASE/works/have" \
     -H "Content-Type: application/json" \
     -d '{"ids":[]}')
 if [[ "$unauth_status" != "401" ]]; then
