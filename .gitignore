@@ -3,6 +3,7 @@
 /CLAUDE.local.md
 /.claude/worktrees/
 apps/worker/.dev.vars
+apps/worker/.wrangler/
 apps/worker/.wrangler-conformance-state/
 apps/worker/.wrangler-conformance.log
 apps/worker/build/
