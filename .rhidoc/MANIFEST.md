@@ -33,8 +33,9 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc01.00 | `00-index.md` |  |  | — | — | — |
-| doc01.01 | `01-glossary.md` | Plain-language names for braincrawl's three layers (Library, Catalog, Research Collection), written as ORM-style verbalized facts; defines topic coverage. | glossary, vocabulary, terms, product, facts, coverage | — | doc01.02 | — |
+| doc01.01 | `01-glossary.md` | Plain-language names for braincrawl's three layers (Library, Catalog, Research Collection), written as ORM-style verbalized facts; defines topic coverage. | glossary, vocabulary, terms, product, facts, coverage | — | doc01.02, doc01.03 | — |
 | doc01.02 | `02-mental-model.md` | The agent as signal converter — it builds the Library and Catalog, and translates between the user and the library so a human reads only the best works directly. | product, mental-model, agent, role | doc01.01 | — | — |
+| doc01.03 | `03-web-ui.md` | The Web UI is a feature of braincrawl providing read-only views of everything it holds, across all three layers; its views are provided by Web UI plugins. | product, web-ui, read-only, plugin | doc01.01 | — | — |
 
 ## 02-architecture — Architecture
 
@@ -113,8 +114,10 @@ Quick lookup for file-path→doc mapping:
 | `monorepo` | doc02.04 |
 | `openalex` | doc02.06.01.01 |
 | `philosophy` | doc00.02 |
-| `product` | doc01.01, doc01.02 |
+| `plugin` | doc01.03 |
+| `product` | doc01.01, doc01.02, doc01.03 |
 | `providers` | doc02.06.01.01, doc02.06.01.02 |
+| `read-only` | doc01.03 |
 | `research-collection` | doc02.01.04 |
 | `retrieval` | doc00.04 |
 | `role` | doc01.02 |
@@ -132,3 +135,4 @@ Quick lookup for file-path→doc mapping:
 | `union-find` | doc02.01.02 |
 | `verbs` | doc02.06.01.01, doc02.06.01.02 |
 | `vocabulary` | doc01.01 |
+| `web-ui` | doc01.03 |

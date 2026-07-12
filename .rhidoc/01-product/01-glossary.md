@@ -6,6 +6,8 @@ deps: []
 ---
 # Glossary
 This glossary is a **controlled vocabulary**: one preferred term per concept, kept precise so it does not drift. Adhere to it — use the term it defines rather than a coined synonym — and contribute to it: when you need a concept it does not yet name, propose an addition here instead of minting a term in passing.
+
+**Naming new concepts.** Names are load-bearing — every doc, type, and session inherits them — so the user chooses them. When work reaches a concept this glossary does not name, the agent lays out the naming decision (candidates, collisions with existing entries, tradeoffs) and the user commits the term here before anything fans out through it. Prefer combining existing terms over minting a new one; a candidate must be distinct from every existing entry and specific enough to stand alone out of context.
 ## Facts — the grammar
 This glossary's relationships are written as **verbalized facts** (ORM-style): one affirmable subject–verb–object(–…) sentence per relationship, with an optional `predicate(role, role)` shadow where a fact wants to be linted or queried. Four kinds, one grammar:
 
@@ -21,7 +23,7 @@ braincrawl separates knowledge built once and shared — the first two layers �
 
 - **Library** (Layer 1) — the store of works keyed by a UUID, holding each work's artifacts.
 - **Catalog** (Layer 2) — the shared index over the library: every work's metadata, which artifacts are held and where, and the citation links between works.
-- **Research Collection** (Layer 3) — a consumer's own research, made of **Research Documents** that point at UUIDs in the catalog rather than copying them. A Research Document is the singular artifact: questions, selected works, findings, and relations for one line of work.
+- **Research Collection** (Layer 3) — a consumer's own research, made of **Research Documents** that point at UUIDs in the catalog rather than copying them. A Research Document is the singular artifact: questions, selected works, findings, and links for one line of work.
 - **braincrawl store** (or sometimes just **braincrawl** as a noun) — refers to everything: L1, L2, L3.
 - **L1 / L2 / L3** — shorthand for Library, Catalog, Research Documents.
 ## The catalog: nodes and edges
@@ -47,6 +49,17 @@ An **artifact** is a stored piece of content attached to a catalog entry — an 
 - An artifact also records its **provenance**: a source label, a source URL, and when it was fetched. Each push of the same role is kept in sequence, with the latest marked current.
 - An artifact attaches to a catalog entry that already exists; pushing content never creates the entry. Writing to the catalog is a separate door.
 - **`chunk`** is a self-contained CLI tool braincrawl provides that partitions a stored fulltext into citation-carrying pieces, each carrying page provenance — a secondary derived artifact of a work.
+## The research graph
+The catalog is a graph and the Research Collection carries a graph; they are separate graphs, and neither owns the bare word "graph."
+
+- The **research graph** is the property graph lifted from a Research Collection's Research Documents by the tooling. A Research Document is the authoring surface; the research graph is what a parser extracts from it.
+- A **research node** (code-facing shorthand: **l3-node**) is the atomic unit of a Research Document — an id-bearing block of content. A Research Document is a collection of research nodes.
+- A **property** is a typed grouping of data on a research node, shared in format across nodes — remarks (freeform prose), catalog-references (pointers at catalog entries), tags.
+- A **link** is a typed connection in the research graph. Its two endpoints are each a research node or a catalog entry; its type is a plain word, said before the word link — a *contradicts link*, a *supports link*, a *catalog link*. A link can carry properties of its own (a why, a basis).
+- A **catalog link** is a link with a catalog entry at an endpoint — how a research node cites, uses, or disputes a work. The link always lives in the Research Collection; a catalog link never writes to the catalog.
+- A **query** obtains a subset of the research graph by filters and constraints; its result can carry order and shape (the database sense of query). The plugin interface provides the entire research graph, which a query filters.
+- A **Web UI plugin** provides views of the Web UI: its author decides what data to look for in the research graph and how the views render. The contract lives in the Web UI doc (doc01.03).
+
 ## Providers
 A provider has two roles: pulling information from the provider's store, and pushing it to the user's braincrawl store.
 

@@ -105,3 +105,29 @@ worker-test:
 # Regenerate the Luminous CLI-grammar canvas in .luminous/ from the clap definition
 luminous-cli:
     cargo run -p braincrawl-cli --example luminous_cli_grammar
+
+# ── Web UI (web/ — its own Vite+ workspace; vp runs from inside it) ──────────
+
+# Dev server for the Web UI
+web-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/web && vp dev
+
+# Production build of the Web UI (web/dist)
+web-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/web && vp build
+
+# Format + lint + type-check the Web UI in one pass
+web-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/web && vp check
+
+# Web UI tests (Vitest)
+web-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/web && vp test
