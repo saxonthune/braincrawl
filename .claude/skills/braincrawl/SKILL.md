@@ -85,20 +85,23 @@ curl -fsS http://127.0.0.1:8787/health && echo   # → {"service":"braincrawl","
 
 - **200 / `status: ok`** → use it (go to §2). Don't start anything.
 - **connection refused / no response** → the server is down. **Do not silently launch a
-  binary from another repo.** Tell the user to start it from the braincrawl repo:
+  binary from another repo.** Tell the user to bring it up from the braincrawl repo:
 
   ```bash
   # run from the braincrawl repo (the server's home)
-  just server-start     # build-if-needed + launch in background, auth disabled (localhost)
-  just server-status    # up/down + /health
-  just server-stop
+  just systemd-install   # first time only: install the systemd user service + start at boot
+  just systemd-start     # start it now (if installed but stopped)
+  just systemd-status    # up/down + /health
+  just systemd-stop
   ```
 
-  The `just` recipes wrap `scripts/braincrawl-server.sh` (a pidfile-managed
-  start/stop/status/restart/logs). Lifecycle is **manual** — start it when you sit down to
-  research, stop it when done. The script defaults to a stable DB path and binds
-  `127.0.0.1:8787` with auth disabled (localhost dev). Override via `BRAINCRAWL_BIND`,
-  `BRAINCRAWL_DB`, `BRAINCRAWL_BLOB_ROOT`, or set `BRAINCRAWL_AUTH_TOKEN` to require a bearer.
+  The server runs as a systemd **user** service (`braincrawl-server.service`), enabled with
+  lingering so it starts at boot and stays up — lifecycle is **not** manual day-to-day. The
+  `just` recipes drive it via `systemctl --user`; `scripts/braincrawl-server.sh` is a thin
+  shim over the same. It binds `127.0.0.1:8787` with auth disabled (localhost dev) and uses a
+  stable DB path under `~/.local/share/braincrawl`. Config lives in the unit
+  (`scripts/braincrawl-server.service` is the tracked template); `just restart` rebuilds the
+  release binary and bounces the service to pick up code changes.
 
 Underlying server env vars (if you bypass the script): `BRAINCRAWL_DB` (default
 `braincrawl.db`), `BRAINCRAWL_BLOB_ROOT` (default `blobs`), `BRAINCRAWL_BIND` (default
@@ -290,6 +293,6 @@ only drift from the binary. Generate the current reference on demand from the so
 - `braincrawl <command> --help` — a subcommand's flags and arguments (e.g.
   `braincrawl openalex --help`, `braincrawl l3 --help`, `braincrawl push --help`).
 - Server lifecycle is **not** part of this CLI — it lives in the braincrawl repo's `just`
-  recipes (`server-start` / `server-status` / `server-stop`, see §1) and the `/health` probe.
+  recipes (`systemd-start` / `systemd-status` / `systemd-stop`, see §1) and the `/health` probe.
 
 For OpenAlex filter/field details, see the `openalex-reference` skill.

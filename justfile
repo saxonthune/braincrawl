@@ -14,32 +14,32 @@ default:
 upgrade: install restart
 
 # Start the shared server (systemd user service)
-server-start:
+systemd-start:
     systemctl --user start braincrawl-server
 
 # Stop the shared server
-server-stop:
+systemd-stop:
     systemctl --user stop braincrawl-server
 
-# Restart the shared server (does NOT rebuild — use `just restart` to pick up changes)
-server-restart:
-    systemctl --user restart braincrawl-server
-
-# NB: this only refreshes the running server. To update the `braincrawl` CLI on
-# your PATH after CLI changes, run `just install` (the service never touches it).
-#
-# Rebuild the release binaries, then restart the service (picks up code changes)
-restart: build-release
+# Bounce the service (does NOT rebuild — use `just restart` to pick up code changes)
+systemd-restart:
     systemctl --user restart braincrawl-server
 
 # Show whether the server is up + /health
-server-status:
+systemd-status:
     systemctl --user status braincrawl-server --no-pager
     @curl -fsS http://127.0.0.1:8787/health && echo
 
 # Tail the server log (journald)
-server-logs:
+systemd-logs:
     journalctl --user -u braincrawl-server -f
+
+# NB: this only refreshes the running server. To update the `braincrawl` CLI on
+# your PATH after CLI changes, run `just install` (the service never touches it).
+#
+# Rebuild the release binaries, then bounce the service (picks up code changes)
+restart: build-release
+    systemctl --user restart braincrawl-server
 
 # Build the server + CLI binaries (debug)
 build:
@@ -48,6 +48,30 @@ build:
 # Build optimized release binaries (server script + consumers point here)
 build-release:
     cargo build --release --bin braincrawl-server --bin braincrawl
+
+# Install the systemd *user* service from scripts/braincrawl-server.service, wiring
+# ExecStart to THIS repo's release binary. Enables lingering so it starts at boot.
+# Idempotent — re-run after editing the template. Undo: `just systemd-uninstall`.
+systemd-install: build-release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    mkdir -p "$unit_dir"
+    sed "s#@EXEC@#{{justfile_directory()}}/target/release/braincrawl-server#" \
+        scripts/braincrawl-server.service > "$unit_dir/braincrawl-server.service"
+    systemctl --user daemon-reload
+    loginctl enable-linger "$USER"
+    systemctl --user enable --now braincrawl-server
+    echo "installed + started braincrawl-server.service (lingering enabled)"
+
+# Remove the systemd user service (stops it, disables boot start, drops the unit)
+systemd-uninstall:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    systemctl --user disable --now braincrawl-server || true
+    rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/braincrawl-server.service"
+    systemctl --user daemon-reload
+    echo "removed braincrawl-server.service"
 
 # Install/update the `braincrawl` CLI into ~/.cargo/bin as a standalone compiled
 # binary. Re-run after changing the CLI to push a new build. (For hands-off dev,
