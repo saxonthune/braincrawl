@@ -353,6 +353,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Namespace::Chunk(args) => {
             run_chunk(&config, &args)?;
         }
+        Namespace::Web => {
+            braincrawl_cli::web::print_url(&config);
+        }
         Namespace::Get(args) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());

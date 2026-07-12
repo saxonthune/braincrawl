@@ -12,6 +12,7 @@ service Braincrawl {
     resources: [
         Work
         Graph
+        L3
     ]
     operations: [
         // Catalog search/filter. NOTE: provider is baked into the op NAME today
@@ -21,6 +22,7 @@ service Braincrawl {
         OpenAlexAutocomplete
         SemanticScholarSearch
         Stats
+        Web
     ]
 }
 
@@ -466,4 +468,46 @@ operation SemanticScholarSearch {
 operation Stats {
     input := with [CommonOutput] {}
     output := {}
+}
+
+/// `web` — prints `<server_url>/web`, the Web UI URL for the configured server.
+@readonly
+operation Web {
+    input := {}
+    output := {}
+}
+
+// ---------------------------------------------------------------------------
+// L3 resource — the consolidated research-document store
+// ---------------------------------------------------------------------------
+
+structure AssignedAnchor {
+    doc: String
+    headingLine: Integer
+    id: String
+    title: String
+}
+
+list AssignedAnchorList {
+    member: AssignedAnchor
+}
+
+resource L3 {
+    collectionOperations: [
+        AssignIds
+    ]
+}
+
+/// `l3 assign-ids [--dry-run]` — mint `^r-…` anchors for every `##` heading
+/// that lacks one and append them to the heading line. The one command in the
+/// L3 surface that writes to doc files: node identity is tooling-owned.
+/// `--dry-run` reports what would be assigned and writes nothing.
+operation AssignIds {
+    input := with [CommonOutput] {
+        /// --dry-run  (report what would be assigned; write nothing)
+        dryRun: Boolean
+    }
+    output := {
+        assigned: AssignedAnchorList
+    }
 }

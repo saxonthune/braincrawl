@@ -13,6 +13,7 @@ name = "braincrawl"
 path = "src/main.rs"
 
 [dependencies]
+l3 = { path = "../../crates/l3" }
 clap = { version = "4", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

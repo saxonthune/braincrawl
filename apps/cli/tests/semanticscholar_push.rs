@@ -27,7 +27,7 @@ fn start_server_auth(dir: &std::path::Path, token: &str) -> (String, std::thread
                 disabled: false,
                 allowlist: SharedSecret::new(&token, "default"),
             });
-            let app = make_app(store, auth);
+            let app = make_app(store, auth, None);
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
             tx.send(format!("http://{addr}")).unwrap();

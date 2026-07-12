@@ -45,7 +45,7 @@ async fn main() {
 
     let store =
         Arc::new(make_store(&db_path, &blob_root).expect("failed to initialise local store"));
-    let app = make_app(store, auth);
+    let app = make_app(store, auth, None);
 
     let listener = TcpListener::bind(&bind_addr)
         .await

@@ -252,3 +252,27 @@ interface Graph {
 
 /** stats — aggregate counts over the metadata network. */
 op stats(...CommonOutput): {};
+
+/** web — prints `<server_url>/web`, the Web UI URL for the configured server. */
+op web(): {};
+
+// ---------------------------------------------------------------------------
+// L3 — the consolidated research-document store
+// ---------------------------------------------------------------------------
+
+model AssignedAnchor {
+  doc: string;
+  headingLine: int32;
+  id: string;
+  title: string;
+}
+
+interface L3 {
+  /**
+   * l3 assign-ids [--dry-run] — mint `^r-…` anchors for every `##` heading
+   * that lacks one and append them to the heading line. The one command in
+   * the L3 surface that writes to doc files: node identity is tooling-owned.
+   * `--dry-run` reports what would be assigned and writes nothing.
+   */
+  assignIds(dryRun?: boolean, ...CommonOutput): AssignedAnchor[];
+}

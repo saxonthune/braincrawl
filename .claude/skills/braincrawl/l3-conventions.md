@@ -1,10 +1,10 @@
 # L3 conventions
 
 The single home for **what belongs in an L3 Research Document and what doesn't**. Two parts:
-a small **settled contract** (the laws — the frozen envelope + the invariants every doc
-obeys), and an **experimental ledger** (candidate body conventions, still churning, held as
-leans not laws). The braincrawl `SKILL.md` points here instead of carrying any of it, so
-there is one source of truth.
+a small **settled contract** (the laws — the frozen envelope + the node grammar every doc's
+body is written in), and an **experimental ledger** (candidate conventions on top of that
+grammar, still churning, held as leans not laws). The braincrawl `SKILL.md` points here
+instead of carrying any of it, so there is one source of truth.
 
 Spec cross-reference: `doc02.01.04` in the `.rhidoc/` workspace points at this file.
 
@@ -13,7 +13,8 @@ Spec cross-reference: `doc02.01.04` in the `.rhidoc/` workspace points at this f
 ## The settled contract
 
 The Research Collection stays consolidated *and* keeps evolving its document design because
-the contract is split — a frozen envelope the tooling reads, a free body you experiment in.
+the contract is split — a frozen envelope the tooling reads, and a body written in one node
+grammar that crate `l3` parses into the research graph.
 
 **Envelope (frozen, tooling reads it without parsing the body).** Three frontmatter keys,
 the *required* set (`braincrawl l3 check` warns on any missing):
@@ -24,11 +25,30 @@ the *required* set (`braincrawl l3 check` warns on any missing):
 
 The set grows over time as conventions firm up — that is the one place the contract tightens.
 
-**Body (free — the experimentation zone).** Everything below the frontmatter is yours. Many
-document designs coexist because each doc *declares* its `schema:`; the linter only checks
-what that schema requires. `schema: freeform` = no body lint at all (the escape hatch).
-`l3 new --schema spine` / `--schema dialectical` stamp a starter skeleton (Questions /
-Selection set / Domain edges / Findings); any other schema just stamps the envelope + an H1.
+**Body — the node grammar.** Everything below the frontmatter is a sequence of research
+nodes. `l3 new` stamps every doc with the same node-grammar skeleton regardless of `schema:`
+(the label still names your convention, but the grammar underneath is universal); `l3
+list`/`check`/`index` all read the body through this grammar.
+
+- **Node.** A `##` heading opens a node; its title is opaque prose (write anything). The
+  tooling appends a trailing `^r-…` anchor to the heading — **never write one yourself**;
+  `braincrawl l3 assign-ids` mints anchors for every heading that lacks one. A node without
+  an anchor still parses (title, properties, links), it just has no stable id yet.
+- **Property line** — `- key: value`, one per bullet. A value may hold one flow map,
+  `{k: v, k2: 'v, with a comma'}`; quote any value containing a comma. `- tags: #a #b` is the
+  one special key — each `#`-prefixed token becomes a label on the node, not a property.
+- **Link line** — connects two endpoints, one of which may be implicit:
+  - `- kind [[target]] {props}` — implicit source (the enclosing node).
+  - `- [[src]] kind [[dst]] {props}` — explicit source and target.
+  - A target is `^r-…` (a node in this doc), `slug#^r-…` (a node in another doc), a bare
+    `slug` (a doc-level forward reference, no anchor needed), or `openalex:…`/`doi:…` (a
+    catalog entry). `kind` is free lowercase-kebab vocabulary — see below.
+  - `catalog` is the convention for a work-link (node → catalog id).
+  - `contradicts`/`supports`/`builds-on` are free domain-edge vocabulary; **`contradicts` is
+    the blessed word for a claim-link** — never write `refutes`.
+  - `reading: {role: …, why: …}` marks a recommended reading (a property, not a link).
+- **Anchors and `INDEX.md` are tooling-owned.** Agents never write a `^r-…` anchor or hand-edit
+  `INDEX.md` — both are generated (`l3 assign-ids`, `l3 index`).
 
 **Invariants that keep the Research Collection honest** (these hold across every schema):
 
@@ -38,10 +58,11 @@ Selection set / Domain edges / Findings); any other schema just stamps the envel
   UUID, so any id form is safe — but be consistent.
 - **One doc per item, in the consolidated store.** Don't hand-create `.l3.md` files in random
   repos — go through `l3 new`/`l3 import` so nothing scatters.
-- **Edges and questions are yours.** Catalog edges are neutral citations; Research Collection
-  edges (`supports`/`refutes`/domain relations) carry your interpretation.
-- **`doc`/`schema`/`updated` are the envelope; the body is free.** Experiment with layout
-  under a new `schema:` label; never break the three envelope keys.
+- **Edges and questions are yours.** Catalog links are neutral citations; Research Collection
+  links (`supports`/`contradicts`/`builds-on`/domain relations) carry your interpretation.
+- **`doc`/`schema`/`updated` are the envelope; the body is the node grammar.** Experiment
+  with what you record inside a node under a new `schema:` label; never break the three
+  envelope keys or the grammar the parser reads.
 
 ---
 

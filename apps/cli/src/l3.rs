@@ -31,7 +31,8 @@ const FILE_SUFFIX: &str = ".l3.md";
 
 type DynErr = Box<dyn std::error::Error>;
 
-/// One L3 doc as seen by the index/list/check surfaces.
+/// One L3 doc's envelope, as seen by the index/list/check surfaces. Body content
+/// (title, links, ids) comes from the parsed graph, not from this struct.
 struct DocMeta {
     doc: String,
     schema: String,
@@ -39,13 +40,7 @@ struct DocMeta {
     updated: String,
     /// Real filesystem last-modified date (always reflects the latest edit locally).
     modified: String,
-    title: String,
     path: PathBuf,
-    /// Doc slugs this doc points at, harvested from `[[wikilinks]]` + `siblings:`.
-    links: Vec<String>,
-    /// Canonical ids referenced in the body (`openalex:…`/`doi:…`) — the split-proof
-    /// join key. A doc can split without these moving, so an index keyed on them survives.
-    ids: Vec<String>,
 }
 
 pub fn dispatch(cmd: L3Cmd, config: &Config, opts: &OutputOpts) -> Result<(), DynErr> {
@@ -58,6 +53,7 @@ pub fn dispatch(cmd: L3Cmd, config: &Config, opts: &OutputOpts) -> Result<(), Dy
         L3Cmd::Index => cmd_index(&root),
         L3Cmd::Import { file, doc, schema, mv } => cmd_import(&root, &file, doc, schema, mv),
         L3Cmd::Rm { doc } => cmd_rm(&root, &doc),
+        L3Cmd::AssignIds { dry_run } => cmd_assign_ids(&root, dry_run),
     }
 }
 
@@ -98,6 +94,7 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
     // Most-recently-edited first, so "keywords + rough time of last edit" is a scan
     // down the list. `modified` is `YYYY-MM-DD`, so a lexical sort is chronological.
     docs.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.doc.cmp(&b.doc)));
+    let (graph, _warnings) = l3::parse(root);
     if opts.text && !opts.json {
         for d in &docs {
             println!("{}\t{}\t{}\t{}\t{}", d.doc, d.schema, d.modified, d.updated, d.path.display());
@@ -114,7 +111,7 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
                 "schema": d.schema,
                 "modified": d.modified,
                 "updated": d.updated,
-                "title": d.title,
+                "title": doc_title(&graph, d),
                 "path": d.path.display().to_string(),
             })
         })
@@ -144,10 +141,18 @@ fn cmd_check(root: &Path, doc: Option<String>, all: bool) -> Result<(), DynErr> 
         vec![read_meta(&path)?]
     };
 
+    let (_graph, parse_warnings) = l3::parse(root);
+
     let mut total_warns = 0usize;
     for d in &targets {
         let content = fs::read_to_string(&d.path)?;
-        let warns = lint(&d.path, &content);
+        let mut warns = lint(&d.path, &content);
+        warns.extend(
+            parse_warnings
+                .iter()
+                .filter(|w| w.doc == d.doc)
+                .map(|w| format!("line {}: {}", w.line, w.message)),
+        );
         if warns.is_empty() {
             eprintln!("ok: {}", d.doc);
         } else {
@@ -229,6 +234,19 @@ fn cmd_rm(root: &Path, doc: &str) -> Result<(), DynErr> {
     Ok(())
 }
 
+fn cmd_assign_ids(root: &Path, dry_run: bool) -> Result<(), DynErr> {
+    let assigned = l3::assign_ids(root, dry_run)?;
+    for a in &assigned {
+        eprintln!("{}\t{}\t{}\t{}", a.doc, a.heading_line, a.id, a.title);
+    }
+    if dry_run {
+        eprintln!("{} anchor(s) would be assigned (dry run)", assigned.len());
+    } else {
+        eprintln!("{} anchor(s) assigned", assigned.len());
+    }
+    Ok(())
+}
+
 // ── store helpers ─────────────────────────────────────────────────────────────
 
 fn ensure_root(root: &Path) -> Result<(), DynErr> {
@@ -262,7 +280,7 @@ fn scan(root: &Path) -> Result<Vec<DocMeta>, DynErr> {
 
 fn read_meta(path: &Path) -> Result<DocMeta, DynErr> {
     let content = fs::read_to_string(path)?;
-    let (fm, body) = split_frontmatter(&content);
+    let (fm, _body) = split_frontmatter(&content);
     let stem = path
         .file_name()
         .map(|n| n.to_string_lossy().trim_end_matches(FILE_SUFFIX).to_string())
@@ -272,11 +290,20 @@ fn read_meta(path: &Path) -> Result<DocMeta, DynErr> {
         schema: fm_get(&fm, "schema").unwrap_or_else(|| "—".to_string()),
         updated: fm_get(&fm, "updated").unwrap_or_else(|| "—".to_string()),
         modified: modified_date(path),
-        title: first_h1(&body).unwrap_or_default(),
-        links: harvest_links(&fm, &body),
-        ids: harvest_ids(&body),
         path: path.to_path_buf(),
     })
+}
+
+/// A doc's title: the first parsed node's title property, falling back to the
+/// body's first H1 for docs the parser lifted zero nodes from.
+fn doc_title(graph: &l3::Graph, doc: &DocMeta) -> String {
+    if let Some(node) = graph.nodes.iter().find(|n| n.provenance.doc == doc.doc) {
+        return node.properties.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    }
+    fs::read_to_string(&doc.path)
+        .ok()
+        .and_then(|content| first_h1(&split_frontmatter(&content).1))
+        .unwrap_or_default()
 }
 
 /// The file's last-modified date (`YYYY-MM-DD`) from filesystem mtime, or `—` if
@@ -298,10 +325,11 @@ fn modified_date(path: &Path) -> String {
 
 /// Regenerate `INDEX.md` — a deterministic manifest harvested from the docs themselves.
 ///
-/// Three sections, each a pure function of the on-disk bytes (no RAG, no embeddings):
+/// Three sections, each derived from the parsed research graph (no RAG, no embeddings):
 ///   1. **Documents** — the envelope table (doc · schema · modified · updated · title).
-///   2. **Cross-references** — the doc→doc link graph from `[[wikilinks]]` + `siblings:`,
-///      with back-references computed so "what refers to this doc" is a lookup, not a grep.
+///   2. **Cross-references** — the doc→doc link graph: any node link whose endpoints span
+///      two docs, plus doc-level forward references, with back-references computed so
+///      "what refers to this doc" is a lookup, not a grep.
 ///   3. **Work index** — the inverted index `canonical id → docs that reference it`. Keyed on
 ///      the work, not the doc, so it survives a doc splitting into pieces (the ids travel).
 ///
@@ -310,22 +338,42 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     ensure_root(root)?;
     let docs = scan(root)?;
     let known: BTreeSet<&str> = docs.iter().map(|d| d.doc.as_str()).collect();
+    let (graph, _warnings) = l3::parse(root);
 
-    // doc → docs that link to it (known targets only; dangling links still render as out-edges)
-    let mut backrefs: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    for d in &docs {
-        for l in &d.links {
-            if l.as_str() != d.doc.as_str() && known.contains(l.as_str()) {
-                backrefs.entry(l.as_str()).or_default().insert(d.doc.as_str());
-            }
-        }
-    }
-
+    // doc → docs it links out to, and the reverse (known targets only; a dangling
+    // target still renders as an out-edge, just without a matching backref).
+    let mut outrefs: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    let mut backrefs: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
     // canonical id → docs referencing it
-    let mut work_index: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    for d in &docs {
-        for id in &d.ids {
-            work_index.entry(id.as_str()).or_default().insert(d.doc.as_str());
+    let mut work_index: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+
+    for link in &graph.links {
+        let Some(recorded_in) = &link.recorded_in else { continue };
+        let Some(source_doc) = graph.node_by_id(&recorded_in.0).map(|n| n.provenance.doc.as_str()) else {
+            continue;
+        };
+
+        for endpoint in [&link.source, &link.target] {
+            match endpoint {
+                l3::Endpoint::Catalog(id) => {
+                    work_index.entry(id.0.clone()).or_default().insert(source_doc);
+                }
+                l3::Endpoint::Node(id) => {
+                    let target_doc = if let Some(slug) = id.0.strip_prefix("doc:") {
+                        Some(slug.to_string())
+                    } else {
+                        id.0.split_once('#').map(|(slug, _)| slug.to_string())
+                    };
+                    if let Some(target_doc) = target_doc {
+                        if target_doc != source_doc {
+                            outrefs.entry(source_doc).or_default().insert(target_doc.clone());
+                            if known.contains(target_doc.as_str()) {
+                                backrefs.entry(target_doc).or_default().insert(source_doc);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -340,20 +388,22 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     for d in &docs {
         out.push_str(&format!(
             "| [{}]({}{}) | {} | {} | {} | {} |\n",
-            d.doc, d.doc, FILE_SUFFIX, d.schema, d.modified, d.updated, d.title.replace('|', "\\|")
+            d.doc, d.doc, FILE_SUFFIX, d.schema, d.modified, d.updated, doc_title(&graph, d).replace('|', "\\|")
         ));
     }
 
     out.push_str("\n## Cross-references\n\n");
-    out.push_str("Doc-to-doc links from `[[wikilinks]]` and `siblings:`. A dangling target (no such doc) is marked `?`.\n\n");
+    out.push_str("Doc-to-doc links between research nodes, plus doc-level forward references. A dangling target (no such doc) is marked `?`.\n\n");
     out.push_str("| doc | → links out | ← linked from |\n|---|---|---|\n");
     for d in &docs {
-        let out_links: Vec<String> = d
-            .links
-            .iter()
-            .filter(|l| l.as_str() != d.doc.as_str())
-            .map(|l| if known.contains(l.as_str()) { format!("[{l}]({l}{FILE_SUFFIX})") } else { format!("{l}?") })
-            .collect();
+        let out_links: Vec<String> = outrefs
+            .get(d.doc.as_str())
+            .map(|s| {
+                s.iter()
+                    .map(|l| if known.contains(l.as_str()) { format!("[{l}]({l}{FILE_SUFFIX})") } else { format!("{l}?") })
+                    .collect()
+            })
+            .unwrap_or_default();
         let in_links: Vec<String> = backrefs
             .get(d.doc.as_str())
             .map(|s| s.iter().map(|l| format!("[{l}]({l}{FILE_SUFFIX})")).collect())
@@ -418,42 +468,24 @@ fn lint(path: &Path, content: &str) -> Vec<String> {
 
 fn scaffold(doc: &str, schema: &str, title: &str) -> String {
     let header = format!("---\ndoc: {doc}\nschema: {schema}\nupdated: {}\n---\n\n# L3 — {title}\n\n", today());
-    let body = match schema {
-        "spine" => SPINE_BODY,
-        "dialectical" => DIALECTICAL_BODY,
-        _ => "",
-    };
-    format!("{header}{body}")
+    format!("{header}{NODE_BODY}")
 }
 
-const SPINE_BODY: &str = "\
-## Questions (aim-directed frontier)
-- Q1 …
+/// Every schema gets the same starter: the node grammar is the one body format,
+/// `schema:` just labels the convention. Headings carry no `^r-…` anchor — `l3
+/// assign-ids` mints one on first run, so node identity stays tooling-owned.
+const NODE_BODY: &str = "\
+<!-- Headings below carry no ^r-… anchor — `l3 assign-ids` mints one on first run. -->
 
-## Selection set  (canonical id → tags · note)
-- openalex:W…  #landmark #Q1  one-line note (id is source of truth; this note is convenience only)
+## About this document
+- tags: #meta
+- remarks: One line on what this collection is about and what question set it collects around.
 
-## Domain edges  (src --type--> dst)
-- openalex:W… --supports--> Q1
-
-## Findings / annotations
-- [Q1] …
-";
-
-const DIALECTICAL_BODY: &str = "\
-## Question taxonomy (dialectical — questions beget sub-questions)
-Status: ○ open · ◐ partial · ● answered · ⊘ blocked. Leaf ids are stable; sub-questions hang off with decimal ids.
-- Q1 ○ …
-  - Q1.1 ○ …
-
-## Selection set  (canonical id → tags · note)
-- openalex:W…  #landmark #Q1  one-line note (id is source of truth; this note is convenience only)
-
-## Domain edges  (src --type--> dst)
-- openalex:W… --supports--> Q1
-
-## Findings / annotations
-- [Q1] …
+## Example question
+- tags: #Q1
+- remarks: Replace with the actual question; add findings, links, and catalog references as you go.
+<!-- - contradicts [[other-doc#^r-anchor]] {why: 'briefly why'} -->
+<!-- - catalog [[openalex:W…]] {why: 'briefly why'} -->
 ";
 
 // ── frontmatter (line-preserving, dependency-free) ────────────────────────────
@@ -541,66 +573,6 @@ fn rename_key(mut fm: Vec<String>, from: &str, to: &str) -> Vec<String> {
         }
     }
     fm
-}
-
-/// Read a top-level inline-flow YAML list (`key: [a, b, c]`) — the form L3 envelopes use
-/// for `siblings:`. Block-sequence form is not parsed (envelopes don't use it).
-fn fm_get_list(fm: &[String], key: &str) -> Vec<String> {
-    let prefix = format!("{key}: ");
-    for line in fm {
-        if let Some(rest) = line.strip_prefix(&prefix) {
-            let rest = rest.trim();
-            let inner = rest.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(rest);
-            return inner
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-        }
-    }
-    Vec::new()
-}
-
-/// Doc slugs this doc points at: `[[wikilink]]` targets in the body plus `siblings:` in
-/// the envelope, each normalized to a bare slug (trailing `.l3.md`/`.md` stripped), deduped.
-fn harvest_links(fm: &[String], body: &str) -> Vec<String> {
-    let mut set = BTreeSet::new();
-    let mut rest = body;
-    while let Some(start) = rest.find("[[") {
-        rest = &rest[start + 2..];
-        let Some(end) = rest.find("]]") else { break };
-        let inner = &rest[..end];
-        // `[[slug|alias]]` → take the target before the pipe. Strip all whitespace so a
-        // hard-wrapped link (`[[llm-context-\n  optimization]]`) rejoins to one slug.
-        let target: String = inner.split('|').next().unwrap_or(inner).split_whitespace().collect();
-        let slug = target.trim_end_matches(FILE_SUFFIX).trim_end_matches(".md");
-        if !slug.is_empty() {
-            set.insert(slug.to_string());
-        }
-        rest = &rest[end + 2..];
-    }
-    for s in fm_get_list(fm, "siblings") {
-        let slug = s.trim_end_matches(FILE_SUFFIX).trim_end_matches(".md");
-        if !slug.is_empty() {
-            set.insert(slug.to_string());
-        }
-    }
-    set.into_iter().collect()
-}
-
-/// Canonical ids referenced in the body (`openalex:…`, `doi:…`), deduped. Tokenizes on
-/// whitespace and strips surrounding punctuation; the id-part must be ≥4 chars so the
-/// `openalex:W…` scaffold placeholder is not mistaken for a real id.
-fn harvest_ids(body: &str) -> Vec<String> {
-    let mut set = BTreeSet::new();
-    for raw in body.split_whitespace() {
-        let tok = raw.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == ':'));
-        let Some((prefix, rest)) = tok.split_once(':') else { continue };
-        if (prefix == "openalex" || prefix == "doi") && rest.len() >= 4 {
-            set.insert(tok.to_string());
-        }
-    }
-    set.into_iter().collect()
 }
 
 fn first_h1(body: &str) -> Option<String> {
@@ -699,26 +671,66 @@ mod tests {
     }
 
     #[test]
-    fn harvest_links_from_wikilinks_and_siblings() {
-        let fm = vec!["siblings: [process-theology.l3.md, process-math]".to_string()];
-        let body = "see [[process-software-design]], [[llm-context-\n  optimization]] and [[process-theology|the theology one]].";
-        let links = harvest_links(&fm, body);
-        assert_eq!(
-            links,
-            vec!["llm-context-optimization", "process-math", "process-software-design", "process-theology"]
-        );
-    }
-
-    #[test]
-    fn harvest_ids_dedupes_and_skips_placeholder() {
-        let body = "- openalex:W2088189323 #key  note\n- (openalex:W2088189323) again\n- doi:10.1126/science.aaf2654\n- openalex:W…  scaffold placeholder";
-        let ids = harvest_ids(body);
-        assert_eq!(ids, vec!["doi:10.1126/science.aaf2654", "openalex:W2088189323"]);
-    }
-
-    #[test]
     fn lint_flags_missing_envelope_and_copy() {
         let warns = lint(Path::new("/x/foo.l3.md"), "# just a body\n");
         assert!(warns.iter().any(|w| w.contains("frontmatter")));
+    }
+
+    fn temp_root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("l3-cli-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn reindex_derives_documents_and_title_from_the_graph() {
+        let root = temp_root("documents");
+        fs::write(
+            root.join("a.l3.md"),
+            "---\ndoc: a\nschema: freeform\nupdated: 2026-07-01\n---\n\n## First node title ^r-aaa1\n- tags: #x\n",
+        )
+        .unwrap();
+        reindex(&root).unwrap();
+        let index = fs::read_to_string(root.join("INDEX.md")).unwrap();
+        assert!(index.contains("| [a](a.l3.md) | freeform | "));
+        assert!(index.contains("First node title"));
+    }
+
+    #[test]
+    fn reindex_cross_references_span_two_docs() {
+        let root = temp_root("cross-refs");
+        fs::write(
+            root.join("a.l3.md"),
+            "---\ndoc: a\nschema: freeform\n---\n\n## Node in A ^r-aaa1\n- contradicts [[b#^r-bbb1]] {why: scope}\n",
+        )
+        .unwrap();
+        fs::write(root.join("b.l3.md"), "---\ndoc: b\nschema: freeform\n---\n\n## Node in B ^r-bbb1\n- tags: #y\n").unwrap();
+        reindex(&root).unwrap();
+        let index = fs::read_to_string(root.join("INDEX.md")).unwrap();
+        assert!(index.contains("| a | [b](b.l3.md) | — |\n"));
+        assert!(index.contains("| b | — | [a](a.l3.md) |\n"));
+    }
+
+    #[test]
+    fn reindex_work_index_from_catalog_links() {
+        let root = temp_root("work-index");
+        fs::write(
+            root.join("a.l3.md"),
+            "---\ndoc: a\nschema: freeform\n---\n\n## Node in A ^r-aaa1\n- catalog [[openalex:W1]] {why: 'cites'}\n",
+        )
+        .unwrap();
+        reindex(&root).unwrap();
+        let index = fs::read_to_string(root.join("INDEX.md")).unwrap();
+        assert!(index.contains("| `openalex:W1` | [a](a.l3.md) |\n"));
+    }
+
+    #[test]
+    fn scaffold_emits_anchor_less_node_grammar() {
+        let content = scaffold("some-doc", "freeform", "Some Doc");
+        assert!(content.contains("## About this document"));
+        assert!(content.contains("## Example question"));
+        assert!(content.lines().filter(|l| l.starts_with("## ")).all(|l| !l.contains('^')));
+        assert!(content.contains("assign-ids"));
     }
 }

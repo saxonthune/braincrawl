@@ -70,6 +70,8 @@ pub enum Namespace {
     Arxiv(ArxivArgs),
     #[command(about = "Partition a work's stored fulltext into a citation-carrying chunks artifact")]
     Chunk(ChunkArgs),
+    #[command(about = "Print the Web UI URL for the configured server")]
+    Web,
 }
 
 #[derive(Args)]
@@ -109,7 +111,7 @@ pub enum L3Cmd {
     New {
         /// Doc slug (kebab-case) — the primary key and filename stem
         doc: String,
-        /// Body-convention label recorded in frontmatter (free string; `spine`/`dialectical` get a skeleton)
+        /// Body-convention label recorded in frontmatter (free string; every schema gets the node-grammar skeleton)
         #[arg(long, default_value = "freeform")]
         schema: String,
         /// Human title for the H1 heading (defaults to the doc slug)
@@ -155,6 +157,12 @@ pub enum L3Cmd {
     Rm {
         /// Doc slug
         doc: String,
+    },
+    /// Mint `^r-…` anchors for every `##` heading that lacks one
+    AssignIds {
+        /// Report what would be assigned; write nothing
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

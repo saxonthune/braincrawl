@@ -10,6 +10,7 @@ Environment=BRAINCRAWL_AUTH_DISABLED=1
 Environment=BRAINCRAWL_BIND=127.0.0.1:8787
 Environment=BRAINCRAWL_DB=%h/.local/share/braincrawl/braincrawl.db
 Environment=BRAINCRAWL_BLOB_ROOT=%h/.local/share/braincrawl/blobs
+Environment=BRAINCRAWL_L3_ROOT=%h/.local/share/braincrawl/l3
 Restart=on-failure
 RestartSec=2
 

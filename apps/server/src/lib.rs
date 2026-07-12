@@ -13,13 +13,14 @@
 
 pub mod handlers;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use std::collections::HashMap;
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Path, Query, Request, State},
+    extract::{DefaultBodyLimit, FromRef, Path, Query, Request, State},
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
@@ -109,6 +110,23 @@ pub fn make_store(db_path: &str, blob_root: &str) -> Result<LocalStore, String> 
         clock: SystemClock,
         id_gen: UuidGen,
     })
+}
+
+// ─── App state ────────────────────────────────────────────────────────────────
+
+/// Router state: the `LocalStore` plus the optional L3 root. `l3_root` is
+/// `None` when `BRAINCRAWL_L3_ROOT` is unset — the graph endpoint then 404s
+/// and everything else keeps working.
+#[derive(Clone)]
+pub struct AppState {
+    pub store: Arc<LocalStore>,
+    pub l3_root: Option<PathBuf>,
+}
+
+impl FromRef<AppState> for Arc<LocalStore> {
+    fn from_ref(state: &AppState) -> Self {
+        state.store.clone()
+    }
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -413,8 +431,10 @@ async fn handler_post_job(
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
-/// Build the axum router wired to the given store and auth config.
-pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
+/// Build the axum router wired to the given store, auth config, and optional
+/// L3 root (`BRAINCRAWL_L3_ROOT`; `None` disables the `/api/l3/graph` route
+/// with a 404 rather than making the store construction fail).
+pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<PathBuf>) -> Router {
     // The wildcard route accepts arbitrarily large request bodies (book-sized
     // PDFs), so disable the default 2 MB body limit on it alone.
     let works_wildcard = Router::new()
@@ -429,9 +449,10 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>) -> Router {
         .route("/jobs", post(handler_post_job))
         .route("/graph/neighborhood", post(handler_neighborhood))
         .route("/stats", get(handler_stats))
+        .route("/api/l3/graph", get(handlers::handler_l3_graph))
         .merge(works_wildcard)
         .layer(axum::middleware::from_fn_with_state(auth, gate))
-        .with_state(store);
+        .with_state(AppState { store, l3_root });
 
     // `/health` is merged outside the auth layer: an unauthenticated liveness
     // probe so consumers can detect the shared server without a token.

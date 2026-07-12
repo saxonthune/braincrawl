@@ -9,7 +9,9 @@
 //! | `BRAINCRAWL_BIND`           | `0.0.0.0:8787`   | TCP bind address (default port 8787)                 |
 //! | `BRAINCRAWL_AUTH_TOKEN`     | —                | Shared bearer token; required unless DISABLED is set |
 //! | `BRAINCRAWL_AUTH_DISABLED`  | —                | Set to any non-empty value to bypass auth (dev only) |
+//! | `BRAINCRAWL_L3_ROOT`        | —                | L3 document store root; unset disables `/api/l3/graph` (404) |
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use braincrawl_auth::SharedSecret;
@@ -31,6 +33,7 @@ async fn main() {
         std::env::var("BRAINCRAWL_BLOB_ROOT").unwrap_or_else(|_| "blobs".to_string());
     let bind_addr =
         std::env::var("BRAINCRAWL_BIND").unwrap_or_else(|_| "0.0.0.0:8787".to_string());
+    let l3_root = std::env::var("BRAINCRAWL_L3_ROOT").ok().map(PathBuf::from);
 
     let auth = if std::env::var("BRAINCRAWL_AUTH_DISABLED")
         .map(|v| !v.is_empty())
@@ -73,7 +76,7 @@ async fn main() {
         factor: 2,
     };
 
-    let app = make_app(Arc::clone(&store), auth);
+    let app = make_app(Arc::clone(&store), auth, l3_root);
     let listener = TcpListener::bind(&bind_addr)
         .await
         .expect("failed to bind TCP listener");

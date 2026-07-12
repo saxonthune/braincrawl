@@ -11,3 +11,4 @@ pub mod provider;
 pub mod refs_backfill;
 pub mod semanticscholar;
 pub mod store_client;
+pub mod web;

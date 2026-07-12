@@ -14,7 +14,7 @@ async fn start_server(dir: &std::path::Path) -> (String, tokio::task::JoinHandle
         disabled: true,
         allowlist: SharedSecret::new("", ""),
     });
-    let app = make_app(store, auth);
+    let app = make_app(store, auth, None);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
