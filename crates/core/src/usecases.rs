@@ -87,7 +87,7 @@ where
     /// Algorithm:
     /// 1. Take `record.aliases` as the id bundle.
     /// 2. Look each alias up; collect distinct live GUIDs G.
-    /// 3. |G|=0 → mint new node; insert all aliases.
+    /// 3. |G|=0 → create new node; insert all aliases.
     /// 4. |G|=1 → use it; insert any missing aliases.
     /// 5. |G|≥2 → pick lex-smallest GUID as survivor; merge losers; attach aliases.
     ///
@@ -110,10 +110,10 @@ where
 
         let canonical = match guids.len() {
             0 => {
-                // No existing node — mint a fresh one.
+                // No existing node — create a fresh one.
                 let new_id = self.id_gen.new_guid();
                 self.meta
-                    .mint_node(&new_id, record.kind.clone(), &self.clock.now_rfc3339())
+                    .create_node(&new_id, record.kind.clone(), &self.clock.now_rfc3339())
                     .await?;
                 for alias in &record.aliases {
                     self.meta.get_or_create_alias(alias, &new_id).await?;
@@ -248,16 +248,16 @@ where
         }
     }
 
-    /// Resolve src/dst aliases (minting stub nodes for unknowns), write edges.
+    /// Resolve src/dst aliases (creating stub nodes for unknowns), write edges.
     /// Returns count of edges written.
     ///
-    /// A stub node is a node minted with no assertions; it becomes fully materialized
+    /// A stub node is a node created with no assertions; it becomes fully materialized
     /// when a `put_work` record arrives with one of its aliases.
     pub async fn put_edges(&self, edges: Vec<EdgeInput>) -> Result<usize, DomainError> {
         let mut count = 0;
         for edge in edges {
-            let src = self.resolve_or_mint_stub(&edge.src).await?;
-            let dst = self.resolve_or_mint_stub(&edge.dst).await?;
+            let src = self.resolve_or_create_stub(&edge.src).await?;
+            let dst = self.resolve_or_create_stub(&edge.dst).await?;
             self.meta
                 .put_edge(
                     &src,
@@ -456,15 +456,15 @@ where
         }
     }
 
-    /// Resolve an alias to its live node, or mint a stub Work node if unknown.
-    async fn resolve_or_mint_stub(&self, alias: &Alias) -> Result<CanonicalId, DomainError> {
+    /// Resolve an alias to its live node, or create a stub Work node if unknown.
+    async fn resolve_or_create_stub(&self, alias: &Alias) -> Result<CanonicalId, DomainError> {
         if let Some(raw) = self.meta.get_alias(alias).await? {
             return self.meta.resolve_live(&raw).await;
         }
-        // Mint stub: NodeKind::Work is the default for unknown references.
+        // Create stub: NodeKind::Work is the default for unknown references.
         let new_id = self.id_gen.new_guid();
         self.meta
-            .mint_node(&new_id, NodeKind::Work, &self.clock.now_rfc3339())
+            .create_node(&new_id, NodeKind::Work, &self.clock.now_rfc3339())
             .await?;
         self.meta.get_or_create_alias(alias, &new_id).await?;
         Ok(new_id)

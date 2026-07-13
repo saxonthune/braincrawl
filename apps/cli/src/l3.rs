@@ -7,12 +7,11 @@
 //! knowledge stops scattering into per-project repos.
 //!
 //! The contract is deliberately split in two:
-//!   * **Envelope** (frozen): a small set of frontmatter keys the tooling reads to
-//!     file, find, and index a doc *without parsing its body* — `doc`, `schema`,
-//!     `updated`. `REQUIRED_FRONTMATTER` is the single place that grows over time.
-//!   * **Body** (free): everything below the frontmatter. The `schema` key labels
-//!     the convention in use so many document designs can coexist and be linted
-//!     (or not) per their declared schema. `freeform` is the no-lint escape hatch.
+//!   * **Frontmatter** (required): a small set of keys the tooling reads to file,
+//!     find, and index a doc *without parsing its body* — `doc`, `updated`.
+//!     `REQUIRED_FRONTMATTER` is the single place that grows over time.
+//!   * **Body** (free): everything below the frontmatter, written in one shared
+//!     node grammar (see `doc02.01.04` in `.rhidoc/`) that every doc follows.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -25,17 +24,16 @@ use crate::output::{render, Envelope, QueryMeta};
 
 /// Frontmatter keys the tooling requires. Extend this as the contract firms up;
 /// `check` warns (never fails) on any missing key.
-pub const REQUIRED_FRONTMATTER: &[&str] = &["doc", "schema", "updated"];
+pub const REQUIRED_FRONTMATTER: &[&str] = &["doc", "updated"];
 
 const FILE_SUFFIX: &str = ".l3.md";
 
 type DynErr = Box<dyn std::error::Error>;
 
-/// One L3 doc's envelope, as seen by the index/list/check surfaces. Body content
+/// One L3 doc's frontmatter, as seen by the index/list/check surfaces. Body content
 /// (title, links, ids) comes from the parsed graph, not from this struct.
-struct DocMeta {
+struct DocumentMetadata {
     doc: String,
-    schema: String,
     /// Declared date from frontmatter `updated:` (set at create/import; can drift).
     updated: String,
     /// Real filesystem last-modified date (always reflects the latest edit locally).
@@ -46,12 +44,12 @@ struct DocMeta {
 pub fn dispatch(cmd: L3Cmd, config: &Config, opts: &OutputOpts) -> Result<(), DynErr> {
     let root = config.l3_root();
     match cmd {
-        L3Cmd::New { doc, schema, title, force } => cmd_new(&root, &doc, &schema, title, force),
+        L3Cmd::New { doc, title, force } => cmd_new(&root, &doc, title, force),
         L3Cmd::Path { doc } => cmd_path(&root, &doc),
         L3Cmd::List => cmd_list(&root, opts),
         L3Cmd::Check { doc, all } => cmd_check(&root, doc, all),
         L3Cmd::Index => cmd_index(&root),
-        L3Cmd::Import { file, doc, schema, mv } => cmd_import(&root, &file, doc, schema, mv),
+        L3Cmd::Import { file, doc, mv } => cmd_import(&root, &file, doc, mv),
         L3Cmd::Rm { doc } => cmd_rm(&root, &doc),
         L3Cmd::AssignIds { dry_run } => cmd_assign_ids(&root, dry_run),
     }
@@ -59,7 +57,7 @@ pub fn dispatch(cmd: L3Cmd, config: &Config, opts: &OutputOpts) -> Result<(), Dy
 
 // ── commands ────────────────────────────────────────────────────────────────
 
-fn cmd_new(root: &Path, doc: &str, schema: &str, title: Option<String>, force: bool) -> Result<(), DynErr> {
+fn cmd_new(root: &Path, doc: &str, title: Option<String>, force: bool) -> Result<(), DynErr> {
     validate_slug(doc)?;
     ensure_root(root)?;
     let path = doc_path(root, doc);
@@ -71,12 +69,12 @@ fn cmd_new(root: &Path, doc: &str, schema: &str, title: Option<String>, force: b
         .into());
     }
     let title = title.unwrap_or_else(|| doc.to_string());
-    let content = scaffold(doc, schema, &title);
+    let content = scaffold(doc, &title);
     fs::write(&path, content)?;
     reindex(root)?;
     // stdout = the absolute path only, so `p=$(braincrawl l3 new foo)` works.
     println!("{}", path.display());
-    eprintln!("created: doc={doc} schema={schema}");
+    eprintln!("created: doc={doc}");
     Ok(())
 }
 
@@ -97,7 +95,7 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
     let (graph, _warnings) = l3::parse(root);
     if opts.text && !opts.json {
         for d in &docs {
-            println!("{}\t{}\t{}\t{}\t{}", d.doc, d.schema, d.modified, d.updated, d.path.display());
+            println!("{}\t{}\t{}\t{}", d.doc, d.modified, d.updated, d.path.display());
         }
         eprintln!("{} doc(s) in {}", docs.len(), root.display());
         return Ok(());
@@ -108,7 +106,6 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
             serde_json::json!({
                 "id": d.doc,
                 "doc": d.doc,
-                "schema": d.schema,
                 "modified": d.modified,
                 "updated": d.updated,
                 "title": doc_title(&graph, d),
@@ -130,7 +127,7 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
 }
 
 fn cmd_check(root: &Path, doc: Option<String>, all: bool) -> Result<(), DynErr> {
-    let targets: Vec<DocMeta> = if all {
+    let targets: Vec<DocumentMetadata> = if all {
         scan(root)?
     } else {
         let doc = doc.expect("clap guarantees doc unless --all");
@@ -176,7 +173,6 @@ fn cmd_import(
     root: &Path,
     file: &str,
     doc_override: Option<String>,
-    schema_override: Option<String>,
     mv: bool,
 ) -> Result<(), DynErr> {
     ensure_root(root)?;
@@ -193,14 +189,10 @@ fn cmd_import(
         .unwrap_or_else(|| stem_slug(&src));
     validate_slug(&doc)?;
 
-    // Normalize the envelope in place, preserving every other line (incl. multi-line
-    // YAML values and unknown keys) verbatim.
+    // Normalize the required frontmatter in place, preserving every other line
+    // (incl. multi-line YAML values and unknown keys) verbatim.
     fm = rename_key(fm, "domain", "doc");
     fm = upsert_key(fm, "doc", &doc);
-    let schema = schema_override
-        .or_else(|| fm_get(&fm, "schema"))
-        .unwrap_or_else(|| "freeform".to_string());
-    fm = upsert_key(fm, "schema", &schema);
     let updated = fm_get(&fm, "updated").unwrap_or_else(today);
     fm = upsert_key(fm, "updated", &updated);
 
@@ -219,7 +211,7 @@ fn cmd_import(
     }
     reindex(root)?;
     println!("{}", dst.display());
-    eprintln!("imported: doc={doc} schema={schema} (from {})", src.display());
+    eprintln!("imported: doc={doc} (from {})", src.display());
     Ok(())
 }
 
@@ -259,8 +251,8 @@ fn doc_path(root: &Path, doc: &str) -> PathBuf {
     root.join(format!("{doc}{FILE_SUFFIX}"))
 }
 
-/// Read every `*.l3.md` (skipping `_`-prefixed helpers) as a `DocMeta`, sorted by slug.
-fn scan(root: &Path) -> Result<Vec<DocMeta>, DynErr> {
+/// Read every `*.l3.md` (skipping `_`-prefixed helpers) as a `DocumentMetadata`, sorted by slug.
+fn scan(root: &Path) -> Result<Vec<DocumentMetadata>, DynErr> {
     let mut out = Vec::new();
     if !root.exists() {
         return Ok(out);
@@ -278,16 +270,15 @@ fn scan(root: &Path) -> Result<Vec<DocMeta>, DynErr> {
     Ok(out)
 }
 
-fn read_meta(path: &Path) -> Result<DocMeta, DynErr> {
+fn read_meta(path: &Path) -> Result<DocumentMetadata, DynErr> {
     let content = fs::read_to_string(path)?;
     let (fm, _body) = split_frontmatter(&content);
     let stem = path
         .file_name()
         .map(|n| n.to_string_lossy().trim_end_matches(FILE_SUFFIX).to_string())
         .unwrap_or_default();
-    Ok(DocMeta {
+    Ok(DocumentMetadata {
         doc: fm_get(&fm, "doc").unwrap_or(stem),
-        schema: fm_get(&fm, "schema").unwrap_or_else(|| "—".to_string()),
         updated: fm_get(&fm, "updated").unwrap_or_else(|| "—".to_string()),
         modified: modified_date(path),
         path: path.to_path_buf(),
@@ -296,7 +287,7 @@ fn read_meta(path: &Path) -> Result<DocMeta, DynErr> {
 
 /// A doc's title: the first parsed node's title property, falling back to the
 /// body's first H1 for docs the parser lifted zero nodes from.
-fn doc_title(graph: &l3::Graph, doc: &DocMeta) -> String {
+fn doc_title(graph: &l3::Graph, doc: &DocumentMetadata) -> String {
     if let Some(node) = graph.nodes.iter().find(|n| n.provenance.doc == doc.doc) {
         return node.properties.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     }
@@ -326,7 +317,7 @@ fn modified_date(path: &Path) -> String {
 /// Regenerate `INDEX.md` — a deterministic manifest harvested from the docs themselves.
 ///
 /// Three sections, each derived from the parsed research graph (no RAG, no embeddings):
-///   1. **Documents** — the envelope table (doc · schema · modified · updated · title).
+///   1. **Documents** — the frontmatter table (doc · modified · updated · title).
 ///   2. **Cross-references** — the doc→doc link graph: any node link whose endpoints span
 ///      two docs, plus doc-level forward references, with back-references computed so
 ///      "what refers to this doc" is a lookup, not a grep.
@@ -384,11 +375,11 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     ));
 
     out.push_str("## Documents\n\n");
-    out.push_str("| doc | schema | modified | updated | title |\n|---|---|---|---|---|\n");
+    out.push_str("| doc | modified | updated | title |\n|---|---|---|---|\n");
     for d in &docs {
         out.push_str(&format!(
-            "| [{}]({}{}) | {} | {} | {} | {} |\n",
-            d.doc, d.doc, FILE_SUFFIX, d.schema, d.modified, d.updated, doc_title(&graph, d).replace('|', "\\|")
+            "| [{}]({}{}) | {} | {} | {} |\n",
+            d.doc, d.doc, FILE_SUFFIX, d.modified, d.updated, doc_title(&graph, d).replace('|', "\\|")
         ));
     }
 
@@ -432,7 +423,7 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     Ok(path)
 }
 
-/// Advisory lint: envelope completeness + the one body invariant (reference, not copy).
+/// Advisory lint: required frontmatter present + the one body invariant (reference, not copy).
 fn lint(path: &Path, content: &str) -> Vec<String> {
     let mut warns = Vec::new();
     let (fm, body) = split_frontmatter(content);
@@ -466,16 +457,16 @@ fn lint(path: &Path, content: &str) -> Vec<String> {
 
 // ── scaffolding ───────────────────────────────────────────────────────────────
 
-fn scaffold(doc: &str, schema: &str, title: &str) -> String {
-    let header = format!("---\ndoc: {doc}\nschema: {schema}\nupdated: {}\n---\n\n# L3 — {title}\n\n", today());
+fn scaffold(doc: &str, title: &str) -> String {
+    let header = format!("---\ndoc: {doc}\nupdated: {}\n---\n\n# L3 — {title}\n\n", today());
     format!("{header}{NODE_BODY}")
 }
 
-/// Every schema gets the same starter: the node grammar is the one body format,
-/// `schema:` just labels the convention. Headings carry no `^r-…` anchor — `l3
-/// assign-ids` mints one on first run, so node identity stays tooling-owned.
+/// Every doc gets the same starter — the node grammar is the one body format.
+/// Headings carry no `^r-…` anchor — `l3 assign-ids` assigns one on first run, so
+/// node identity stays tooling-owned.
 const NODE_BODY: &str = "\
-<!-- Headings below carry no ^r-… anchor — `l3 assign-ids` mints one on first run. -->
+<!-- Headings below carry no ^r-… anchor — `l3 assign-ids` assigns one on first run. -->
 
 ## About this document
 - tags: #meta
@@ -524,7 +515,7 @@ fn split_frontmatter(content: &str) -> (Vec<String>, String) {
 }
 
 /// Read a top-level scalar `key: value` from frontmatter lines. Block scalars
-/// (`key: >`) yield an empty/placeholder value, which is fine for envelope keys.
+/// (`key: >`) yield an empty/placeholder value, which is fine for frontmatter keys.
 fn fm_get(fm: &[String], key: &str) -> Option<String> {
     let prefix = format!("{key}:");
     for line in fm {
@@ -650,9 +641,9 @@ mod tests {
         assert_eq!(fm_get(&fm, "domain").as_deref(), Some("foo-bar"));
         assert_eq!(fm_get(&fm, "updated").as_deref(), Some("2026-06-17"));
         let fm = rename_key(fm, "domain", "doc");
-        let fm = upsert_key(fm, "schema", "freeform");
+        let fm = upsert_key(fm, "kind", "research");
         assert_eq!(fm_get(&fm, "doc").as_deref(), Some("foo-bar"));
-        assert_eq!(fm_get(&fm, "schema").as_deref(), Some("freeform"));
+        assert_eq!(fm_get(&fm, "kind").as_deref(), Some("research"));
         // multi-line `note:` block survived
         assert!(fm.iter().any(|l| l == "  multi"));
         assert!(body.contains("openalex:W1"));
@@ -671,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn lint_flags_missing_envelope_and_copy() {
+    fn lint_flags_missing_metadata_and_copy() {
         let warns = lint(Path::new("/x/foo.l3.md"), "# just a body\n");
         assert!(warns.iter().any(|w| w.contains("frontmatter")));
     }
@@ -688,12 +679,12 @@ mod tests {
         let root = temp_root("documents");
         fs::write(
             root.join("a.l3.md"),
-            "---\ndoc: a\nschema: freeform\nupdated: 2026-07-01\n---\n\n## First node title ^r-aaa1\n- tags: #x\n",
+            "---\ndoc: a\nupdated: 2026-07-01\n---\n\n## First node title ^r-aaa1\n- tags: #x\n",
         )
         .unwrap();
         reindex(&root).unwrap();
         let index = fs::read_to_string(root.join("INDEX.md")).unwrap();
-        assert!(index.contains("| [a](a.l3.md) | freeform | "));
+        assert!(index.contains("| [a](a.l3.md) | "));
         assert!(index.contains("First node title"));
     }
 
@@ -702,10 +693,10 @@ mod tests {
         let root = temp_root("cross-refs");
         fs::write(
             root.join("a.l3.md"),
-            "---\ndoc: a\nschema: freeform\n---\n\n## Node in A ^r-aaa1\n- contradicts [[b#^r-bbb1]] {why: scope}\n",
+            "---\ndoc: a\n---\n\n## Node in A ^r-aaa1\n- contradicts [[b#^r-bbb1]] {why: scope}\n",
         )
         .unwrap();
-        fs::write(root.join("b.l3.md"), "---\ndoc: b\nschema: freeform\n---\n\n## Node in B ^r-bbb1\n- tags: #y\n").unwrap();
+        fs::write(root.join("b.l3.md"), "---\ndoc: b\n---\n\n## Node in B ^r-bbb1\n- tags: #y\n").unwrap();
         reindex(&root).unwrap();
         let index = fs::read_to_string(root.join("INDEX.md")).unwrap();
         assert!(index.contains("| a | [b](b.l3.md) | — |\n"));
@@ -717,7 +708,7 @@ mod tests {
         let root = temp_root("work-index");
         fs::write(
             root.join("a.l3.md"),
-            "---\ndoc: a\nschema: freeform\n---\n\n## Node in A ^r-aaa1\n- catalog [[openalex:W1]] {why: 'cites'}\n",
+            "---\ndoc: a\n---\n\n## Node in A ^r-aaa1\n- catalog [[openalex:W1]] {why: 'cites'}\n",
         )
         .unwrap();
         reindex(&root).unwrap();
@@ -727,7 +718,7 @@ mod tests {
 
     #[test]
     fn scaffold_emits_anchor_less_node_grammar() {
-        let content = scaffold("some-doc", "freeform", "Some Doc");
+        let content = scaffold("some-doc", "Some Doc");
         assert!(content.contains("## About this document"));
         assert!(content.contains("## Example question"));
         assert!(content.lines().filter(|l| l.starts_with("## ")).all(|l| !l.contains('^')));

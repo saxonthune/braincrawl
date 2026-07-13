@@ -88,7 +88,7 @@ pub mod alias {
 // ── node ──────────────────────────────────────────────────────────────────
 
 pub mod node {
-    /// Mint a node; idempotent (ON CONFLICT DO NOTHING).
+    /// Create a node; idempotent (ON CONFLICT DO NOTHING).
     /// Params: (canonical_id, kind, created_at)
     pub const INSERT_IGNORE: &str = "\
         INSERT INTO node (canonical_id, kind, created_at) \

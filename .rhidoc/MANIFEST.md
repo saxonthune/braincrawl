@@ -55,7 +55,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.01.04, doc02.04 | — |
 | doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one UUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
 | doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a UUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
-| doc02.01.04 | `01-core/04-l3-conventions.md` | The L3 Research Collection body has no formalized contract yet — only the envelope (doc/schema/updated) is frozen. Candidate body conventions are collected and churned in an experimental working ledger inside the braincrawl Claude skill, not here, until one earns its way into the spec. This doc is the stable pointer to that live space. | architecture, core, l3, research-collection, conventions, experimental | doc02.01.01 | — | — |
+| doc02.01.04 | `01-core/04-l3-conventions.md` | The settled contract for an L3 Research Document — two required frontmatter fields (doc, updated) plus one node grammar every doc's body follows (headings, property lines, link lines, and the controlled edge vocabulary). Reference the ids, never copy their metadata. | architecture, core, l3, research-collection, conventions, node-grammar | doc02.01.01 | — | — |
 
 ### Cloudflare
 
@@ -100,7 +100,6 @@ Quick lookup for file-path→doc mapping:
 | `core` | doc02.01.01, doc02.01.02, doc02.01.03, doc02.01.04 |
 | `coverage` | doc01.01 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
-| `experimental` | doc02.01.04 |
 | `facts` | doc01.01 |
 | `fork` | doc02.06.01.01, doc02.06.01.02 |
 | `glossary` | doc01.01 |
@@ -112,6 +111,7 @@ Quick lookup for file-path→doc mapping:
 | `mental-model` | doc01.02 |
 | `meta` | doc00.01 |
 | `monorepo` | doc02.04 |
+| `node-grammar` | doc02.01.04 |
 | `openalex` | doc02.06.01.01 |
 | `philosophy` | doc00.02 |
 | `plugin` | doc01.03 |

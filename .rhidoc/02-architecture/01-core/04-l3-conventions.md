@@ -1,31 +1,74 @@
 ---
 title: L3 Conventions
-summary: The L3 Research Collection body has no formalized contract yet — only the envelope (doc/schema/updated) is frozen. Candidate body conventions are collected and churned in an experimental working ledger inside the braincrawl Claude skill, not here, until one earns its way into the spec. This doc is the stable pointer to that live space.
-tags: [architecture, core, l3, research-collection, conventions, experimental]
+summary: The settled contract for an L3 Research Document — two required frontmatter fields (doc, updated) plus one node grammar every doc's body follows (headings, property lines, link lines, and the controlled edge vocabulary). Reference the ids, never copy their metadata.
+tags: [architecture, core, l3, research-collection, conventions, node-grammar]
 deps: [doc02.01.01]
 ---
 
 # L3 Conventions
 
-The L3 Research Collection's **envelope** is frozen — three frontmatter keys (`doc`,
-`schema`, `updated`), enforced by `braincrawl l3 check`. The **body** is deliberately not.
-Body conventions — what belongs in an L3 doc and what must stay queryable from the Library
-and Catalog (`doc02.01.01`) instead — are still being worked out, and formalizing them here
-prematurely would freeze leans that real sessions haven't tested.
+An L3 Research Document is a plain markdown file, one per item, under the consolidated
+store. Its contract has two parts: a small required frontmatter, and a body written in one
+shared node grammar.
 
-So the live work does **not** live in this spec doc. It lives in an experimental **working
-ledger** inside the braincrawl Claude skill:
+## Frontmatter
 
-> `.claude/skills/braincrawl/l3-conventions.md` (repo-relative; the user-level
-> `~/.claude/skills/braincrawl` is a symlink to this same file)
+Two required fields, checked by `braincrawl l3 check`:
 
-That ledger is a scratch space: each candidate convention carries a *lean*, not a law, and
-may be reversed or discarded at no cost. Candidates arrive from `l3-feedback-*` reports
-(filed by the `braincrawl-l3-feedback` skill into the braincrawl todo-tasks inbox); a
-braincrawl session reads each report and records a lean.
+- `doc:` — a kebab-case slug. It is both the primary key and the filename stem.
+- `updated:` — a date, stamped by the CLI.
 
-A candidate is promoted out of the ledger only when it has earned formalization — at which
-point it graduates into the braincrawl skill's `SKILL.md` §5 and/or a `braincrawl l3 check`
-per-schema body lint. **When that happens, this doc is where the landed convention is
-written up as spec.** Until the first graduation, this doc carries nothing but the pointer
-above.
+## The node grammar
+
+Below the frontmatter, everything is a sequence of research nodes. There is no loose prose
+and no top-level heading (H1) — the file goes straight from frontmatter to the first node.
+
+**A node** opens with a `## ` heading. Its title is opaque prose — write anything that helps
+a reader. The tooling appends a trailing `^r-…` anchor to the heading; agents never write one
+themselves — `braincrawl l3 assign-ids` assigns it.
+
+**A property line** is `- key: value`. A value may hold one YAML flow map, e.g.
+`{k: v, k2: 'v, with a comma'}` (quote any value containing a comma). One key is special:
+`- tags: #a #b` — each `#`-prefixed token becomes a label on the node, not a property.
+
+**A link line** connects two endpoints:
+
+- `- kind [[target]]` — the source is implicit (the enclosing node).
+- `- [[src]] kind [[dst]]` — both endpoints written out.
+- optional trailing `{props}` on either form.
+
+A target is one of:
+
+- `^r-…` — a node in this doc.
+- `slug#^r-…` — a node in another doc.
+- a bare `slug` — a doc-level forward reference, pointing at that doc's intro node.
+- `openalex:…` or `doi:…` — a catalog entry (a work, not a node).
+
+`kind` is lowercase-kebab vocabulary. `catalog` is the convention for a work-link (node →
+catalog id). `contradicts` is the blessed word for a claim-link — never write `refutes`.
+`supports`, `builds-on`, `relates-to`, `bridges`, and `complicates` are free domain
+vocabulary for how one node or claim relates to another.
+
+A `[[wikilink]]` written inside a property *value* is just text — it is not a graph edge.
+Only a `- kind [[target]]` bullet line becomes a link.
+
+## The one hard invariant
+
+**Reference, never copy.** An L3 doc stores ids, not metadata. Look facts back up from the
+server at read time, so a doc never drifts from the graph it annotates. UUIDs are the join
+key — prefer `openalex:W…`; the store resolves other id forms (DOI, ISBN, …) to the same
+UUID, so any form is safe as long as it is consistent within a doc.
+
+## Experimental conventions
+
+Two leans from real sessions, not yet promoted into the required grammar above:
+
+- **Attributed voice for a source's claims.** A source's contested theoretical claim is
+  reported ("Sohn-Rethel holds that value is a real abstraction"), not asserted in the doc's
+  own voice. The doc may assert as settled only graph facts (ids, edges) and the user's own
+  positions.
+- **Discourage catalog/artifact-state markers in L3.** Don't annotate a node with facts about
+  what the store currently holds (e.g. "fulltext stored", "no abstract found") — those are
+  look-up-able store facts that go stale silently when an artifact is re-fetched or evicted.
+  If "which of my selections can I read deeply right now" becomes a real need, it belongs in
+  a store query, not a written note.

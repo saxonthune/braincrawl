@@ -206,7 +206,7 @@ impl MetadataStore for MemStore {
     }
 
     /// Idempotent: does nothing if the node already exists.
-    async fn mint_node(
+    async fn create_node(
         &self,
         id: &CanonicalId,
         kind: NodeKind,

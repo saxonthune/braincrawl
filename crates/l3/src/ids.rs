@@ -1,4 +1,4 @@
-//! Anchor id minting. Alphabet excludes `0/1/i/l/o/u` — chars easy to
+//! Anchor id assignment. Alphabet excludes `0/1/i/l/o/u` — chars easy to
 //! misread in a heading — and ids are pure random, never time- or
 //! counter-derived (an id must not leak write order).
 

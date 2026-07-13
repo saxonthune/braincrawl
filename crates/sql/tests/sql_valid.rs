@@ -98,11 +98,11 @@ fn happy_path() {
 
     let ts = "2024-01-01T00:00:00Z";
 
-    // Mint two nodes.
+    // Create two nodes.
     conn.execute(node::INSERT_IGNORE, params!["n1", "work", ts]).unwrap();
     conn.execute(node::INSERT_IGNORE, params!["n2", "work", ts]).unwrap();
 
-    // Idempotent: minting the same node twice is a no-op.
+    // Idempotent: creating the same node twice is a no-op.
     conn.execute(node::INSERT_IGNORE, params!["n1", "work", ts]).unwrap();
 
     // Insert alias and resolve it.
@@ -212,7 +212,7 @@ fn merge_alias_and_node_assertion() {
     let ts1 = "2024-01-01T00:00:00Z";
     let ts2 = "2024-06-01T00:00:00Z";
 
-    // Mint survivor and loser.
+    // Create survivor and loser.
     conn.execute(node::INSERT_IGNORE, params!["survivor", "work", ts1]).unwrap();
     conn.execute(node::INSERT_IGNORE, params!["loser", "work", ts1]).unwrap();
 

@@ -191,7 +191,7 @@ async fn test_stats_endpoint() {
         .await
         .unwrap();
 
-    // An edge to an unknown dst mints a stub work (no assertion).
+    // An edge to an unknown dst creates a stub work (no assertion).
     client
         .put(format!("{base}/edges"))
         .json(&serde_json::json!([{

@@ -12,7 +12,7 @@ security:
 paths:
   /works:
     put:                       # upsert a work from a provider record
-      summary: put_work — idempotent; extracts aliases from the record, resolves/mints GUID
+      summary: put_work — idempotent; extracts aliases from the record, resolves/generates GUID
       requestBody:
         content: { application/json: { schema: { $ref: "#/components/schemas/WorkRecord" } } }
       responses:

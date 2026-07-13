@@ -13,7 +13,7 @@ routes every id naming the same resource to the same UUID.
 
 ## UUID
 
-The UUID is a braincrawl-minted identifier — opaque and provider-neutral. No
+The UUID is a braincrawl-generated identifier — opaque and provider-neutral. No
 external scheme (not even OpenAlex `W…`) is the primary key; every external id is an
 alias pointing at the UUID.
 
@@ -32,7 +32,7 @@ A provider record (an OpenAlex work, say) names several ids at once
 
 1. Extract the bundle `{(namespace, value), …}` from the record.
 2. Look each up in `alias`; collect the set `U` of distinct UUIDs hit.
-3. `|U| == 0` → mint a UUID, insert the node and all aliases.
+3. `|U| == 0` → generate a UUID, insert the node and all aliases.
 4. `|U| == 1` → use it; insert any aliases not yet present.
 5. `|U| ≥ 2` → the bundle witnesses that these classes are one resource → **merge**.
 
@@ -41,7 +41,7 @@ As long as id co-occurrence is truthful, this produces correct equivalence class
 
 ## Concurrency
 
-Stateless workers race: two resolving the same id could both miss and both mint. Two
+Stateless workers race: two resolving the same id could both miss and both generate one. Two
 mechanisms serialize them:
 
 - **Get-or-create on the unique constraint.** Alias writes are

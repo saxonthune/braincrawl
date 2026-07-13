@@ -71,7 +71,7 @@ pub struct Provenance {
 }
 
 /// A research node — an id-bearing block lifted from a `##` heading.
-/// `id` is `None` until assign-ids has run (a later phase mints anchors).
+/// `id` is `None` until assign-ids has run (a later phase assigns anchors).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub id: Option<NodeId>,

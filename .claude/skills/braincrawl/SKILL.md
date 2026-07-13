@@ -232,29 +232,42 @@ The store root resolves from `BRAINCRAWL_L3_REPO` (env) > `l3_repo` in
 l3_repo = "~/code/github/saxonthune/braincrawl-l3"   # a dedicated git repo is recommended
 ```
 
-### The contract and conventions live in `l3-conventions.md`
+### The contract lives in `doc02.01.04`
 
-What belongs in an L3 doc — the frozen envelope (`doc`/`schema`/`updated`), the
-reference-never-copy invariant, and the still-churning body conventions — is **not** restated
-here. It lives in one source of truth alongside this skill:
+The full contract — required frontmatter, the node grammar, and the reference-never-copy
+invariant — is spec'd in `.rhidoc/02-architecture/01-core/04-l3-conventions.md`
+(`doc02.01.04`). Read it before writing or editing an L3 doc. The cheat-sheet below is
+enough for routine authoring; it does not restate the experimental conventions section.
 
-> `.claude/skills/braincrawl/l3-conventions.md`  (spec ref: `doc02.01.04`)
+**Frontmatter** — two required fields: `doc:` (kebab-case slug, filename stem, primary key)
+and `updated:` (date, stamped by the CLI).
 
-Read it before writing or editing an L3 doc. It has a **settled contract** (the laws every
-doc obeys) and an **experimental ledger** (candidate conventions held as leans, not laws,
-fed by `l3-feedback-*` reports). Don't duplicate either back into this file.
+**Node grammar** — everything below the frontmatter is a sequence of nodes, no loose prose,
+no H1:
+
+- A node opens with `## title` — tooling appends the `^r-…` anchor; never write one yourself.
+- A property line is `- key: value`; a value may hold one flow map `{k: v}`.
+  `- tags: #a #b` turns each `#`-token into a label.
+- A link line is `- kind [[target]]` (implicit source) or `- [[src]] kind [[dst]]`, with
+  optional trailing `{props}`. A target is `^r-…`, `slug#^r-…`, a bare `slug` (doc-level
+  forward reference), or `openalex:…`/`doi:…` (a catalog entry). `catalog` names a work-link;
+  `contradicts` is the blessed word for a claim-link (never `refutes`); `supports`/
+  `builds-on`/`relates-to`/`bridges`/`complicates` are free domain vocabulary.
+- A `[[wikilink]]` inside a property *value* is text, not an edge — only a `- kind [[…]]`
+  bullet line becomes a link.
+- Invariant: reference, never copy — store ids, look facts up from the server at read time.
 
 ### CLI surface
 
 ```bash
-braincrawl l3 new <doc> [--schema <your-label>] [--title "…"]  # create; prints absolute path
+braincrawl l3 new <doc> [--title "…"]  # create; prints absolute path
 braincrawl l3 path <doc>          # print absolute path of an existing doc
-braincrawl l3 list                # all docs (doc · schema · updated · path)
-braincrawl l3 check <doc> | --all # advisory lint against the envelope contract
+braincrawl l3 list                # all docs (doc · updated · path)
+braincrawl l3 check <doc> | --all # advisory lint against the required frontmatter
 braincrawl l3 index               # regenerate INDEX.md
-braincrawl l3 import <file> [--doc <slug>] [--schema <s>] [--mv]   # adopt an existing md, normalize its envelope
+braincrawl l3 import <file> [--doc <slug>] [--mv]   # adopt an existing md, normalize its frontmatter
 braincrawl l3 rm <doc>            # delete + reindex
-braincrawl l3 assign-ids [--dry-run]   # mint ^r-… anchors for every heading that lacks one
+braincrawl l3 assign-ids [--dry-run]   # assign ^r-… anchors for every heading that lacks one
 ```
 
 `new` and `path` print **only the absolute path** to stdout, so you can capture it and
@@ -280,9 +293,10 @@ Maintenance loop, each research session:
 
 ### Rules that keep the Research Collection honest
 
-The invariants (reference-never-copy, UUIDs as join key, one-doc-per-item, your-edges-are-
-yours, the frozen envelope) are the **settled contract** in `l3-conventions.md` — read them
-there rather than from a copy here.
+The invariants — reference-never-copy, UUIDs as join key, one doc per item, and your edges
+are yours to keep — are the settled contract in `doc02.01.04`
+(`.rhidoc/02-architecture/01-core/04-l3-conventions.md`); read them there rather than from a
+copy here.
 
 ## Quick reference
 

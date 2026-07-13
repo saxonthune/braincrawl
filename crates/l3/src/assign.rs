@@ -1,11 +1,11 @@
-//! `assign-ids`: mint anchors for every `##` heading that lacks one. The one
+//! `assign-ids`: assign anchors for every `##` heading that lacks one. The one
 //! file-mutating verb in the research graph — node identity is tooling-owned.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::mint::new_id;
+use crate::ids::new_id;
 use crate::parse::parse;
 
 /// One heading a run assigned (or, under `--dry-run`, would assign) an anchor to.
@@ -17,7 +17,7 @@ pub struct Assigned {
     pub title: String,
 }
 
-/// Mint anchors for every id-less node in the store and append them to their
+/// Assign anchors for every id-less node in the store and append them to their
 /// heading lines. Existing anchors are never touched or re-keyed; uniqueness is
 /// checked against every anchor in the store, not just the file being edited.
 pub fn assign_ids(root: &Path, dry_run: bool) -> Result<Vec<Assigned>, std::io::Error> {

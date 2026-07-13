@@ -22,7 +22,7 @@ The separation is by **storage kind**, not by feature:
 
 ## Identity — the shared spine
 
-Both layers point at a **UUID** — a braincrawl-minted identifier. Every external id
+Both layers point at a **UUID** — a braincrawl-generated identifier. Every external id
 (doi, isbn, oclc, pmid, OpenAlex `W…`, …) is an alias of that UUID. Identity is its
 own concern, resolved by braincrawl on the consumer's behalf; see Id Resolution
 (`doc02.01.02`) for how external ids converge onto one UUID.

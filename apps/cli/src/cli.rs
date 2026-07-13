@@ -111,9 +111,6 @@ pub enum L3Cmd {
     New {
         /// Doc slug (kebab-case) — the primary key and filename stem
         doc: String,
-        /// Body-convention label recorded in frontmatter (free string; every schema gets the node-grammar skeleton)
-        #[arg(long, default_value = "freeform")]
-        schema: String,
         /// Human title for the H1 heading (defaults to the doc slug)
         #[arg(long)]
         title: Option<String>,
@@ -128,7 +125,7 @@ pub enum L3Cmd {
     },
     /// List all L3 docs in the store
     List,
-    /// Lint a doc (or --all) against the envelope contract; advisory, never fails
+    /// Lint a doc (or --all) against the required frontmatter; advisory, never fails
     Check {
         /// Doc slug (omit with --all)
         #[arg(required_unless_present = "all")]
@@ -139,16 +136,13 @@ pub enum L3Cmd {
     },
     /// Regenerate INDEX.md from every doc's frontmatter
     Index,
-    /// Adopt an existing markdown file into the store, normalizing its envelope
+    /// Adopt an existing markdown file into the store, normalizing its frontmatter
     Import {
         /// Path to the existing .md / .l3.md file
         file: String,
         /// Doc slug override (default: existing `doc`/`domain` frontmatter, else filename stem)
         #[arg(long)]
         doc: Option<String>,
-        /// Schema label to set when the file declares none (default: freeform)
-        #[arg(long)]
-        schema: Option<String>,
         /// Remove the source file after a successful import
         #[arg(long)]
         mv: bool,
@@ -158,7 +152,7 @@ pub enum L3Cmd {
         /// Doc slug
         doc: String,
     },
-    /// Mint `^r-…` anchors for every `##` heading that lacks one
+    /// Assign `^r-…` anchors for every `##` heading that lacks one
     AssignIds {
         /// Report what would be assigned; write nothing
         #[arg(long)]

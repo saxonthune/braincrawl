@@ -37,7 +37,7 @@ pub trait MetadataStore {
         candidate: &CanonicalId,
     ) -> Result<CanonicalId, DomainError>;
 
-    async fn mint_node(
+    async fn create_node(
         &self,
         id: &CanonicalId,
         kind: NodeKind,
@@ -118,7 +118,7 @@ pub trait Clock {
     fn now_rfc3339(&self) -> String;
 }
 
-/// Mints new braincrawl GUIDs.
+/// Generates new braincrawl GUIDs.
 pub trait IdGen {
     fn new_guid(&self) -> CanonicalId;
 }

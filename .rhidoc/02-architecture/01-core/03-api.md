@@ -26,7 +26,7 @@ land on the same node.
 ### Works & content (Library + identity)
 
 ```
-put_work(id, metadata, aliases[])      # upsert; resolves/mints UUID, records aliases
+put_work(id, metadata, aliases[])      # upsert; resolves/generates UUID, records aliases
 get_work(id)                           # → metadata; id = any alias or the UUID
 put_content(id, kind, bytes,           # kind = abstract | fulltext
             source, fetched_at)

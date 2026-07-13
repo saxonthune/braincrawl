@@ -4,7 +4,7 @@
 mod assign;
 mod model;
 mod parse;
-pub mod mint;
+pub mod ids;
 
 pub use assign::{assign_ids, Assigned};
 pub use model::{Endpoint, Graph, Link, Node, NodeId, Provenance, Warning};

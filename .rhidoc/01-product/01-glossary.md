@@ -5,9 +5,9 @@ tags: [glossary, vocabulary, terms, product, facts, coverage]
 deps: []
 ---
 # Glossary
-This glossary is a **controlled vocabulary**: one preferred term per concept, kept precise so it does not drift. Adhere to it — use the term it defines rather than a coined synonym — and contribute to it: when you need a concept it does not yet name, propose an addition here instead of minting a term in passing.
+This glossary is a **controlled vocabulary**: one preferred term per concept, kept precise so it does not drift. Adhere to it — use the term it defines rather than a coined synonym — and contribute to it: when you need a concept it does not yet name, propose an addition here instead of inventing a term in passing.
 
-**Naming new concepts.** Names are load-bearing — every doc, type, and session inherits them — so the user chooses them. When work reaches a concept this glossary does not name, the agent lays out the naming decision (candidates, collisions with existing entries, tradeoffs) and the user commits the term here before anything fans out through it. Prefer combining existing terms over minting a new one; a candidate must be distinct from every existing entry and specific enough to stand alone out of context.
+**Naming new concepts.** Names are load-bearing — every doc, type, and session inherits them — so the user chooses them. When work reaches a concept this glossary does not name, the agent lays out the naming decision (candidates, collisions with existing entries, tradeoffs) and the user commits the term here before anything fans out through it. Prefer combining existing terms over inventing a new one; a candidate must be distinct from every existing entry and specific enough to stand alone out of context. A good concept name is like a good variable name: it says what the thing is, reads clearly out of context, and does not restate its type or the obvious.
 ## Facts — the grammar
 This glossary's relationships are written as **verbalized facts** (ORM-style): one affirmable subject–verb–object(–…) sentence per relationship, with an optional `predicate(role, role)` shadow where a fact wants to be linted or queried. Four kinds, one grammar:
 

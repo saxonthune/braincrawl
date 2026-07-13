@@ -238,7 +238,7 @@ impl MetadataStore for SqliteStore {
         Ok(CanonicalId(id))
     }
 
-    async fn mint_node(
+    async fn create_node(
         &self,
         id: &CanonicalId,
         kind: NodeKind,

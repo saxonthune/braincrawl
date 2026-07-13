@@ -88,7 +88,7 @@ impl MetadataStore for D1Store {
     async fn get_or_create_alias(&self, _alias: &Alias, _candidate: &CanonicalId) -> Result<CanonicalId, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
-    async fn mint_node(&self, _id: &CanonicalId, _kind: NodeKind, _created_at: &str) -> Result<(), DomainError> {
+    async fn create_node(&self, _id: &CanonicalId, _kind: NodeKind, _created_at: &str) -> Result<(), DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
     async fn upsert_node_assertion(&self, _id: &CanonicalId, _source: &str, _attrs: &serde_json::Value, _fetched_at: &str) -> Result<(), DomainError> {
@@ -293,7 +293,7 @@ impl MetadataStore for D1Store {
             .ok_or(DomainError::Backend("get_or_create_alias: no row returned".into()))
     }
 
-    async fn mint_node(&self, id: &CanonicalId, kind: NodeKind, created_at: &str) -> Result<(), DomainError> {
+    async fn create_node(&self, id: &CanonicalId, kind: NodeKind, created_at: &str) -> Result<(), DomainError> {
         prep(
             &self.db,
             braincrawl_sql::node::INSERT_IGNORE,
