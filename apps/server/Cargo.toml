@@ -20,10 +20,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 axum = "0.7"
-tokio = { version = "1", features = ["rt", "net", "macros", "time"] }
+tokio = { version = "1", features = ["rt", "net", "macros", "time", "sync"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+notify = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["rt", "net", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 braincrawl-conformance = { path = "../../crates/conformance" }

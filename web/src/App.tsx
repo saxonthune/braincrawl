@@ -1,101 +1,106 @@
-import { createSignal } from "solid-js";
-import solidLogo from "./assets/solid.svg";
-import viteLogo from "./assets/vite.svg";
-import heroImg from "./assets/hero.png";
+import {
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  onMount,
+  Switch,
+  type JSX,
+} from "solid-js";
+import { GraphProvider, useGraph } from "./graph";
+import { plugins } from "./plugins";
+import type { Plugin } from "./plugins/types";
 import "./App.css";
 
-function App() {
-  const [count, setCount] = createSignal(0);
+function currentHash(): string {
+  const hash = window.location.hash.slice(1);
+  return hash === "" ? "/" : hash;
+}
+
+interface RouteMatch {
+  plugin: Plugin;
+  params: Record<string, string>;
+}
+
+function matchRoute(path: string): RouteMatch | null {
+  const pathSegments = path.split("/").filter((s) => s !== "");
+  for (const plugin of plugins) {
+    for (const route of plugin.routes) {
+      const routeSegments = route.split("/").filter((s) => s !== "");
+      if (routeSegments.length !== pathSegments.length) continue;
+      const params: Record<string, string> = {};
+      let matched = true;
+      for (let i = 0; i < routeSegments.length; i++) {
+        const routeSeg = routeSegments[i];
+        const pathSeg = pathSegments[i];
+        if (routeSeg.startsWith(":")) {
+          params[routeSeg.slice(1)] = pathSeg;
+        } else if (routeSeg !== pathSeg) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) return { plugin, params };
+    }
+  }
+  return null;
+}
+
+function Router(): JSX.Element {
+  const { graph } = useGraph();
+  const [hash, setHash] = createSignal(currentHash());
+
+  const onHashChange = () => setHash(currentHash());
+  onMount(() => window.addEventListener("hashchange", onHashChange));
+  onCleanup(() => window.removeEventListener("hashchange", onHashChange));
+
+  const route = createMemo(() => matchRoute(hash()));
 
   return (
-    <>
-      <section id="center">
-        <div class="hero">
-          <img src={heroImg} class="base" width="170" height="179" alt="" />
-          <img src={solidLogo} class="framework" alt="Solid logo" />
-          <img src={viteLogo} class="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button type="button" class="counter" onClick={() => setCount((count) => count + 1)}>
-          Count is {count()}
-        </button>
-      </section>
+    <Switch fallback={<p>Loading graph…</p>}>
+      <Match when={graph.error}>
+        <p class="error">Failed to load the graph: {String(graph.error?.message ?? graph.error)}</p>
+      </Match>
+      <Match when={graph()}>
+        {(data) => (
+          <Switch fallback={<p>Not found: {hash()}</p>}>
+            <Match when={route()}>
+              {(m) => {
+                const Component = m().plugin.component;
+                return <Component graph={data()} params={m().params} />;
+              }}
+            </Match>
+          </Switch>
+        )}
+      </Match>
+    </Switch>
+  );
+}
 
-      <div class="ticks"></div>
+function Nav(): JSX.Element {
+  const { refetch } = useGraph();
+  return (
+    <nav>
+      <For each={plugins}>{(plugin) => <a href={`#${plugin.routes[0]}`}>{plugin.title}</a>}</For>
+      <button type="button" onClick={() => refetch()}>
+        Refresh
+      </button>
+    </nav>
+  );
+}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg class="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img class="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://solidjs.com/" target="_blank">
-                <img class="button-icon" src={solidLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg class="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div class="ticks"></div>
-      <section id="spacer"></section>
-    </>
+function App(): JSX.Element {
+  return (
+    <GraphProvider>
+      <header>
+        <h1>braincrawl</h1>
+        <Nav />
+      </header>
+      <main>
+        <Router />
+      </main>
+    </GraphProvider>
   );
 }
 

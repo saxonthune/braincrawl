@@ -12,6 +12,9 @@
 //! crosses a thread boundary.
 
 pub mod handlers;
+mod watch;
+
+pub use watch::spawn_l3_watcher;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -121,6 +124,10 @@ pub fn make_store(db_path: &str, blob_root: &str) -> Result<LocalStore, String> 
 pub struct AppState {
     pub store: Arc<LocalStore>,
     pub l3_root: Option<PathBuf>,
+    /// Debounced "changed" signal from the L3 file watcher; fed to
+    /// `/api/events` (SSE). Always present, even when `l3_root` is `None` —
+    /// it just never fires in that case.
+    pub changes: tokio::sync::broadcast::Sender<()>,
 }
 
 impl FromRef<AppState> for Arc<LocalStore> {
@@ -441,6 +448,11 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<P
         .route("/works/*path", get(handler_works_get).put(handler_works_put))
         .layer(DefaultBodyLimit::disable());
 
+    let (changes_tx, _rx) = tokio::sync::broadcast::channel(16);
+    if let Some(root) = &l3_root {
+        spawn_l3_watcher(root.clone(), changes_tx.clone());
+    }
+
     let authed = Router::new()
         // Exact static routes first so they win over wildcards.
         .route("/works/have", post(handler_have))
@@ -450,9 +462,14 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<P
         .route("/graph/neighborhood", post(handler_neighborhood))
         .route("/stats", get(handler_stats))
         .route("/api/l3/graph", get(handlers::handler_l3_graph))
+        .route("/api/events", get(handlers::handler_events))
         .merge(works_wildcard)
         .layer(axum::middleware::from_fn_with_state(auth, gate))
-        .with_state(AppState { store, l3_root });
+        .with_state(AppState {
+            store,
+            l3_root,
+            changes: changes_tx,
+        });
 
     // `/health` is merged outside the auth layer: an unauthenticated liveness
     // probe so consumers can detect the shared server without a token.

@@ -59,6 +59,23 @@ server at read time, so a doc never drifts from the graph it annotates. UUIDs ar
 key — prefer `openalex:W…`; the store resolves other id forms (DOI, ISBN, …) to the same
 UUID, so any form is safe as long as it is consistent within a doc.
 
+## The `reading` convention
+
+A node marks a recommended reading with a `reading` property — a flow map holding `role`
+(one of the blessed set `start-here`/`core`/`rigor`/`reference`, or any other string — an
+unknown role still renders, grouped under its own value) and `why` (free text) — plus a
+`catalog` link to the work it concerns:
+
+```
+## Strogatz, Nonlinear Dynamics and Chaos — the standard entry text ^r-xxxxxxx
+- reading: {role: start-here, why: the friendliest on-ramp to limit cycles}
+- catalog [[openalex:W2001886606]]
+```
+
+Read-later intent lives here, in L3, not in the Catalog (L2) — no L2 schema change carries
+it. `braincrawl l3 reading-list` and the reading-list plugin in the Web UI both read this
+property directly off the parsed graph.
+
 ## Experimental conventions
 
 Two leans from real sessions, not yet promoted into the required grammar above:

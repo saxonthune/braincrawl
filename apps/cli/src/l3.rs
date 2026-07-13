@@ -52,6 +52,7 @@ pub fn dispatch(cmd: L3Cmd, config: &Config, opts: &OutputOpts) -> Result<(), Dy
         L3Cmd::Import { file, doc, mv } => cmd_import(&root, &file, doc, mv),
         L3Cmd::Rm { doc } => cmd_rm(&root, &doc),
         L3Cmd::AssignIds { dry_run } => cmd_assign_ids(&root, dry_run),
+        L3Cmd::ReadingList => cmd_reading_list(&root, opts),
     }
 }
 
@@ -236,6 +237,90 @@ fn cmd_assign_ids(root: &Path, dry_run: bool) -> Result<(), DynErr> {
     } else {
         eprintln!("{} anchor(s) assigned", assigned.len());
     }
+    Ok(())
+}
+
+/// The blessed `reading.role` order (start-here → core → rigor → reference); an
+/// unknown role sorts after, grouped under its own literal value.
+const BLESSED_ROLES: &[&str] = &["start-here", "core", "rigor", "reference"];
+
+struct ReadingRow {
+    doc: String,
+    role: String,
+    why: String,
+    work_id: Option<String>,
+}
+
+fn cmd_reading_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
+    let (graph, _warnings) = l3::parse(root);
+
+    let mut rows: Vec<ReadingRow> = graph
+        .nodes
+        .iter()
+        .filter_map(|node| {
+            let reading = node.properties.get("reading")?;
+            let role = reading.get("role").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let why = reading.get("why").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let work_id = node.id.as_ref().and_then(|id| {
+                graph.links_touching(&id.0).iter().find_map(|l| {
+                    if l.kind != "catalog" {
+                        return None;
+                    }
+                    match (&l.source, &l.target) {
+                        (l3::Endpoint::Node(src), l3::Endpoint::Catalog(dst)) if src.0 == id.0 => {
+                            Some(dst.0.clone())
+                        }
+                        (l3::Endpoint::Catalog(src), l3::Endpoint::Node(dst)) if dst.0 == id.0 => {
+                            Some(src.0.clone())
+                        }
+                        _ => None,
+                    }
+                })
+            });
+            Some(ReadingRow { doc: node.provenance.doc.clone(), role, why, work_id })
+        })
+        .collect();
+
+    let role_rank = |role: &str| BLESSED_ROLES.iter().position(|r| *r == role).unwrap_or(BLESSED_ROLES.len());
+    rows.sort_by(|a, b| {
+        role_rank(&a.role).cmp(&role_rank(&b.role)).then_with(|| a.role.cmp(&b.role)).then_with(|| a.doc.cmp(&b.doc))
+    });
+
+    if opts.text && !opts.json {
+        let mut last_role: Option<&str> = None;
+        for r in &rows {
+            let role_label = if r.role.is_empty() { "(no role)" } else { r.role.as_str() };
+            if last_role != Some(role_label) {
+                println!("== {role_label} ==");
+                last_role = Some(role_label);
+            }
+            println!("{}\t{}\t{}", r.doc, r.work_id.as_deref().unwrap_or("—"), r.why);
+        }
+        eprintln!("{} reading(s)", rows.len());
+        return Ok(());
+    }
+
+    let results: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "doc": r.doc,
+                "role": r.role,
+                "why": r.why,
+                "work_id": r.work_id,
+            })
+        })
+        .collect();
+    let count = results.len() as u64;
+    let envelope = Envelope {
+        query: QueryMeta { entity: Some("l3:reading-list".to_string()), resolved_filter: None, url: None },
+        count,
+        returned: results.len(),
+        truncated: false,
+        next_cursor: None,
+        results,
+    };
+    render(&envelope, opts);
     Ok(())
 }
 

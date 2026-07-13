@@ -256,6 +256,8 @@ no H1:
 - A `[[wikilink]]` inside a property *value* is text, not an edge — only a `- kind [[…]]`
   bullet line becomes a link.
 - Invariant: reference, never copy — store ids, look facts up from the server at read time.
+- `- reading: {role: start-here, why: '…'}` plus a `catalog` link marks a recommended
+  reading; `role` is `start-here`/`core`/`rigor`/`reference` or any other string.
 
 ### CLI surface
 
@@ -268,6 +270,7 @@ braincrawl l3 index               # regenerate INDEX.md
 braincrawl l3 import <file> [--doc <slug>] [--mv]   # adopt an existing md, normalize its frontmatter
 braincrawl l3 rm <doc>            # delete + reindex
 braincrawl l3 assign-ids [--dry-run]   # assign ^r-… anchors for every heading that lacks one
+braincrawl l3 reading-list [--json]    # every node with a reading property, grouped by role
 ```
 
 `new` and `path` print **only the absolute path** to stdout, so you can capture it and

@@ -158,6 +158,8 @@ pub enum L3Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// List every node with a `reading` property and its catalog work, grouped by role
+    ReadingList,
 }
 
 #[derive(Args)]

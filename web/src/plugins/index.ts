@@ -1,0 +1,5 @@
+import { documentIndex } from "./document-index";
+import { readingList } from "./reading-list";
+import type { Plugin } from "./types";
+
+export const plugins: Plugin[] = [documentIndex, readingList];

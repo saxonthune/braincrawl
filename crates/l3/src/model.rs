@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for Endpoint {
     }
 }
 
-/// Where a node came from — never serialized (the wire format is `id`/`labels`/`properties`).
+/// Where a node came from — only `doc` is serialized (the wire format is `id`/`doc`/`labels`/`properties`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Provenance {
     pub doc: String,
@@ -82,8 +82,9 @@ pub struct Node {
 
 impl Serialize for Node {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut s = serializer.serialize_struct("Node", 3)?;
+        let mut s = serializer.serialize_struct("Node", 4)?;
         s.serialize_field("id", &self.id)?;
+        s.serialize_field("doc", &self.provenance.doc)?;
         s.serialize_field("labels", &self.labels)?;
         s.serialize_field("properties", &self.properties)?;
         s.end()

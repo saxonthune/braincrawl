@@ -9,4 +9,9 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   plugins: lazyPlugins(() => [solid()]),
+  server: {
+    proxy: {
+      "/api": "http://127.0.0.1:8787",
+    },
+  },
 });
