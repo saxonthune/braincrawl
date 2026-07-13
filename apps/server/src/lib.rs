@@ -475,3 +475,14 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<P
     // probe so consumers can detect the shared server without a token.
     Router::new().route("/health", get(handler_health)).merge(authed)
 }
+
+/// Mount the built web UI (`web/dist`) at `/web`, turning the API server into a
+/// single service that also serves the SolidJS app. Unmatched paths under `/web`
+/// fall back to `index.html` so the client-side router owns them. The web build
+/// must be produced with Vite `base: '/web/'` so its asset URLs resolve here.
+pub fn serve_web(app: Router, web_root: PathBuf) -> Router {
+    use tower_http::services::{ServeDir, ServeFile};
+    let index = web_root.join("index.html");
+    let serve = ServeDir::new(web_root).fallback(ServeFile::new(index));
+    app.nest_service("/web", serve)
+}

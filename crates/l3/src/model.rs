@@ -8,9 +8,9 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
-/// A research node's anchor, without the leading `^` (e.g. `"r-x7k2m"`).
-/// A cross-doc reference is `"slug#r-x7k2m"`; a doc-level forward reference
-/// (bare `[[slug]]`, no anchor) is `"doc:slug"`.
+/// A research node's anchor, without the leading `^` (e.g. `"r-x7k2m"`) — unique
+/// across the whole store, so it names its node from any doc. A doc-level forward
+/// reference (bare `[[slug]]`, no anchor) is `"doc:slug"`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub String);
 
@@ -22,18 +22,15 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// `openalex:…`/`doi:…` → catalog; `^r-…` → this doc; `slug#^r-…` → another
-    /// doc; bare `slug` → a doc-level forward reference. Never fails — an
-    /// unrecognized string still resolves to a forward-reference node id.
+    /// `openalex:…`/`doi:…` → a catalog entry; `^r-…` → a research node, resolved
+    /// by its store-global anchor from any doc; a bare `slug` → that doc's intro
+    /// node. Never fails — an unrecognized string still resolves to a doc-level id.
     pub fn resolve(target: &str) -> Endpoint {
         if target.starts_with("openalex:") || target.starts_with("doi:") {
             return Endpoint::Catalog(CanonicalId(target.to_string()));
         }
         if let Some(anchor) = target.strip_prefix('^') {
             return Endpoint::Node(NodeId(anchor.to_string()));
-        }
-        if let Some((slug, anchor)) = target.split_once("#^") {
-            return Endpoint::Node(NodeId(format!("{slug}#{anchor}")));
         }
         Endpoint::Node(NodeId(format!("doc:{target}")))
     }

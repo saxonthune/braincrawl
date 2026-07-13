@@ -10,6 +10,7 @@
 //! | `BRAINCRAWL_AUTH_TOKEN`     | —                | Shared bearer token; required unless DISABLED is set |
 //! | `BRAINCRAWL_AUTH_DISABLED`  | —                | Set to any non-empty value to bypass auth (dev only) |
 //! | `BRAINCRAWL_L3_ROOT`        | —                | L3 document store root; unset disables `/api/l3/graph` (404) |
+//! | `BRAINCRAWL_WEB_ROOT`       | —                | Built web UI dir (`web/dist`); unset disables `/web`        |
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ use braincrawl_core::{
 };
 use braincrawl_server_lib::{
     handlers::{FulltextHandler, RefsHandler},
-    make_app, make_store, AuthConfig,
+    make_app, make_store, serve_web, AuthConfig,
 };
 use tokio::net::TcpListener;
 
@@ -34,6 +35,7 @@ async fn main() {
     let bind_addr =
         std::env::var("BRAINCRAWL_BIND").unwrap_or_else(|_| "0.0.0.0:8787".to_string());
     let l3_root = std::env::var("BRAINCRAWL_L3_ROOT").ok().map(PathBuf::from);
+    let web_root = std::env::var("BRAINCRAWL_WEB_ROOT").ok().map(PathBuf::from);
 
     let auth = if std::env::var("BRAINCRAWL_AUTH_DISABLED")
         .map(|v| !v.is_empty())
@@ -77,6 +79,10 @@ async fn main() {
     };
 
     let app = make_app(Arc::clone(&store), auth, l3_root);
+    let app = match web_root {
+        Some(root) => serve_web(app, root),
+        None => app,
+    };
     let listener = TcpListener::bind(&bind_addr)
         .await
         .expect("failed to bind TCP listener");

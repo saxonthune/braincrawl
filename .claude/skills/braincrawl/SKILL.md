@@ -236,8 +236,8 @@ l3_repo = "~/code/github/saxonthune/braincrawl-l3"   # a dedicated git repo is r
 
 The full contract — required frontmatter, the node grammar, and the reference-never-copy
 invariant — is spec'd in `.rhidoc/02-architecture/01-core/04-l3-conventions.md`
-(`doc02.01.04`). Read it before writing or editing an L3 doc. The cheat-sheet below is
-enough for routine authoring; it does not restate the experimental conventions section.
+(`doc02.01.04`), with a worked example at `.claude/skills/braincrawl/l3-example.l3.md`. Read
+one before writing or editing an L3 doc. The cheat-sheet below is enough for routine authoring.
 
 **Frontmatter** — two required fields: `doc:` (kebab-case slug, filename stem, primary key)
 and `updated:` (date, stamped by the CLI).
@@ -249,10 +249,13 @@ no H1:
 - A property line is `- key: value`; a value may hold one flow map `{k: v}`.
   `- tags: #a #b` turns each `#`-token into a label.
 - A link line is `- kind [[target]]` (implicit source) or `- [[src]] kind [[dst]]`, with
-  optional trailing `{props}`. A target is `^r-…`, `slug#^r-…`, a bare `slug` (doc-level
-  forward reference), or `openalex:…`/`doi:…` (a catalog entry). `catalog` names a work-link;
+  optional trailing `{props}`. A target is a node anchor `^r-…`, a bare `slug` (that doc's
+  intro node), or `openalex:…`/`doi:…` (a catalog entry). `catalog` names a work-link;
   `contradicts` is the blessed word for a claim-link (never `refutes`); `supports`/
   `builds-on`/`relates-to`/`bridges`/`complicates` are free domain vocabulary.
+- Anchors are **store-global**: `assign-ids` keeps every `^r-…` unique across the whole store,
+  so a bare `^r-…` resolves to its node from any doc — no `slug#` prefix, and the reference
+  survives if the node moves docs.
 - A `[[wikilink]]` inside a property *value* is text, not an edge — only a `- kind [[…]]`
   bullet line becomes a link.
 - Invariant: reference, never copy — store ids, look facts up from the server at read time.

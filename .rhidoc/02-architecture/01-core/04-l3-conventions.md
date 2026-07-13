@@ -1,91 +1,32 @@
 ---
 title: L3 Conventions
-summary: The settled contract for an L3 Research Document — two required frontmatter fields (doc, updated) plus one node grammar every doc's body follows (headings, property lines, link lines, and the controlled edge vocabulary). Reference the ids, never copy their metadata.
+summary: An L3 Research Document is markdown with two required frontmatter fields (doc, updated) and a body of research nodes — headings carrying property and link lines. Node anchors are store-global; reference ids, never copy metadata. A worked example ships with the braincrawl skill.
 tags: [architecture, core, l3, research-collection, conventions, node-grammar]
 deps: [doc02.01.01]
 ---
 
 # L3 Conventions
 
-An L3 Research Document is a plain markdown file, one per item, under the consolidated
-store. Its contract has two parts: a small required frontmatter, and a body written in one
-shared node grammar.
+One markdown file per item under the consolidated store. A worked example is
+`.claude/skills/braincrawl/l3-example.l3.md`; the rules:
 
-## Frontmatter
-
-Two required fields, checked by `braincrawl l3 check`:
-
-- `doc:` — a kebab-case slug. It is both the primary key and the filename stem.
-- `updated:` — a date, stamped by the CLI.
-
-## The node grammar
-
-Below the frontmatter, everything is a sequence of research nodes. There is no loose prose
-and no top-level heading (H1) — the file goes straight from frontmatter to the first node.
-
-**A node** opens with a `## ` heading. Its title is opaque prose — write anything that helps
-a reader. The tooling appends a trailing `^r-…` anchor to the heading; agents never write one
-themselves — `braincrawl l3 assign-ids` assigns it.
-
-**A property line** is `- key: value`. A value may hold one YAML flow map, e.g.
-`{k: v, k2: 'v, with a comma'}` (quote any value containing a comma). One key is special:
-`- tags: #a #b` — each `#`-prefixed token becomes a label on the node, not a property.
-
-**A link line** connects two endpoints:
-
-- `- kind [[target]]` — the source is implicit (the enclosing node).
-- `- [[src]] kind [[dst]]` — both endpoints written out.
-- optional trailing `{props}` on either form.
-
-A target is one of:
-
-- `^r-…` — a node in this doc.
-- `slug#^r-…` — a node in another doc.
-- a bare `slug` — a doc-level forward reference, pointing at that doc's intro node.
-- `openalex:…` or `doi:…` — a catalog entry (a work, not a node).
-
-`kind` is lowercase-kebab vocabulary. `catalog` is the convention for a work-link (node →
-catalog id). `contradicts` is the blessed word for a claim-link — never write `refutes`.
-`supports`, `builds-on`, `relates-to`, `bridges`, and `complicates` are free domain
-vocabulary for how one node or claim relates to another.
-
-A `[[wikilink]]` written inside a property *value* is just text — it is not a graph edge.
-Only a `- kind [[target]]` bullet line becomes a link.
-
-## The one hard invariant
-
-**Reference, never copy.** An L3 doc stores ids, not metadata. Look facts back up from the
-server at read time, so a doc never drifts from the graph it annotates. UUIDs are the join
-key — prefer `openalex:W…`; the store resolves other id forms (DOI, ISBN, …) to the same
-UUID, so any form is safe as long as it is consistent within a doc.
-
-## The `reading` convention
-
-A node marks a recommended reading with a `reading` property — a flow map holding `role`
-(one of the blessed set `start-here`/`core`/`rigor`/`reference`, or any other string — an
-unknown role still renders, grouped under its own value) and `why` (free text) — plus a
-`catalog` link to the work it concerns:
-
-```
-## Strogatz, Nonlinear Dynamics and Chaos — the standard entry text ^r-xxxxxxx
-- reading: {role: start-here, why: the friendliest on-ramp to limit cycles}
-- catalog [[openalex:W2001886606]]
-```
-
-Read-later intent lives here, in L3, not in the Catalog (L2) — no L2 schema change carries
-it. `braincrawl l3 reading-list` and the reading-list plugin in the Web UI both read this
-property directly off the parsed graph.
-
-## Experimental conventions
-
-Two leans from real sessions, not yet promoted into the required grammar above:
-
-- **Attributed voice for a source's claims.** A source's contested theoretical claim is
-  reported ("Sohn-Rethel holds that value is a real abstraction"), not asserted in the doc's
-  own voice. The doc may assert as settled only graph facts (ids, edges) and the user's own
-  positions.
-- **Discourage catalog/artifact-state markers in L3.** Don't annotate a node with facts about
-  what the store currently holds (e.g. "fulltext stored", "no abstract found") — those are
-  look-up-able store facts that go stale silently when an artifact is re-fetched or evicted.
-  If "which of my selections can I read deeply right now" becomes a real need, it belongs in
-  a store query, not a written note.
+- **Frontmatter** — two required fields (`l3 check` warns if missing): `doc:`, a kebab-case
+  slug that is the filename stem and primary key; and `updated:`, a date the CLI stamps.
+- **Body** — only research nodes, no loose prose and no H1. A `## ` heading opens a node with
+  an opaque-prose title; `l3 assign-ids` appends its `^r-…` anchor — never write one by hand.
+- **Property line** — `- key: value`, the value optionally one YAML flow map
+  (`{role: core, why: '…'}`); quote any value holding a comma. `- tags: #a #b` is special —
+  each `#`-token is a node label, not a property.
+- **Link line** — `- kind [[target]]` (source is the enclosing node) or `- [[src]] kind
+  [[dst]]`, with an optional trailing `{props}`. A target is a node anchor `^r-…`, a bare
+  `slug` (that doc's intro node), or `openalex:…`/`doi:…` (a catalog work). A `[[wikilink]]`
+  inside a property value is prose, not an edge.
+- **Anchors are store-global.** `assign-ids` keeps every `^r-…` unique across the whole store,
+  so a bare `^r-…` resolves to its node from **any** doc — no slug prefix — and the reference
+  survives if that node later moves to another doc.
+- **Edge vocabulary** — `catalog` links a node to a work; `contradicts` is the blessed
+  claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/`complicates`
+  are free domain words. A `reading: {role, why}` property plus a `catalog` link marks a
+  recommended reading (`role` = `start-here`/`core`/`rigor`/`reference`, or any string).
+- **The one hard rule** — reference, never copy: store ids, look facts up from the server at
+  read time so a doc never drifts. Prefer `openalex:W…` as the join key.

@@ -1,88 +1,20 @@
-import {
-  createMemo,
-  createSignal,
-  For,
-  Match,
-  onCleanup,
-  onMount,
-  Switch,
-  type JSX,
-} from "solid-js";
+import { For, Match, Switch, type JSX } from "solid-js";
+import { A, HashRouter, Route } from "@solidjs/router";
 import { GraphProvider, useGraph } from "./graph";
 import { plugins } from "./plugins";
-import type { Plugin } from "./plugins/types";
 import "./App.css";
-
-function currentHash(): string {
-  const hash = window.location.hash.slice(1);
-  return hash === "" ? "/" : hash;
-}
-
-interface RouteMatch {
-  plugin: Plugin;
-  params: Record<string, string>;
-}
-
-function matchRoute(path: string): RouteMatch | null {
-  const pathSegments = path.split("/").filter((s) => s !== "");
-  for (const plugin of plugins) {
-    for (const route of plugin.routes) {
-      const routeSegments = route.split("/").filter((s) => s !== "");
-      if (routeSegments.length !== pathSegments.length) continue;
-      const params: Record<string, string> = {};
-      let matched = true;
-      for (let i = 0; i < routeSegments.length; i++) {
-        const routeSeg = routeSegments[i];
-        const pathSeg = pathSegments[i];
-        if (routeSeg.startsWith(":")) {
-          params[routeSeg.slice(1)] = pathSeg;
-        } else if (routeSeg !== pathSeg) {
-          matched = false;
-          break;
-        }
-      }
-      if (matched) return { plugin, params };
-    }
-  }
-  return null;
-}
-
-function Router(): JSX.Element {
-  const { graph } = useGraph();
-  const [hash, setHash] = createSignal(currentHash());
-
-  const onHashChange = () => setHash(currentHash());
-  onMount(() => window.addEventListener("hashchange", onHashChange));
-  onCleanup(() => window.removeEventListener("hashchange", onHashChange));
-
-  const route = createMemo(() => matchRoute(hash()));
-
-  return (
-    <Switch fallback={<p>Loading graph…</p>}>
-      <Match when={graph.error}>
-        <p class="error">Failed to load the graph: {String(graph.error?.message ?? graph.error)}</p>
-      </Match>
-      <Match when={graph()}>
-        {(data) => (
-          <Switch fallback={<p>Not found: {hash()}</p>}>
-            <Match when={route()}>
-              {(m) => {
-                const Component = m().plugin.component;
-                return <Component graph={data()} params={m().params} />;
-              }}
-            </Match>
-          </Switch>
-        )}
-      </Match>
-    </Switch>
-  );
-}
 
 function Nav(): JSX.Element {
   const { refetch } = useGraph();
   return (
     <nav>
-      <For each={plugins}>{(plugin) => <a href={`#${plugin.routes[0]}`}>{plugin.title}</a>}</For>
+      <For each={plugins.filter((p) => p.nav)}>
+        {(p) => (
+          <A href={p.nav!.path} end>
+            {p.nav!.label}
+          </A>
+        )}
+      </For>
       <button type="button" onClick={() => refetch()}>
         Refresh
       </button>
@@ -90,16 +22,38 @@ function Nav(): JSX.Element {
   );
 }
 
-function App(): JSX.Element {
+function Shell(props: { children?: JSX.Element }): JSX.Element {
+  const { graph } = useGraph();
   return (
-    <GraphProvider>
+    <>
       <header>
         <h1>braincrawl</h1>
         <Nav />
       </header>
       <main>
-        <Router />
+        <Switch fallback={<p>Loading graph…</p>}>
+          <Match when={graph.error}>
+            <p class="error">
+              Failed to load the graph: {String(graph.error?.message ?? graph.error)}
+            </p>
+          </Match>
+          <Match when={graph()}>{props.children}</Match>
+        </Switch>
       </main>
+    </>
+  );
+}
+
+function App(): JSX.Element {
+  const routes = plugins.flatMap((plugin) =>
+    plugin.routes.map((route) => <Route path={route.path} component={route.component} />),
+  );
+  return (
+    <GraphProvider>
+      <HashRouter root={Shell}>
+        {routes}
+        <Route path="*" component={() => <p>Not found: {window.location.hash}</p>} />
+      </HashRouter>
     </GraphProvider>
   );
 }

@@ -1,7 +1,8 @@
 import { createMemo, Show, type JSX } from "solid-js";
+import { useParams } from "@solidjs/router";
 import { DataTable } from "../components/DataTable";
-import type { GraphNode } from "../graph";
-import type { Plugin, PluginProps } from "./types";
+import { useGraphData, type GraphNode } from "../graph";
+import type { Plugin } from "./types";
 
 interface DocSummary {
   doc: string;
@@ -32,8 +33,9 @@ function formatLabelCounts(labelCounts: Map<string, number>): string {
     .join(", ");
 }
 
-function DocumentIndexList(props: PluginProps): JSX.Element {
-  const summaries = createMemo(() => summarizeDocs(props.graph.nodes));
+function DocumentList(): JSX.Element {
+  const graph = useGraphData();
+  const summaries = createMemo(() => summarizeDocs(graph().nodes));
 
   return (
     <DataTable
@@ -61,9 +63,11 @@ function DocumentIndexList(props: PluginProps): JSX.Element {
   );
 }
 
-function DocumentDetail(props: PluginProps): JSX.Element {
-  const slug = () => props.params.slug ?? "";
-  const nodes = createMemo(() => props.graph.nodes.filter((n) => n.doc === slug()));
+function DocumentDetail(): JSX.Element {
+  const graph = useGraphData();
+  const params = useParams();
+  const slug = () => params.slug ?? "";
+  const nodes = createMemo(() => graph().nodes.filter((n) => n.doc === slug()));
 
   return (
     <div>
@@ -90,7 +94,7 @@ function DocumentDetail(props: PluginProps): JSX.Element {
               header: "Outgoing links",
               render: (row: GraphNode) => {
                 const nodeEndpoint = row.id ? `node:${row.id}` : null;
-                const outgoing = props.graph.links.filter((l) => l.source === nodeEndpoint);
+                const outgoing = graph().links.filter((l) => l.source === nodeEndpoint);
                 return outgoing.map((l) => `${l.type}→${l.target}`).join(", ");
               },
             },
@@ -102,17 +106,11 @@ function DocumentDetail(props: PluginProps): JSX.Element {
   );
 }
 
-function DocumentIndexComponent(props: PluginProps): JSX.Element {
-  return props.params.slug !== undefined ? (
-    <DocumentDetail {...props} />
-  ) : (
-    <DocumentIndexList {...props} />
-  );
-}
-
 export const documentIndex: Plugin = {
-  name: "document-index",
-  title: "Documents",
-  routes: ["/", "/doc/:slug"],
-  component: DocumentIndexComponent,
+  id: "document-index",
+  routes: [
+    { path: "/", component: DocumentList },
+    { path: "/doc/:slug", component: DocumentDetail },
+  ],
+  nav: { label: "Documents", path: "/" },
 };

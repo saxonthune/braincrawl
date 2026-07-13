@@ -1,5 +1,6 @@
-# braincrawl — task runner. The shared local L1/L2 server runs as a systemd user
-# service (braincrawl-server.service); these recipes drive it via `systemctl --user`.
+# braincrawl — task runner. One systemd user service (braincrawl-server.service)
+# serves the L1/L2 API and the built web UI (/web); these recipes drive it via
+# `systemctl --user`.
 # The service is enabled with lingering, so it also starts at boot.
 
 # List available recipes
@@ -37,8 +38,8 @@ systemd-logs:
 # NB: this only refreshes the running server. To update the `braincrawl` CLI on
 # your PATH after CLI changes, run `just install` (the service never touches it).
 #
-# Rebuild the release binaries, then bounce the service (picks up code changes)
-restart: build-release
+# Rebuild the release binaries + web UI, then bounce the service (picks up code changes)
+restart: build-release web-build
     systemctl --user restart braincrawl-server
 
 # Build the server + CLI binaries (debug)
@@ -52,13 +53,20 @@ build-release:
 # Install the systemd *user* service from scripts/braincrawl-server.service, wiring
 # ExecStart to THIS repo's release binary. Enables lingering so it starts at boot.
 # Idempotent — re-run after editing the template. Undo: `just systemd-uninstall`.
-systemd-install: build-release
+systemd-install: build-release web-build
     #!/usr/bin/env bash
     set -euo pipefail
     unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     mkdir -p "$unit_dir"
-    sed "s#@EXEC@#{{justfile_directory()}}/target/release/braincrawl-server#" \
+    sed -e "s#@EXEC@#{{justfile_directory()}}/target/release/braincrawl-server#" \
+        -e "s#@WEBROOT@#{{justfile_directory()}}/web/dist#" \
         scripts/braincrawl-server.service > "$unit_dir/braincrawl-server.service"
+    env_file="${XDG_CONFIG_HOME:-$HOME/.config}/braincrawl/server.env"
+    if [ ! -f "$env_file" ]; then
+        mkdir -p "$(dirname "$env_file")"
+        cp scripts/server.env.example "$env_file"
+        echo "scaffolded $env_file (personal overrides — edit and re-run 'just systemd-restart')"
+    fi
     systemctl --user daemon-reload
     loginctl enable-linger "$USER"
     systemctl --user enable --now braincrawl-server

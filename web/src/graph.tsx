@@ -72,6 +72,20 @@ export function useGraph(): GraphContextValue {
   return ctx;
 }
 
+/**
+ * The loaded graph as a plain accessor. Route components mount only after the
+ * shell has gated on a loaded resource, so this never sees `undefined` in
+ * practice — the throw guards against a component rendered outside that gate.
+ */
+export function useGraphData(): () => GraphData {
+  const { graph } = useGraph();
+  return () => {
+    const data = graph();
+    if (!data) throw new Error("useGraphData() read before the graph loaded");
+    return data;
+  };
+}
+
 /** `node:<id>` → `<id>`; any other endpoint (a catalog id) → null. */
 export function endpointNodeId(e: Endpoint): string | null {
   return e.startsWith("node:") ? e.slice("node:".length) : null;

@@ -438,7 +438,8 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
                     let target_doc = if let Some(slug) = id.0.strip_prefix("doc:") {
                         Some(slug.to_string())
                     } else {
-                        id.0.split_once('#').map(|(slug, _)| slug.to_string())
+                        // A bare anchor is store-global; resolve it to the doc that holds it.
+                        graph.node_by_id(&id.0).map(|n| n.provenance.doc.clone())
                     };
                     if let Some(target_doc) = target_doc {
                         if target_doc != source_doc {
@@ -560,7 +561,7 @@ const NODE_BODY: &str = "\
 ## Example question
 - tags: #Q1
 - remarks: Replace with the actual question; add findings, links, and catalog references as you go.
-<!-- - contradicts [[other-doc#^r-anchor]] {why: 'briefly why'} -->
+<!-- - contradicts [[^r-anchor]] {why: 'briefly why'}  (a ^r-… anchor names a node in any doc) -->
 <!-- - catalog [[openalex:W…]] {why: 'briefly why'} -->
 ";
 
@@ -778,7 +779,7 @@ mod tests {
         let root = temp_root("cross-refs");
         fs::write(
             root.join("a.l3.md"),
-            "---\ndoc: a\n---\n\n## Node in A ^r-aaa1\n- contradicts [[b#^r-bbb1]] {why: scope}\n",
+            "---\ndoc: a\n---\n\n## Node in A ^r-aaa1\n- contradicts [[^r-bbb1]] {why: scope}\n",
         )
         .unwrap();
         fs::write(root.join("b.l3.md"), "---\ndoc: b\n---\n\n## Node in B ^r-bbb1\n- tags: #y\n").unwrap();

@@ -1,7 +1,7 @@
 import { createMemo, For, type JSX } from "solid-js";
 import { DataTable } from "../components/DataTable";
-import { endpointNodeId } from "../graph";
-import type { Plugin, PluginProps } from "./types";
+import { endpointNodeId, useGraphData, type GraphData } from "../graph";
+import type { Plugin } from "./types";
 
 const BLESSED_ROLES = ["start-here", "core", "rigor", "reference"];
 
@@ -17,12 +17,12 @@ function roleRank(role: string): number {
   return i === -1 ? BLESSED_ROLES.length : i;
 }
 
-function readingRows(props: PluginProps): ReadingRow[] {
+function readingRows(graph: GraphData): ReadingRow[] {
   const rows: ReadingRow[] = [];
-  for (const node of props.graph.nodes) {
+  for (const node of graph.nodes) {
     const reading = node.properties.reading as { role?: string; why?: string } | undefined;
     if (!reading || typeof reading !== "object") continue;
-    const catalogLink = props.graph.links.find(
+    const catalogLink = graph.links.find(
       (l) => l.type === "catalog" && node.id !== null && endpointNodeId(l.source) === node.id,
     );
     rows.push({
@@ -50,8 +50,9 @@ function groupByRole(rows: ReadingRow[]): Map<string, ReadingRow[]> {
   return groups;
 }
 
-function ReadingListComponent(props: PluginProps): JSX.Element {
-  const groups = createMemo(() => groupByRole(readingRows(props)));
+function ReadingListComponent(): JSX.Element {
+  const graph = useGraphData();
+  const groups = createMemo(() => groupByRole(readingRows(graph())));
 
   return (
     <div>
@@ -89,8 +90,7 @@ function ReadingListComponent(props: PluginProps): JSX.Element {
 }
 
 export const readingList: Plugin = {
-  name: "reading-list",
-  title: "Reading list",
-  routes: ["/reading-list"],
-  component: ReadingListComponent,
+  id: "reading-list",
+  routes: [{ path: "/reading-list", component: ReadingListComponent }],
+  nav: { label: "Reading list", path: "/reading-list" },
 };

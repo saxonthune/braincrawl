@@ -11,6 +11,12 @@ Environment=BRAINCRAWL_BIND=127.0.0.1:8787
 Environment=BRAINCRAWL_DB=%h/.local/share/braincrawl/braincrawl.db
 Environment=BRAINCRAWL_BLOB_ROOT=%h/.local/share/braincrawl/blobs
 Environment=BRAINCRAWL_L3_ROOT=%h/.local/share/braincrawl/l3
+# Filled in with this repo's web/dist by `just systemd-install`; serves the UI at /web.
+Environment=BRAINCRAWL_WEB_ROOT=@WEBROOT@
+# Personal overrides (gitignored, per-machine). Read AFTER the defaults above, so any
+# variable it sets wins. Optional (`-`): the service still starts if the file is absent.
+# Scaffolded from scripts/server.env.example by `just systemd-install`.
+EnvironmentFile=-%h/.config/braincrawl/server.env
 Restart=on-failure
 RestartSec=2
 
