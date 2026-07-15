@@ -147,3 +147,16 @@ deploy-worker: web-build
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{justfile_directory()}}/apps/worker && wrangler deploy
+
+# Mint a new long-lived AUTH_KV token for the CLI. Revoke by deleting the KV
+# key (no TTL is intentional — CLI tokens are meant to persist).
+mint-worker-token:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/apps/worker
+    TOKEN=$(openssl rand -hex 32)
+    HASH=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
+    wrangler kv key put "$HASH" '{"tenant":"default","status":"active"}' --binding AUTH_KV --remote
+    echo ""
+    echo "Token: $TOKEN"
+    echo "Store it in your password manager and in config.toml's auth_token — it will not be shown again."

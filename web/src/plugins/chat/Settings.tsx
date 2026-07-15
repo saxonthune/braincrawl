@@ -27,7 +27,6 @@ function PasswordField(props: {
 export function Settings(): JSX.Element {
   const initial = getAllSettings();
   const [anthropicKey, setAnthropicKey] = createSignal(initial.anthropicKey);
-  const [storeToken, setStoreToken] = createSignal(initial.storeToken);
   const [storeBaseUrl, setStoreBaseUrl] = createSignal(initial.storeBaseUrl);
   const [model, setModel] = createSignal(initial.model);
 
@@ -48,14 +47,6 @@ export function Settings(): JSX.Element {
           onChange={(v) => {
             setAnthropicKey(v);
             setSetting("anthropicKey", v);
-          }}
-        />
-        <PasswordField
-          label="Store token"
-          value={storeToken()}
-          onChange={(v) => {
-            setStoreToken(v);
-            setSetting("storeToken", v);
           }}
         />
         <label class="chat-settings-field">

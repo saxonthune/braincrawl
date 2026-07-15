@@ -464,35 +464,21 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
         return auth_otp::handle_verify(req, &env).await;
     }
 
-    // ── Auth gate ─────────────────────────────────────────────────────────────
-    let secret = match env.secret("AUTH_TOKEN") {
-        Ok(s) => s.to_string(),
-        Err(_) => return Response::error("auth not configured", 500),
-    };
-    let allowlist = braincrawl_auth::SharedSecret::new(&secret, "default");
+    // ── Auth gate — AUTH_KV allowlist only (email-OTP sessions and minted tokens) ──
     let auth_header: Option<String> = req.headers().get("Authorization").ok().flatten();
-    match braincrawl_auth::authorize(&allowlist, auth_header.as_deref()) {
-        braincrawl_auth::AuthOutcome::Authenticated(_) => {}
-        braincrawl_auth::AuthOutcome::Unauthenticated => {
-            return Response::error("unauthorized", 401)
+    let kv_authenticated = match braincrawl_auth::parse_bearer(auth_header.as_deref()) {
+        Some(token) => {
+            let hash = braincrawl_auth::hash_token(token);
+            let kv = env.kv("AUTH_KV")?;
+            let text = kv.get(&hash).text().await?;
+            text.as_deref()
+                .and_then(braincrawl_auth::parse_kv_entry)
+                .is_some_and(|entry| entry.is_active())
         }
-        braincrawl_auth::AuthOutcome::Forbidden => {
-            // Shared secret missed — fall back to the AUTH_KV allowlist before rejecting.
-            let kv_authenticated = match braincrawl_auth::parse_bearer(auth_header.as_deref()) {
-                Some(token) => {
-                    let hash = braincrawl_auth::hash_token(token);
-                    let kv = env.kv("AUTH_KV")?;
-                    let text = kv.get(&hash).text().await?;
-                    text.as_deref()
-                        .and_then(braincrawl_auth::parse_kv_entry)
-                        .is_some_and(|entry| entry.is_active())
-                }
-                None => false,
-            };
-            if !kv_authenticated {
-                return Response::error("unauthorized", 401);
-            }
-        }
+        None => false,
+    };
+    if !kv_authenticated {
+        return Response::error("unauthorized", 401);
     }
     // ─────────────────────────────────────────────────────────────────────────
 

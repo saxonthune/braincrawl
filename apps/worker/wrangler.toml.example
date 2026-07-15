@@ -38,10 +38,12 @@ binding = "ID_RESOLVER_KV"
 id = "placeholder-fill-at-deploy"
 # preview_id = "placeholder-fill-for-dev"   # fill for wrangler dev
 
-# AUTH_KV: multi-token allowlist, wired alongside the AUTH_TOKEN shared secret.
+# AUTH_KV: the sole auth allowlist — no shared secret. Every request needs a
+# bearer token that hashes to an active entry here.
 # Entries: key = SHA-256(token) hex, value = {"tenant":<t>,"status":"active"|"revoked"}.
-# Tried only when the shared secret does not match; revoked/absent/malformed entries → 401.
-# Provision the shared secret via: wrangler secret put AUTH_TOKEN
+# Revoked/absent/malformed entries → 401.
+# Tokens come from email OTP sign-in (apps/worker/src/auth_otp.rs) or `just
+# mint-worker-token` for CLI use.
 [[kv_namespaces]]
 binding = "AUTH_KV"
 id = "placeholder-fill-at-deploy"

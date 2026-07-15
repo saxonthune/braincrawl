@@ -26,7 +26,6 @@ cleanup() {
     if [[ -n "$WRANGLER_PGID" ]]; then
         kill -TERM -"$WRANGLER_PGID" 2>/dev/null || true
     fi
-    rm -f "$WORKER_DIR/.dev.vars"
 }
 trap cleanup EXIT
 
@@ -46,11 +45,12 @@ fi
 # 1. Fresh emulator state.
 rm -rf "$PERSIST_DIR"
 
-# 2. Inject the test secret for wrangler dev.
-printf 'AUTH_TOKEN=%s\n' "$TEST_TOKEN" > "$WORKER_DIR/.dev.vars"
-
-# 3. Apply D1 migrations into the isolated state.
+# 2. Apply D1 migrations into the isolated state.
 (cd "$WORKER_DIR" && wrangler d1 migrations apply braincrawl-db --local --persist-to "$PERSIST_DIR")
+
+# 2b. Seed the test token into the isolated AUTH_KV allowlist.
+HASH=$(printf '%s' "$TEST_TOKEN" | sha256sum | cut -d' ' -f1)
+(cd "$WORKER_DIR" && wrangler kv key put --binding AUTH_KV "$HASH" '{"tenant":"default","status":"active"}' --local --persist-to "$PERSIST_DIR")
 
 # 4. Start wrangler dev in its own process group so cleanup can reap the whole
 #    tree (wrangler + workerd children) and never leak the port.

@@ -89,9 +89,6 @@ function AuthPage(): JSX.Element {
           <p class="auth-error">{error()}</p>
         </Show>
       </Show>
-      <p>
-        <a href="#/settings">Have a token? Paste it instead.</a>
-      </p>
     </div>
   );
 }
