@@ -12,16 +12,14 @@ describe("auth signal", () => {
     vi.unstubAllGlobals();
   });
 
-  it("stays unauthed without probing when storeToken is empty", async () => {
+  it("probes tokenless and authenticates against an auth-disabled backend", async () => {
     setSetting("storeToken", "");
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
 
     const result = await probeAuth();
 
-    expect(result).toBe(false);
-    expect(isAuthed()).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toBe(true);
+    expect(isAuthed()).toBe(true);
   });
 
   it("becomes authed on a 200 /stats response", async () => {
