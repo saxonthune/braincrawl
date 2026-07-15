@@ -70,10 +70,12 @@ function extractAliases(entity: string, record: Record<string, unknown>): Alias[
   const aliases: Alias[] = [];
   const id = record.id;
   if (entity === "works") {
-    if (typeof id === "string") aliases.push({ namespace: "openalex", value: stripOpenAlexUrl(id) });
+    if (typeof id === "string")
+      aliases.push({ namespace: "openalex", value: stripOpenAlexUrl(id) });
     const ids = record.ids as Record<string, unknown> | undefined;
     if (ids) {
-      if (typeof ids.doi === "string") aliases.push({ namespace: "doi", value: stripDoiUrl(ids.doi) });
+      if (typeof ids.doi === "string")
+        aliases.push({ namespace: "doi", value: stripDoiUrl(ids.doi) });
       if (typeof ids.pmid === "string") aliases.push({ namespace: "pmid", value: ids.pmid });
       if (typeof ids.pmcid === "string") aliases.push({ namespace: "pmcid", value: ids.pmcid });
       if (ids.mag !== undefined && ids.mag !== null) {
@@ -81,7 +83,8 @@ function extractAliases(entity: string, record: Record<string, unknown>): Alias[
       }
     }
   } else if (entity === "authors") {
-    if (typeof id === "string") aliases.push({ namespace: "openalex", value: stripOpenAlexUrl(id) });
+    if (typeof id === "string")
+      aliases.push({ namespace: "openalex", value: stripOpenAlexUrl(id) });
     const orcid = record.orcid;
     if (typeof orcid === "string") {
       aliases.push({ namespace: "orcid", value: orcid.replace(/^https:\/\/orcid\.org\//, "") });
@@ -203,7 +206,9 @@ async function openalexRefs(input: Record<string, unknown>): Promise<ToolResult>
   const limit = Number(input.limit ?? 15);
   if (!workId) return fail("work_id is required");
 
-  const oneRes = await fetch(`${OPENALEX_BASE}/works/${encodeURIComponent(workId)}?select=id,referenced_works`);
+  const oneRes = await fetch(
+    `${OPENALEX_BASE}/works/${encodeURIComponent(workId)}?select=id,referenced_works`,
+  );
   if (!oneRes.ok) return fail(`OpenAlex refs failed: ${oneRes.status} ${await oneRes.text()}`);
   const oneJson = (await oneRes.json()) as { referenced_works?: string[] };
   const refIds = (oneJson.referenced_works ?? []).map(stripOpenAlexUrl).slice(0, limit);
@@ -271,7 +276,13 @@ function inferEntityFromId(rawId: string): { entity: string; pathId: string } {
   if (/^[WASITPFC]\d+$/.test(id)) {
     return { entity: ID_PREFIX_TO_ENTITY[id[0]], pathId: id };
   }
-  if (id.startsWith("doi:") || id.startsWith("https://doi.org/") || id.startsWith("pmid:") || id.startsWith("pmcid:") || id.startsWith("mag:")) {
+  if (
+    id.startsWith("doi:") ||
+    id.startsWith("https://doi.org/") ||
+    id.startsWith("pmid:") ||
+    id.startsWith("pmcid:") ||
+    id.startsWith("mag:")
+  ) {
     return { entity: "works", pathId: id };
   }
   if (id.startsWith("orcid:") || id.startsWith("https://orcid.org/")) {
@@ -425,7 +436,9 @@ async function readingList(): Promise<ToolResult> {
       };
     })
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .sort((a, b) => readingRoleRank(a.role) - readingRoleRank(b.role) || a.role.localeCompare(b.role));
+    .sort(
+      (a, b) => readingRoleRank(a.role) - readingRoleRank(b.role) || a.role.localeCompare(b.role),
+    );
 
   return ok({ count: rows.length, results: rows });
 }
@@ -470,9 +483,7 @@ async function readPages(input: Record<string, unknown>): Promise<ToolResult> {
   if (overlapping.length === 0) {
     return ok(`No chunks found for pages ${pageStart}-${pageEnd} of ${workId}.`);
   }
-  const text = overlapping
-    .map((c) => `[pp.${c.page_start}-${c.page_end}]\n${c.text}`)
-    .join("\n\n");
+  const text = overlapping.map((c) => `[pp.${c.page_start}-${c.page_end}]\n${c.text}`).join("\n\n");
   return ok(text);
 }
 
@@ -525,7 +536,8 @@ async function l3EditDoc(input: Record<string, unknown>): Promise<ToolResult> {
   const text = String(input.text ?? "");
   const oldStr = input.old_str !== undefined ? String(input.old_str) : undefined;
   if (!slug) return fail("slug is required");
-  if (mode !== "append" && mode !== "str_replace") return fail('mode must be "append" or "str_replace"');
+  if (mode !== "append" && mode !== "str_replace")
+    return fail('mode must be "append" or "str_replace"');
 
   let current = docCache.get(slug);
   if (current === undefined) {
@@ -601,7 +613,10 @@ export const tools: Tool[] = [
         type: "object",
         properties: {
           work_id: { type: "string", description: "OpenAlex work id (e.g. W2741809807)" },
-          concept_filter: { type: "string", description: "Optional OpenAlex concept id to gate results" },
+          concept_filter: {
+            type: "string",
+            description: "Optional OpenAlex concept id to gate results",
+          },
           limit: { type: "integer", description: "Max results", default: 15 },
         },
         required: ["work_id"],
@@ -633,8 +648,15 @@ export const tools: Tool[] = [
       input_schema: {
         type: "object",
         properties: {
-          id: { type: "string", description: "OpenAlex id or external id (doi:, orcid:, issn:, ror:, …)" },
-          with_abstract: { type: "boolean", description: "Reconstruct abstract text from the inverted index", default: true },
+          id: {
+            type: "string",
+            description: "OpenAlex id or external id (doi:, orcid:, issn:, ror:, …)",
+          },
+          with_abstract: {
+            type: "boolean",
+            description: "Reconstruct abstract text from the inverted index",
+            default: true,
+          },
         },
         required: ["id"],
       },
@@ -645,11 +667,14 @@ export const tools: Tool[] = [
     definition: {
       name: "openalex_find",
       description:
-        "Raw OpenAlex filter= query for topic-gated expansion (e.g. \"cites:W...,concepts.id:C...\"). Pushes work results into the store.",
+        'Raw OpenAlex filter= query for topic-gated expansion (e.g. "cites:W...,concepts.id:C..."). Pushes work results into the store.',
       input_schema: {
         type: "object",
         properties: {
-          filters: { type: "string", description: "OpenAlex filter= expression, comma-joined for AND" },
+          filters: {
+            type: "string",
+            description: "OpenAlex filter= expression, comma-joined for AND",
+          },
           entity: { type: "string", description: "OpenAlex entity collection", default: "works" },
           limit: { type: "integer", description: "Max results", default: 15 },
         },
@@ -661,7 +686,8 @@ export const tools: Tool[] = [
   {
     definition: {
       name: "openalex_autocomplete_topics",
-      description: "Autocomplete a concept name by prefix, for finding a concept id to gate citation expansion with.",
+      description:
+        "Autocomplete a concept name by prefix, for finding a concept id to gate citation expansion with.",
       input_schema: {
         type: "object",
         properties: { prefix: { type: "string", description: "Prefix to autocomplete" } },
@@ -689,12 +715,21 @@ export const tools: Tool[] = [
   {
     definition: {
       name: "graph_neighborhood",
-      description: "Read the stored citation graph's neighborhood around one or more seed work ids.",
+      description:
+        "Read the stored citation graph's neighborhood around one or more seed work ids.",
       input_schema: {
         type: "object",
         properties: {
-          seeds: { type: "array", items: { type: "string" }, description: "Seed work ids (ns:value form)" },
-          dir: { type: "string", enum: ["forward", "backward"], description: "Direction to traverse" },
+          seeds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Seed work ids (ns:value form)",
+          },
+          dir: {
+            type: "string",
+            enum: ["forward", "backward"],
+            description: "Direction to traverse",
+          },
           depth: { type: "integer", default: 1 },
           max_nodes: { type: "integer", default: 40 },
         },
@@ -726,7 +761,10 @@ export const tools: Tool[] = [
           slug: { type: "string" },
           mode: { type: "string", enum: ["append", "str_replace"] },
           text: { type: "string" },
-          old_str: { type: "string", description: "Required for str_replace; must match exactly once" },
+          old_str: {
+            type: "string",
+            description: "Required for str_replace; must match exactly once",
+          },
         },
         required: ["slug", "mode", "text"],
       },
@@ -736,10 +774,17 @@ export const tools: Tool[] = [
   {
     definition: {
       name: "works_have",
-      description: "Check which of the given work ids (ns:value form) are already present in the store, before pulling.",
+      description:
+        "Check which of the given work ids (ns:value form) are already present in the store, before pulling.",
       input_schema: {
         type: "object",
-        properties: { ids: { type: "array", items: { type: "string" }, description: "Work ids in ns:value form" } },
+        properties: {
+          ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "Work ids in ns:value form",
+          },
+        },
         required: ["ids"],
       },
     },
@@ -748,7 +793,8 @@ export const tools: Tool[] = [
   {
     definition: {
       name: "store_stats",
-      description: "Aggregate stats for the whole catalog: work counts, edge counts, and similar corpus-overview numbers.",
+      description:
+        "Aggregate stats for the whole catalog: work counts, edge counts, and similar corpus-overview numbers.",
       input_schema: { type: "object", properties: {} },
     },
     handler: storeStats,
@@ -756,7 +802,8 @@ export const tools: Tool[] = [
   {
     definition: {
       name: "l3_list_docs",
-      description: "List every research document slug in the store, with size and last-modified time.",
+      description:
+        "List every research document slug in the store, with size and last-modified time.",
       input_schema: { type: "object", properties: {} },
     },
     handler: l3ListDocs,

@@ -4,7 +4,13 @@ import { getSetting } from "../../services/settings";
 import { storeFetch } from "../../services/store";
 import { appendMessage, setActiveBook, useChatStore } from "./store";
 import { anthropicTransport, needsResume, resumeTurn } from "./transport";
-import { stubTransport, type ChatMessage, type ChatSession, type ContentBlock, type Transport } from "./types";
+import {
+  stubTransport,
+  type ChatMessage,
+  type ChatSession,
+  type ContentBlock,
+  type Transport,
+} from "./types";
 
 function ContentBlockView(props: { block: ContentBlock }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
@@ -33,7 +39,9 @@ function ContentBlockView(props: { block: ContentBlock }): JSX.Element {
         {(() => {
           const block = props.block as { content: string; is_error?: boolean };
           return (
-            <div classList={{ "chat-block-tool-result": true, "chat-block-error": !!block.is_error }}>
+            <div
+              classList={{ "chat-block-tool-result": true, "chat-block-error": !!block.is_error }}
+            >
               <button type="button" onClick={() => setExpanded((v) => !v)}>
                 ⚙ tool result{block.is_error ? " (error)" : ""}
               </button>
@@ -86,14 +94,23 @@ function ActiveBookHeader(props: { session: ChatSession }): JSX.Element {
         when={!editing()}
         fallback={
           <div class="chat-active-book-form">
-            <input type="text" placeholder="Work id" value={workId()} onInput={(e) => setWorkId(e.currentTarget.value)} />
+            <input
+              type="text"
+              placeholder="Work id"
+              value={workId()}
+              onInput={(e) => setWorkId(e.currentTarget.value)}
+            />
             <input
               type="text"
               placeholder="Doc slug"
               value={docSlug()}
               onInput={(e) => setDocSlug(e.currentTarget.value)}
             />
-            <button type="button" onClick={() => void save()} disabled={!workId().trim() || !docSlug().trim()}>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={!workId().trim() || !docSlug().trim()}
+            >
               Set
             </button>
           </div>
@@ -124,7 +141,8 @@ export function ChatView(): JSX.Element {
     if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
   });
 
-  const transport = (): Transport => (getSetting("anthropicKey") ? anthropicTransport : stubTransport);
+  const transport = (): Transport =>
+    getSetting("anthropicKey") ? anthropicTransport : stubTransport;
 
   const send = async () => {
     const id = params.id;

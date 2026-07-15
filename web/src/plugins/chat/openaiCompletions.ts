@@ -1,5 +1,13 @@
 import { tools } from "./tools";
-import type { ChatMessage, ContentBlock, ModelCall, SystemBlockParam, TextBlock, ToolResultBlock, ToolUseBlock } from "./types";
+import type {
+  ChatMessage,
+  ContentBlock,
+  ModelCall,
+  SystemBlockParam,
+  TextBlock,
+  ToolResultBlock,
+  ToolUseBlock,
+} from "./types";
 
 // ── OpenAI chat-completions wire types (hand-written, no SDK dependency) ────
 
@@ -36,7 +44,10 @@ function joinText(blocks: ContentBlock[]): string {
     .join("\n\n");
 }
 
-export function toOpenAiMessages(system: SystemBlockParam[], messages: ChatMessage[]): OpenAiMessage[] {
+export function toOpenAiMessages(
+  system: SystemBlockParam[],
+  messages: ChatMessage[],
+): OpenAiMessage[] {
   const out: OpenAiMessage[] = [];
 
   const systemText = system.map((s) => s.text).join("\n\n");
@@ -58,7 +69,9 @@ export function toOpenAiMessages(system: SystemBlockParam[], messages: ChatMessa
       continue;
     }
 
-    const toolResults = message.content.filter((b): b is ToolResultBlock => b.type === "tool_result");
+    const toolResults = message.content.filter(
+      (b): b is ToolResultBlock => b.type === "tool_result",
+    );
     for (const result of toolResults) {
       out.push({ role: "tool", tool_call_id: result.tool_use_id, content: result.content });
     }

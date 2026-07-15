@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
   applyToolCallDeltas,
   finalizeToolCalls,
@@ -25,7 +25,7 @@ describe("toOpenAiMessages", () => {
       },
       {
         role: "user",
-        content: [{ type: "tool_result", tool_use_id: "call_1", content: "{\"count\":1}" }],
+        content: [{ type: "tool_result", tool_use_id: "call_1", content: '{"count":1}' }],
       },
       { role: "assistant", content: [{ type: "text", text: "found one result" }] },
     ];
@@ -46,7 +46,7 @@ describe("toOpenAiMessages", () => {
           },
         ],
       },
-      { role: "tool", tool_call_id: "call_1", content: "{\"count\":1}" },
+      { role: "tool", tool_call_id: "call_1", content: '{"count":1}' },
       { role: "assistant", content: "found one result", tool_calls: undefined },
     ]);
   });
@@ -80,12 +80,16 @@ describe("tool-call fragment assembly", () => {
 
     const blocks = finalizeToolCalls(acc);
 
-    expect(blocks).toEqual([{ type: "tool_use", id: "call_1", name: "openalex_search", input: { query: "X" } }]);
+    expect(blocks).toEqual([
+      { type: "tool_use", id: "call_1", name: "openalex_search", input: { query: "X" } },
+    ]);
   });
 
   it("falls back to an empty object when arguments JSON is malformed", () => {
     const acc = new Map<number, ToolCallAccumulator>();
-    applyToolCallDeltas(acc, [{ index: 0, id: "call_1", function: { name: "broken", arguments: "{not json" } }]);
+    applyToolCallDeltas(acc, [
+      { index: 0, id: "call_1", function: { name: "broken", arguments: "{not json" } },
+    ]);
 
     const blocks = finalizeToolCalls(acc);
 

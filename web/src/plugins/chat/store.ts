@@ -102,7 +102,13 @@ export function createSession(title = "New session"): ChatSession {
   hydrate();
   const id = newId();
   const timestamp = nowIso();
-  const session: ChatSession = { id, title, createdAt: timestamp, updatedAt: timestamp, messages: [] };
+  const session: ChatSession = {
+    id,
+    title,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    messages: [],
+  };
   setState(
     produce((s) => {
       s.sessions[id] = session;

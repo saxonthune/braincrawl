@@ -28,8 +28,12 @@ async function fetchDoc(slug: string): Promise<string | null> {
   }
 }
 
-export async function buildSystemBlocks(activeBook: ActiveBook | undefined): Promise<SystemBlock[]> {
-  const blocks: SystemBlock[] = [{ type: "text", text: corePrompt, cache_control: { type: "ephemeral" } }];
+export async function buildSystemBlocks(
+  activeBook: ActiveBook | undefined,
+): Promise<SystemBlock[]> {
+  const blocks: SystemBlock[] = [
+    { type: "text", text: corePrompt, cache_control: { type: "ephemeral" } },
+  ];
 
   const [principles, memory] = await Promise.all([
     fetchAgentFile("principles"),

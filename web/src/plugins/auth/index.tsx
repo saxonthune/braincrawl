@@ -79,7 +79,12 @@ function AuthPage(): JSX.Element {
         <form onSubmit={(e) => void verify(e)}>
           <label>
             Code
-            <input type="text" value={code()} onInput={(e) => setCode(e.currentTarget.value)} autofocus />
+            <input
+              type="text"
+              value={code()}
+              onInput={(e) => setCode(e.currentTarget.value)}
+              autofocus
+            />
           </label>
           <button type="submit" disabled={busy() || !code().trim()}>
             Verify

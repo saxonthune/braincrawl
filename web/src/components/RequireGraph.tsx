@@ -6,9 +6,7 @@ export function RequireGraph(props: { children: JSX.Element }): JSX.Element {
   return (
     <Switch fallback={<p>Loading graph…</p>}>
       <Match when={graph.error}>
-        <p class="error">
-          Failed to load the graph: {String(graph.error?.message ?? graph.error)}
-        </p>
+        <p class="error">Failed to load the graph: {String(graph.error?.message ?? graph.error)}</p>
       </Match>
       <Match when={graph()}>{props.children}</Match>
     </Switch>

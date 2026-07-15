@@ -2,9 +2,23 @@ import Anthropic from "@anthropic-ai/sdk";
 import { callOpenAiFormat, callOpenRouter } from "./openaiCompletions";
 import { buildSystemBlocks } from "./prompt";
 import { getSetting } from "../../services/settings";
-import { appendMessage, finalizeAssistantMessage, getSession, setPendingTurn, updateLastAssistantText } from "./store";
+import {
+  appendMessage,
+  finalizeAssistantMessage,
+  getSession,
+  setPendingTurn,
+  updateLastAssistantText,
+} from "./store";
 import { findTool, tools } from "./tools";
-import type { ChatMessage, ChatSession, ContentBlock, ModelCall, ToolResultBlock, ToolUseBlock, Transport } from "./types";
+import type {
+  ChatMessage,
+  ChatSession,
+  ContentBlock,
+  ModelCall,
+  ToolResultBlock,
+  ToolUseBlock,
+  Transport,
+} from "./types";
 
 const MAX_ITERATIONS = 20;
 
@@ -32,7 +46,12 @@ async function runToolCalls(uses: ToolUseBlock[]): Promise<ToolResultBlock[]> {
     uses.map(async (use): Promise<ToolResultBlock> => {
       const tool = findTool(use.name);
       if (!tool) {
-        return { type: "tool_result", tool_use_id: use.id, content: `unknown tool: ${use.name}`, is_error: true };
+        return {
+          type: "tool_result",
+          tool_use_id: use.id,
+          content: `unknown tool: ${use.name}`,
+          is_error: true,
+        };
       }
       try {
         const result = await tool.handler((use.input ?? {}) as Record<string, unknown>);
@@ -72,7 +91,11 @@ export function needsResume(session: ChatSession): boolean {
 // OpenRouter slug (anthropic/... or ~anthropic/...-latest).
 function makeClient(apiKey: string): Anthropic {
   if (apiKey.startsWith("sk-or-")) {
-    return new Anthropic({ baseURL: "https://openrouter.ai/api", authToken: apiKey, dangerouslyAllowBrowser: true });
+    return new Anthropic({
+      baseURL: "https://openrouter.ai/api",
+      authToken: apiKey,
+      dangerouslyAllowBrowser: true,
+    });
   }
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
@@ -140,7 +163,10 @@ function resolveModelCall(apiKey: string, model: string): ModelCall | ChatMessag
       return anthropicProxyModelCall();
     }
     if (model.includes("/")) {
-      return callOpenAiFormat(`${proxyOrigin()}/api/llm/v1/chat/completions`, `Bearer ${getSetting("storeToken")}`);
+      return callOpenAiFormat(
+        `${proxyOrigin()}/api/llm/v1/chat/completions`,
+        `Bearer ${getSetting("storeToken")}`,
+      );
     }
     return {
       role: "assistant",
@@ -284,6 +310,9 @@ export const anthropicTransport: Transport = {
 };
 
 /** Resume an interrupted turn without appending a new user message. */
-export async function resumeTurn(session: ChatSession, onDelta: (text: string) => void): Promise<ChatMessage[]> {
+export async function resumeTurn(
+  session: ChatSession,
+  onDelta: (text: string) => void,
+): Promise<ChatMessage[]> {
   return runLoop(session.id, onDelta);
 }
