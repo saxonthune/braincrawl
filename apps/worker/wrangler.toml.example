@@ -43,7 +43,7 @@ id = "placeholder-fill-at-deploy"
 # Entries: key = SHA-256(token) hex, value = {"tenant":<t>,"status":"active"|"revoked"}.
 # Revoked/absent/malformed entries → 401.
 # Tokens come from email OTP sign-in (apps/worker/src/auth_otp.rs) or `just
-# mint-worker-token` for CLI use.
+# generate-worker-token` for CLI use.
 [[kv_namespaces]]
 binding = "AUTH_KV"
 id = "placeholder-fill-at-deploy"
