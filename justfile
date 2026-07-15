@@ -140,6 +140,16 @@ web-test:
     set -euo pipefail
     cd {{justfile_directory()}}/web && vp test
 
+# Bring the local dev stack current with the working tree: rebuild the server
+# binary + web dist the systemd user service serves, restart it. The production
+# deploy is deliberately a separate command (deploy-worker).
+update-local: web-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --release -p braincrawl-server --manifest-path {{justfile_directory()}}/Cargo.toml
+    systemctl --user restart braincrawl-server
+    systemctl --user is-active braincrawl-server
+
 # Build the web app + deploy the worker (assets + API) as one unit. Requires
 # apps/worker/wrangler.toml (mirror the [assets] block from wrangler.toml.example
 # if you haven't already).
