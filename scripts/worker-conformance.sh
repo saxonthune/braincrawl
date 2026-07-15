@@ -30,6 +30,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 0. wrangler.toml is gitignored (real deploy IDs); fresh checkouts bootstrap
+#    from the tracked template. Placeholder IDs are fine for --local runs.
+if [[ ! -f "$WORKER_DIR/wrangler.toml" ]]; then
+    cp "$WORKER_DIR/wrangler.toml.example" "$WORKER_DIR/wrangler.toml"
+fi
+
 # 1. Fresh emulator state.
 rm -rf "$PERSIST_DIR"
 

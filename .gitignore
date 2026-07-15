@@ -3,6 +3,8 @@
 /CLAUDE.local.md
 /.claude/worktrees/
 apps/worker/.dev.vars
+# Holds real Cloudflare resource IDs; bootstrap from wrangler.toml.example
+apps/worker/wrangler.toml
 apps/worker/.wrangler/
 apps/worker/.wrangler-conformance-state/
 apps/worker/.wrangler-conformance.log

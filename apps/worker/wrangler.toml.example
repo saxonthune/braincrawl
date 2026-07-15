@@ -1,5 +1,8 @@
-# Wrangler configuration for braincrawl-worker (doc02.02.00).
-# Concrete IDs are filled in at deploy time; this file declares binding intent only.
+# Wrangler configuration TEMPLATE for braincrawl-worker (doc02.02.00).
+# The real config is apps/worker/wrangler.toml (gitignored — it carries the
+# account's concrete D1/KV IDs). Bootstrap: cp wrangler.toml.example wrangler.toml
+# and fill the placeholder IDs after `wrangler d1 create` / `kv namespace create`.
+# Local-only flows (wrangler dev --local, conformance) work with placeholders as-is.
 
 name = "braincrawl-worker"
 main = "build/worker/shim.mjs"
