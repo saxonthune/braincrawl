@@ -496,13 +496,14 @@ pub fn make_app(
     Router::new().route("/health", get(handler_health)).merge(authed)
 }
 
-/// Mount the built web UI (`web/dist`) at `/web`, turning the API server into a
-/// single service that also serves the SolidJS app. Unmatched paths under `/web`
-/// fall back to `index.html` so the client-side router owns them. The web build
-/// must be produced with Vite `base: '/web/'` so its asset URLs resolve here.
+/// Serve the built web UI (`web/dist`) from the root — API routes keep their
+/// exact paths and every unmatched path falls back to the SPA, mirroring the
+/// worker's production layout (assets at the origin root, `run_worker_first`
+/// for the API). `/web` stays as an alias for old bookmarks. The build's
+/// Vite `base: "./"` makes asset URLs relative, so both mounts resolve.
 pub fn serve_web(app: Router, web_root: PathBuf) -> Router {
     use tower_http::services::{ServeDir, ServeFile};
     let index = web_root.join("index.html");
     let serve = ServeDir::new(web_root).fallback(ServeFile::new(index));
-    app.nest_service("/web", serve)
+    app.nest_service("/web", serve.clone()).fallback_service(serve)
 }
