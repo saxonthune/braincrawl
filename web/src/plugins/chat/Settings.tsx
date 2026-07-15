@@ -43,7 +43,7 @@ export function Settings(): JSX.Element {
       </p>
       <form>
         <PasswordField
-          label="Anthropic API key"
+          label="API key (Anthropic sk-ant-… or OpenRouter sk-or-…)"
           value={anthropicKey()}
           onChange={(v) => {
             setAnthropicKey(v);
@@ -80,6 +80,10 @@ export function Settings(): JSX.Element {
               setSetting("model", e.currentTarget.value);
             }}
           />
+          <span class="chat-settings-note">
+            Anthropic key: a model id like claude-opus-4-8. OpenRouter key: a slug like
+            anthropic/claude-sonnet-4.6 (Anthropic models only on this endpoint).
+          </span>
         </label>
       </form>
     </div>

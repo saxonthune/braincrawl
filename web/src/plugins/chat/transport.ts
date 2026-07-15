@@ -66,12 +66,35 @@ export function needsResume(session: ChatSession): boolean {
   return !!session.pendingTurn && pendingToolUses(session).length > 0;
 }
 
+// OpenRouter's Anthropic-compatible endpoint takes the sk-or- key as a Bearer
+// token (SDK authToken) and only guarantees Anthropic models, addressed by
+// OpenRouter slug (anthropic/... or ~anthropic/...-latest).
+function makeClient(apiKey: string): Anthropic {
+  if (apiKey.startsWith("sk-or-")) {
+    return new Anthropic({ baseURL: "https://openrouter.ai/api", authToken: apiKey, dangerouslyAllowBrowser: true });
+  }
+  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+}
+
 async function runLoop(sessionId: string, onDelta: (text: string) => void): Promise<ChatMessage[]> {
   const settings = {
     apiKey: getSetting("anthropicKey"),
     model: getSetting("model"),
   };
-  const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true });
+  if (settings.apiKey.startsWith("sk-or-") && !settings.model.includes("/")) {
+    const note: ChatMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: `OpenRouter key detected, but model "${settings.model}" is not an OpenRouter slug — set Model in Settings to e.g. "anthropic/claude-sonnet-4.6" or "~anthropic/claude-sonnet-latest".`,
+        },
+      ],
+    };
+    appendMessage(sessionId, note);
+    return [note];
+  }
+  const client = makeClient(settings.apiKey);
 
   setPendingTurn(sessionId, { messagesSnapshotAt: new Date().toISOString() });
   const appended: ChatMessage[] = [];
