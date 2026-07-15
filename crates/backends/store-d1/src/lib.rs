@@ -581,19 +581,26 @@ impl MetadataStore for D1Store {
         }
         #[derive(serde::Deserialize)]
         struct Row { namespace: String, value: String }
-        let pair_list = braincrawl_sql::alias_pair_list(aliases.len());
-        let query =
-            format!("SELECT namespace, value FROM alias WHERE (namespace, value) IN {pair_list}");
-        let params: Vec<JsValue> = aliases
-            .iter()
-            .flat_map(|a| [s(&a.namespace), s(&a.value)])
-            .collect();
-        let stmt = prep(&self.db, &query, &params)?;
-        let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
-        Ok(rows
-            .into_iter()
-            .map(|r| Alias { namespace: r.namespace, value: r.value })
-            .collect())
+        // Two bound params per pair; production D1 caps ~100 params per statement.
+        const PAIRS_PER_CHUNK: usize = 45;
+        let mut out = Vec::new();
+        for chunk in aliases.chunks(PAIRS_PER_CHUNK) {
+            let pair_list = braincrawl_sql::alias_pair_list(chunk.len());
+            let query = format!(
+                "SELECT namespace, value FROM alias WHERE (namespace, value) IN {pair_list}"
+            );
+            let params: Vec<JsValue> = chunk
+                .iter()
+                .flat_map(|a| [s(&a.namespace), s(&a.value)])
+                .collect();
+            let stmt = prep(&self.db, &query, &params)?;
+            let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
+            out.extend(
+                rows.into_iter()
+                    .map(|r| Alias { namespace: r.namespace, value: r.value }),
+            );
+        }
+        Ok(out)
     }
 
     async fn stats(&self) -> Result<GraphStats, DomainError> {

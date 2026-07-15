@@ -605,26 +605,33 @@ impl MetadataStore for SqliteStore {
             return Ok(Vec::new());
         }
         let conn = self.conn.lock().unwrap();
-        let pair_list = braincrawl_sql::alias_pair_list(aliases.len());
-        let query = format!(
-            "SELECT namespace, value FROM alias WHERE (namespace, value) IN {pair_list}"
-        );
-        let mut stmt = conn.prepare(&query).map_err(be)?;
-        let params_flat: Vec<String> = aliases
-            .iter()
-            .flat_map(|a| [a.namespace.clone(), a.value.clone()])
-            .collect();
-        let result: Vec<Alias> = stmt
-            .query_map(rusqlite::params_from_iter(params_flat.iter()), |row| {
-                Ok(Alias {
-                    namespace: row.get(0)?,
-                    value: row.get(1)?,
+        // Chunked to match the D1 backend's bound-parameter ceiling (parity of shape;
+        // native SQLite's own limit is far higher).
+        const PAIRS_PER_CHUNK: usize = 45;
+        let mut out = Vec::new();
+        for chunk in aliases.chunks(PAIRS_PER_CHUNK) {
+            let pair_list = braincrawl_sql::alias_pair_list(chunk.len());
+            let query = format!(
+                "SELECT namespace, value FROM alias WHERE (namespace, value) IN {pair_list}"
+            );
+            let mut stmt = conn.prepare(&query).map_err(be)?;
+            let params_flat: Vec<String> = chunk
+                .iter()
+                .flat_map(|a| [a.namespace.clone(), a.value.clone()])
+                .collect();
+            let chunk_rows: Vec<Alias> = stmt
+                .query_map(rusqlite::params_from_iter(params_flat.iter()), |row| {
+                    Ok(Alias {
+                        namespace: row.get(0)?,
+                        value: row.get(1)?,
+                    })
                 })
-            })
-            .map_err(be)?
-            .filter_map(|r| r.ok())
-            .collect();
-        Ok(result)
+                .map_err(be)?
+                .filter_map(|r| r.ok())
+                .collect();
+            out.extend(chunk_rows);
+        }
+        Ok(out)
     }
 
     async fn stats(&self) -> Result<GraphStats, DomainError> {
