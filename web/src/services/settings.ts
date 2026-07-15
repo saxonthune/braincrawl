@@ -16,7 +16,7 @@ const DEFAULTS: ChatSettings = {
   anthropicKey: "",
   storeToken: "",
   storeBaseUrl: "",
-  model: "claude-opus-4-8",
+  model: "~anthropic/claude-sonnet-latest",
 };
 
 function getItem(key: string, fallback: string): string {

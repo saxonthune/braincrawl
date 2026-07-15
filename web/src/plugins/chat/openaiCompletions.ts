@@ -139,12 +139,12 @@ interface OpenAiStreamChunk {
   }[];
 }
 
-export function callOpenRouter(apiKey: string): ModelCall {
+export function callOpenAiFormat(endpoint: string, authHeaderValue: string): ModelCall {
   return async ({ model, system, messages, onText }) => {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: authHeaderValue,
         "Content-Type": "application/json",
         "X-Title": "braincrawl",
       },
@@ -203,4 +203,8 @@ export function callOpenRouter(apiKey: string): ModelCall {
 
     return { content, stopReason: fromFinishReason(finishReason) };
   };
+}
+
+export function callOpenRouter(apiKey: string): ModelCall {
+  return callOpenAiFormat("https://openrouter.ai/api/v1/chat/completions", `Bearer ${apiKey}`);
 }

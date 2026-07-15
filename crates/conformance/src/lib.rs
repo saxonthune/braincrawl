@@ -380,6 +380,57 @@ pub fn check_auth_otp_uniform(base_url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `/api/llm/*` — the OpenRouter proxy. No `OPENROUTER_API_KEY` secret is
+/// configured in the dev environment, so an authed request to an allowlisted
+/// path proves the route exists, is authed, and fails closed (503) rather
+/// than silently forwarding. Not part of `run_all` since it assumes the
+/// dev/test worker has no `OPENROUTER_API_KEY` secret set.
+pub fn check_llm_proxy(base_url: &str, token: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+
+    let res = client
+        .post(format!("{base_url}/api/llm/v1/chat/completions"))
+        .json(&serde_json::json!({"model": "conformance/smoke", "messages": []}))
+        .send()
+        .map_err(|e| format!("check_llm_proxy: unauthenticated POST failed: {e}"))?;
+    if res.status() != 401 {
+        return Err(format!(
+            "check_llm_proxy: unauthenticated POST expected 401, got {}",
+            res.status()
+        ));
+    }
+
+    let res = auth(
+        client
+            .post(format!("{base_url}/api/llm/v1/chat/completions"))
+            .json(&serde_json::json!({"model": "conformance/smoke", "messages": []})),
+        Some(token),
+    )
+    .send()
+    .map_err(|e| format!("check_llm_proxy: authed POST v1/chat/completions failed: {e}"))?;
+    if res.status() != 503 {
+        return Err(format!(
+            "check_llm_proxy: authed POST v1/chat/completions expected 503 (no secret configured), got {}",
+            res.status()
+        ));
+    }
+
+    let res = auth(client.post(format!("{base_url}/api/llm/v1/other")).json(&serde_json::json!({})), Some(token))
+        .send()
+        .map_err(|e| format!("check_llm_proxy: authed POST v1/other failed: {e}"))?;
+    if res.status() != 404 {
+        return Err(format!(
+            "check_llm_proxy: authed POST v1/other expected 404, got {}",
+            res.status()
+        ));
+    }
+
+    Ok(())
+}
+
 fn auth(req: reqwest::blocking::RequestBuilder, token: Option<&str>) -> reqwest::blocking::RequestBuilder {
     match token {
         Some(t) => req.header("Authorization", format!("Bearer {t}")),

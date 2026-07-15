@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { callOpenRouter } from "./openaiCompletions";
+import { callOpenAiFormat, callOpenRouter } from "./openaiCompletions";
 import { buildSystemBlocks } from "./prompt";
 import { getSetting } from "../../services/settings";
 import { appendMessage, finalizeAssistantMessage, getSession, setPendingTurn, updateLastAssistantText } from "./store";
@@ -77,8 +77,29 @@ function makeClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
 
+// The worker LLM proxy lives at the store's own origin — window.location.origin
+// unless a non-default store base URL is configured.
+function proxyOrigin(): string {
+  const base = getSetting("storeBaseUrl").replace(/\/$/, "");
+  return base || window.location.origin;
+}
+
 function anthropicModelCall(apiKey: string): ModelCall {
-  const client = makeClient(apiKey);
+  return anthropicModelCallFromClient(makeClient(apiKey));
+}
+
+// Proxy mode: no pasted key, so the store session token authenticates through
+// the worker's /api/llm route instead, which holds the real OpenRouter key.
+function anthropicProxyModelCall(): ModelCall {
+  const client = new Anthropic({
+    baseURL: `${proxyOrigin()}/api/llm`,
+    authToken: getSetting("storeToken"),
+    dangerouslyAllowBrowser: true,
+  });
+  return anthropicModelCallFromClient(client);
+}
+
+function anthropicModelCallFromClient(client: Anthropic): ModelCall {
   return async ({ model, system, messages, onText }) => {
     const stream = client.messages.stream({
       model,
@@ -107,10 +128,30 @@ function anthropicModelCall(apiKey: string): ModelCall {
   };
 }
 
-// Three-way provider selection on (apiKey, model): sk-ant- goes direct to Anthropic,
-// sk-or- + anthropic/~anthropic model uses OpenRouter's Anthropic-compatible endpoint
-// (still the Anthropic SDK path), sk-or- + any other slug uses the OpenAI-format call.
+// Provider selection on (apiKey, model). Empty apiKey is proxy mode: the store
+// session token authenticates through the worker's /api/llm route, so the model
+// must be an OpenRouter slug. A non-empty apiKey keeps the prior three-way
+// selection: sk-ant- goes direct to Anthropic, sk-or- + anthropic/~anthropic
+// model uses OpenRouter's Anthropic-compatible endpoint (still the Anthropic
+// SDK path), sk-or- + any other slug uses the OpenAI-format call.
 function resolveModelCall(apiKey: string, model: string): ModelCall | ChatMessage {
+  if (!apiKey) {
+    if (model.startsWith("anthropic/") || model.startsWith("~anthropic/")) {
+      return anthropicProxyModelCall();
+    }
+    if (model.includes("/")) {
+      return callOpenAiFormat(`${proxyOrigin()}/api/llm/v1/chat/completions`, `Bearer ${getSetting("storeToken")}`);
+    }
+    return {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: `Proxy mode (no API key set), but model "${model}" is not a valid OpenRouter slug — set Model in Settings to any OpenRouter slug, e.g. "anthropic/claude-sonnet-4.6" or "deepseek/deepseek-v4-flash".`,
+        },
+      ],
+    };
+  }
   if (!apiKey.startsWith("sk-or-")) {
     return anthropicModelCall(apiKey);
   }

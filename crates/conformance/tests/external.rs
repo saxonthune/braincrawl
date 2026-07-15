@@ -18,5 +18,6 @@ fn external_conformance() {
         braincrawl_conformance::check_l3_docs(&url, token).unwrap();
         braincrawl_conformance::check_l3_prev_backup(&url, token).unwrap();
         braincrawl_conformance::check_l3_agent_files(&url, token).unwrap();
+        braincrawl_conformance::check_llm_proxy(&url, token).unwrap();
     }
 }

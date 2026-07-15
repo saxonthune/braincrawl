@@ -33,6 +33,11 @@
 //! - `POST /api/auth/request-code`
 //! - `POST /api/auth/verify`
 //!
+//! Plus an OpenRouter LLM proxy (see `llm_proxy` module) so devices never
+//! hold the LLM key — allowlisted paths only, POST only:
+//! - `POST /api/llm/v1/messages`
+//! - `POST /api/llm/v1/chat/completions`
+//!
 //! ## Coordinator note
 //!
 //! `DoCoordinator::with_lock` routes through a `WorkDurableObject` stub keyed by the
@@ -47,6 +52,7 @@
 
 mod auth_otp;
 mod l3;
+mod llm_proxy;
 
 use async_trait::async_trait;
 use braincrawl_blob_r2::R2BlobStore;
@@ -479,6 +485,12 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
     };
     if !kv_authenticated {
         return Response::error("unauthorized", 401);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── /api/llm/* ────────────────────────────────────────────────────────────
+    if let Some(remainder) = path.strip_prefix("/api/llm/") {
+        return llm_proxy::handle(req, &env, remainder).await;
     }
     // ─────────────────────────────────────────────────────────────────────────
 

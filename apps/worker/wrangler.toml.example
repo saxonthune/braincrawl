@@ -61,6 +61,10 @@ bindings = [
   { name = "WORK_DO", class_name = "WorkDurableObject" }
 ]
 
+# OPENROUTER_API_KEY: optional secret for the /api/llm/* proxy (apps/worker/src/llm_proxy.rs).
+# Absent means the proxy answers 503 and clients must bring their own key (PWA Settings).
+#   wrangler secret put OPENROUTER_API_KEY
+
 [[migrations]]
 tag = "v1"
 # SQLite-backed: required on the free plan (API error 10097 with new_classes),

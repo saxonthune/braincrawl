@@ -49,6 +49,10 @@ export function Settings(): JSX.Element {
             setSetting("anthropicKey", v);
           }}
         />
+        <span class="chat-settings-note">
+          Optional — leave empty to use the server's key via the LLM proxy. A pasted key
+          overrides the proxy and talks to Anthropic or OpenRouter directly.
+        </span>
         <label class="chat-settings-field">
           Store base URL
           <input
@@ -72,9 +76,10 @@ export function Settings(): JSX.Element {
             }}
           />
           <span class="chat-settings-note">
-            Anthropic key: a model id like claude-opus-4-8. OpenRouter key: any OpenRouter
-            slug — anthropic/claude-sonnet-4.6, or a non-Anthropic model like
-            deepseek/deepseek-v4-flash.
+            Proxy mode (empty key) and OpenRouter key: any OpenRouter slug —
+            anthropic/claude-sonnet-4.6, ~anthropic/claude-sonnet-latest, or a non-Anthropic
+            model like deepseek/deepseek-v4-flash. A pasted Anthropic sk-ant- key needs a
+            plain Anthropic model id instead, like claude-opus-4-8.
           </span>
         </label>
       </form>
