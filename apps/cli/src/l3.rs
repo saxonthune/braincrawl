@@ -17,10 +17,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 use crate::cli::L3Cmd;
 use crate::config::Config;
 use crate::cli::OutputOpts;
 use crate::output::{render, Envelope, QueryMeta};
+use crate::store_client::{L3PutError, StoreClient};
 
 /// Frontmatter keys the tooling requires. Extend this as the contract firms up;
 /// `check` warns (never fails) on any missing key.
@@ -53,6 +56,14 @@ pub fn dispatch(cmd: L3Cmd, config: &Config, opts: &OutputOpts) -> Result<(), Dy
         L3Cmd::Rm { doc } => cmd_rm(&root, &doc),
         L3Cmd::AssignIds { dry_run } => cmd_assign_ids(&root, dry_run),
         L3Cmd::ReadingList => cmd_reading_list(&root, opts),
+        L3Cmd::Push { doc, dry_run, force } => {
+            let store = StoreClient::new(&config.server_url).with_token(config.auth_token.clone());
+            cmd_push(&root, &store, doc, dry_run, force)
+        }
+        L3Cmd::Pull { doc, dry_run } => {
+            let store = StoreClient::new(&config.server_url).with_token(config.auth_token.clone());
+            cmd_pull(&root, &store, doc, dry_run)
+        }
     }
 }
 
@@ -181,7 +192,7 @@ fn cmd_import(
     let content = fs::read_to_string(&src)
         .map_err(|e| format!("cannot read {}: {e}", src.display()))?;
 
-    let (mut fm, body) = split_frontmatter(&content);
+    let (fm, body) = split_frontmatter(&content);
 
     // Determine the doc slug: --doc > existing `doc` > existing `domain` > filename stem.
     let doc = doc_override
@@ -192,10 +203,17 @@ fn cmd_import(
 
     // Normalize the required frontmatter in place, preserving every other line
     // (incl. multi-line YAML values and unknown keys) verbatim.
-    fm = rename_key(fm, "domain", "doc");
-    fm = upsert_key(fm, "doc", &doc);
-    let updated = fm_get(&fm, "updated").unwrap_or_else(today);
-    fm = upsert_key(fm, "updated", &updated);
+    let renamed_fm = rename_key(fm, "domain", "doc");
+    // An empty `renamed_fm` means there was no frontmatter block at all — don't
+    // manufacture one with a blank line; let `upsert_frontmatter_key` create it.
+    let renamed = if renamed_fm.is_empty() {
+        content.clone()
+    } else {
+        format!("---\n{}\n---\n{body}", renamed_fm.join("\n"))
+    };
+    let with_doc = l3::upsert_frontmatter_key(&renamed, "doc", &doc);
+    let updated = fm_get(&split_frontmatter(&with_doc).0, "updated").unwrap_or_else(today);
+    let rebuilt = l3::upsert_frontmatter_key(&with_doc, "updated", &updated);
 
     let dst = doc_path(root, &doc);
     if dst.exists() {
@@ -205,7 +223,6 @@ fn cmd_import(
         )
         .into());
     }
-    let rebuilt = format!("---\n{}\n---\n{body}", fm.join("\n"));
     fs::write(&dst, rebuilt)?;
     if mv {
         fs::remove_file(&src).map_err(|e| format!("imported, but failed to remove source: {e}"))?;
@@ -321,6 +338,247 @@ fn cmd_reading_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
         results,
     };
     render(&envelope, opts);
+    Ok(())
+}
+
+// ── sync (push / pull) ──────────────────────────────────────────────────────────
+
+const SYNC_STATE_FILE: &str = "_sync-state.json";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct SyncEntry {
+    hash: String,
+}
+
+/// What a doc's push/pull relationship is, given local hash `L`, remote hash
+/// `R`, and the hash recorded at the last successful sync `S`. Pure over
+/// hashes so it is unit-testable without touching the filesystem or network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyncAction {
+    InSync,
+    Push,
+    Pull,
+    Conflict,
+}
+
+fn classify(local: Option<&str>, remote: Option<&str>, recorded: Option<&str>) -> SyncAction {
+    match (local, remote) {
+        (None, None) => SyncAction::InSync,
+        (Some(_), None) => SyncAction::Push,
+        (None, Some(_)) => SyncAction::Pull,
+        (Some(l), Some(r)) if l == r => SyncAction::InSync,
+        (Some(l), Some(r)) => match (recorded == Some(l), recorded == Some(r)) {
+            (false, true) => SyncAction::Push,
+            (true, false) => SyncAction::Pull,
+            _ => SyncAction::Conflict,
+        },
+    }
+}
+
+fn sync_state_path(root: &Path) -> PathBuf {
+    root.join(SYNC_STATE_FILE)
+}
+
+fn read_sync_state(root: &Path) -> BTreeMap<String, SyncEntry> {
+    fs::read_to_string(sync_state_path(root))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_sync_state(root: &Path, state: &BTreeMap<String, SyncEntry>) -> Result<(), DynErr> {
+    let json = serde_json::to_string_pretty(state)?;
+    fs::write(sync_state_path(root), json)?;
+    Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// One doc's content on each side, gathered up front so classification and the
+/// actual transfer both read the same snapshot.
+struct DocSides {
+    slug: String,
+    local: Option<String>,
+    remote: Option<String>,
+}
+
+/// Gather local/remote content for either the one named doc, or every doc known
+/// on either side (the union of local `*.l3.md` stems and remote slugs).
+fn collect_sides(root: &Path, store: &StoreClient, doc: Option<&str>) -> Result<Vec<DocSides>, DynErr> {
+    if let Some(slug) = doc {
+        let path = doc_path(root, slug);
+        let local = if path.exists() { Some(fs::read_to_string(&path)?) } else { None };
+        let remote = store.l3_get(slug)?;
+        if local.is_none() && remote.is_none() {
+            return Err(format!("no such doc: {slug} (not found locally or on the remote)").into());
+        }
+        return Ok(vec![DocSides { slug: slug.to_string(), local, remote }]);
+    }
+
+    let local_docs = scan(root)?;
+    let remote_docs = store.l3_list()?;
+    let mut slugs: BTreeSet<String> = BTreeSet::new();
+    slugs.extend(local_docs.iter().map(|d| d.doc.clone()));
+    slugs.extend(remote_docs.iter().map(|d| d.doc.clone()));
+
+    let mut out = Vec::with_capacity(slugs.len());
+    for slug in slugs {
+        let path = doc_path(root, &slug);
+        let local = if path.exists() { Some(fs::read_to_string(&path)?) } else { None };
+        let remote = store.l3_get(&slug)?;
+        out.push(DocSides { slug, local, remote });
+    }
+    Ok(out)
+}
+
+fn format_put_error(slug: &str, err: &L3PutError) -> String {
+    match err {
+        L3PutError::Warnings(warnings) => {
+            let lines: Vec<String> =
+                warnings.iter().map(|w| format!("line {}: {}", w.line, w.message)).collect();
+            format!("{slug} rejected (use --force to bypass):\n  {}", lines.join("\n  "))
+        }
+        L3PutError::Conflicts(ids) => {
+            format!("{slug} rejected: anchor(s) already used elsewhere: {}", ids.join(", "))
+        }
+        L3PutError::Client(e) => format!("{slug}: {e}"),
+    }
+}
+
+fn cmd_push(
+    root: &Path,
+    store: &StoreClient,
+    doc: Option<String>,
+    dry_run: bool,
+    force: bool,
+) -> Result<(), DynErr> {
+    let named = doc.is_some();
+    let sides = collect_sides(root, store, doc.as_deref())?;
+    let mut state = read_sync_state(root);
+
+    let mut pushed = 0usize;
+    let mut skipped = 0usize;
+    let mut conflicts = 0usize;
+    let mut errors = 0usize;
+
+    for side in &sides {
+        let recorded = state.get(&side.slug).map(|e| e.hash.as_str());
+        let local_hash = side.local.as_deref().map(|s| sha256_hex(s.as_bytes()));
+        let remote_hash = side.remote.as_deref().map(|s| sha256_hex(s.as_bytes()));
+        let action = classify(local_hash.as_deref(), remote_hash.as_deref(), recorded);
+
+        if action == SyncAction::Conflict {
+            eprintln!("CONFLICT {} (changed on both sides)", side.slug);
+            conflicts += 1;
+            continue;
+        }
+
+        let should_push = named || action == SyncAction::Push;
+        if !should_push {
+            eprintln!("skip {} (in sync)", side.slug);
+            skipped += 1;
+            continue;
+        }
+
+        let Some(local_content) = &side.local else {
+            eprintln!("skip {} (no local copy to push)", side.slug);
+            skipped += 1;
+            continue;
+        };
+
+        eprintln!("push {}", side.slug);
+        if dry_run {
+            pushed += 1;
+            continue;
+        }
+
+        match store.l3_put(&side.slug, local_content, force) {
+            Ok(normalized) => {
+                fs::write(doc_path(root, &side.slug), &normalized)?;
+                let hash = sha256_hex(normalized.as_bytes());
+                state.insert(side.slug.clone(), SyncEntry { hash });
+                pushed += 1;
+            }
+            Err(e) => {
+                eprintln!("error: {}", format_put_error(&side.slug, &e));
+                errors += 1;
+            }
+        }
+    }
+
+    if !dry_run {
+        write_sync_state(root, &state)?;
+    }
+
+    eprintln!("{pushed} pushed, {skipped} skipped, {conflicts} conflict(s), {errors} error(s)");
+    if conflicts > 0 || errors > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn cmd_pull(root: &Path, store: &StoreClient, doc: Option<String>, dry_run: bool) -> Result<(), DynErr> {
+    let named = doc.is_some();
+    let sides = collect_sides(root, store, doc.as_deref())?;
+    let mut state = read_sync_state(root);
+
+    let mut pulled = 0usize;
+    let mut skipped = 0usize;
+    let mut conflicts = 0usize;
+    let mut wrote_any = false;
+
+    for side in &sides {
+        let recorded = state.get(&side.slug).map(|e| e.hash.as_str());
+        let local_hash = side.local.as_deref().map(|s| sha256_hex(s.as_bytes()));
+        let remote_hash = side.remote.as_deref().map(|s| sha256_hex(s.as_bytes()));
+        let action = classify(local_hash.as_deref(), remote_hash.as_deref(), recorded);
+
+        if action == SyncAction::Conflict {
+            eprintln!("CONFLICT {} (changed on both sides)", side.slug);
+            conflicts += 1;
+            continue;
+        }
+
+        let should_pull = named || action == SyncAction::Pull;
+        if !should_pull {
+            eprintln!("skip {} (in sync)", side.slug);
+            skipped += 1;
+            continue;
+        }
+
+        let Some(remote_content) = &side.remote else {
+            eprintln!("skip {} (no remote copy to pull)", side.slug);
+            skipped += 1;
+            continue;
+        };
+
+        eprintln!("pull {}", side.slug);
+        if dry_run {
+            pulled += 1;
+            continue;
+        }
+
+        fs::write(doc_path(root, &side.slug), remote_content)?;
+        let hash = sha256_hex(remote_content.as_bytes());
+        state.insert(side.slug.clone(), SyncEntry { hash });
+        pulled += 1;
+        wrote_any = true;
+    }
+
+    if !dry_run {
+        write_sync_state(root, &state)?;
+        if wrote_any {
+            reindex(root)?;
+        }
+    }
+
+    eprintln!("{pulled} pulled, {skipped} skipped, {conflicts} conflict(s)");
+    if conflicts > 0 {
+        std::process::exit(1);
+    }
     Ok(())
 }
 
@@ -620,21 +878,6 @@ fn fm_get(fm: &[String], key: &str) -> Option<String> {
     None
 }
 
-/// Set `key` to `value`, replacing the first existing top-level occurrence or
-/// appending if absent. Other lines are preserved verbatim.
-fn upsert_key(mut fm: Vec<String>, key: &str, value: &str) -> Vec<String> {
-    let needle = format!("{key}: ");
-    let bare = format!("{key}:");
-    for line in fm.iter_mut() {
-        if line.starts_with(&needle) || line == &bare {
-            *line = format!("{key}: {value}");
-            return fm;
-        }
-    }
-    fm.push(format!("{key}: {value}"));
-    fm
-}
-
 /// Rename the first top-level `from:` key to `to:`, keeping its value.
 fn rename_key(mut fm: Vec<String>, from: &str, to: &str) -> Vec<String> {
     let needle = format!("{from}: ");
@@ -727,7 +970,9 @@ mod tests {
         assert_eq!(fm_get(&fm, "domain").as_deref(), Some("foo-bar"));
         assert_eq!(fm_get(&fm, "updated").as_deref(), Some("2026-06-17"));
         let fm = rename_key(fm, "domain", "doc");
-        let fm = upsert_key(fm, "kind", "research");
+        let renamed = format!("---\n{}\n---\n{body}", fm.join("\n"));
+        let content = l3::upsert_frontmatter_key(&renamed, "kind", "research");
+        let (fm, body) = split_frontmatter(&content);
         assert_eq!(fm_get(&fm, "doc").as_deref(), Some("foo-bar"));
         assert_eq!(fm_get(&fm, "kind").as_deref(), Some("research"));
         // multi-line `note:` block survived
@@ -800,6 +1045,49 @@ mod tests {
         reindex(&root).unwrap();
         let index = fs::read_to_string(root.join("INDEX.md")).unwrap();
         assert!(index.contains("| `openalex:W1` | [a](a.l3.md) |\n"));
+    }
+
+    #[test]
+    fn classify_in_sync_when_local_equals_remote() {
+        assert_eq!(classify(Some("h"), Some("h"), None), SyncAction::InSync);
+        assert_eq!(classify(Some("h"), Some("h"), Some("stale")), SyncAction::InSync);
+    }
+
+    #[test]
+    fn classify_push_when_only_local_changed() {
+        assert_eq!(classify(Some("l"), Some("s"), Some("s")), SyncAction::Push);
+    }
+
+    #[test]
+    fn classify_pull_when_only_remote_changed() {
+        assert_eq!(classify(Some("s"), Some("r"), Some("s")), SyncAction::Pull);
+    }
+
+    #[test]
+    fn classify_conflict_when_both_sides_changed() {
+        assert_eq!(classify(Some("l"), Some("r"), Some("s")), SyncAction::Conflict);
+    }
+
+    #[test]
+    fn classify_conflict_when_never_synced_and_sides_differ() {
+        assert_eq!(classify(Some("l"), Some("r"), None), SyncAction::Conflict);
+    }
+
+    #[test]
+    fn classify_push_when_missing_on_remote() {
+        assert_eq!(classify(Some("l"), None, None), SyncAction::Push);
+        assert_eq!(classify(Some("l"), None, Some("s")), SyncAction::Push);
+    }
+
+    #[test]
+    fn classify_pull_when_missing_locally() {
+        assert_eq!(classify(None, Some("r"), None), SyncAction::Pull);
+        assert_eq!(classify(None, Some("r"), Some("s")), SyncAction::Pull);
+    }
+
+    #[test]
+    fn classify_in_sync_when_missing_on_both_sides() {
+        assert_eq!(classify(None, None, None), SyncAction::InSync);
     }
 
     #[test]

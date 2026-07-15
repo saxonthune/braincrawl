@@ -14,6 +14,8 @@ braincrawl-sql = { workspace = true }
 braincrawl-blob-r2 = { path = "../../crates/backends/blob-r2", features = ["cloudflare"] }
 braincrawl-store-d1 = { path = "../../crates/backends/store-d1", features = ["cloudflare"] }
 braincrawl-resolver-kv = { path = "../../crates/backends/resolver-kv", features = ["cloudflare"] }
+l3 = { path = "../../crates/l3" }
+sha2 = { workspace = true }
 worker = { version = "0.8", features = ["d1"] }
 # wasm-bindgen must be a direct dep: #[durable_object] generates ::wasm_bindgen::... paths.
 wasm-bindgen = "0.2"

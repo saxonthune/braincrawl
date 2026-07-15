@@ -72,6 +72,104 @@ pub fn check_cors_preflight(base_url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Worker-only: the R2-backed L3 doc routes (`/api/l3/*`). Not part of
+/// `run_all` since the native server has no such routes.
+pub fn check_l3_docs(base_url: &str, token: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let token = Some(token);
+
+    let slug = "conformance-l3-smoke";
+    let doc = "---\ndoc: conformance-l3-smoke\nschema: freeform\n---\n\n# L3 — Conformance Smoke\n\n## A heading with no anchor\n- tags: #smoke\n";
+
+    let res = auth(client.put(format!("{base_url}/api/l3/docs/{slug}")).body(doc), token)
+        .send()
+        .map_err(|e| format!("check_l3_docs: PUT doc failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_docs: PUT doc expected 200, got {}", res.status()));
+    }
+    let normalized = res.text()
+        .map_err(|e| format!("check_l3_docs: PUT doc body read failed: {e}"))?;
+    if !normalized.contains(" ^r-") {
+        return Err(format!("check_l3_docs: expected an assigned ` ^r-` anchor in PUT response, got: {normalized}"));
+    }
+    if !normalized.lines().any(|l| l.starts_with("updated:")) {
+        return Err(format!("check_l3_docs: expected an `updated:` frontmatter line in PUT response, got: {normalized}"));
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs/{slug}")), token)
+        .send()
+        .map_err(|e| format!("check_l3_docs: GET doc failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_docs: GET doc expected 200, got {}", res.status()));
+    }
+    let fetched = res.text()
+        .map_err(|e| format!("check_l3_docs: GET doc body read failed: {e}"))?;
+    if fetched != normalized {
+        return Err("check_l3_docs: GET doc did not equal the normalized PUT response".to_string());
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs")), token)
+        .send()
+        .map_err(|e| format!("check_l3_docs: GET /api/l3/docs failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_docs: GET /api/l3/docs expected 200, got {}", res.status()));
+    }
+    let listing: Value = res.json()
+        .map_err(|e| format!("check_l3_docs: GET /api/l3/docs parse failed: {e}"))?;
+    let docs = listing.as_array().ok_or("check_l3_docs: /api/l3/docs did not return an array")?;
+    if !docs.iter().any(|d| d["doc"] == slug) {
+        return Err(format!("check_l3_docs: expected {slug:?} in /api/l3/docs listing, got {docs:?}"));
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/graph")), token)
+        .send()
+        .map_err(|e| format!("check_l3_docs: GET /api/l3/graph failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_docs: GET /api/l3/graph expected 200, got {}", res.status()));
+    }
+    let etag = res.headers().get("ETag")
+        .and_then(|v| v.to_str().ok())
+        .ok_or("check_l3_docs: GET /api/l3/graph missing ETag header")?
+        .to_string();
+    let graph: Value = res.json()
+        .map_err(|e| format!("check_l3_docs: GET /api/l3/graph parse failed: {e}"))?;
+    let nodes = graph["nodes"].as_array().ok_or("check_l3_docs: graph missing nodes array")?;
+    if nodes.is_empty() {
+        return Err("check_l3_docs: expected >=1 node in graph, got 0".to_string());
+    }
+
+    let res = auth(
+        client.get(format!("{base_url}/api/l3/graph")).header("If-None-Match", &etag),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("check_l3_docs: GET /api/l3/graph (If-None-Match) failed: {e}"))?;
+    if res.status() != 304 {
+        return Err(format!("check_l3_docs: If-None-Match replay expected 304, got {}", res.status()));
+    }
+
+    let malformed = "---\ndoc: conformance-l3-malformed\n---\n\n## Node ^r-cnfrm\n- [[dangling\n";
+    let res = auth(
+        client.put(format!("{base_url}/api/l3/docs/conformance-l3-malformed")).body(malformed),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("check_l3_docs: PUT malformed doc failed: {e}"))?;
+    if res.status() != 400 {
+        return Err(format!("check_l3_docs: PUT malformed doc expected 400, got {}", res.status()));
+    }
+    let body: Value = res.json()
+        .map_err(|e| format!("check_l3_docs: PUT malformed doc response parse failed: {e}"))?;
+    if body["warnings"].as_array().map(|a| a.is_empty()).unwrap_or(true) {
+        return Err(format!("check_l3_docs: expected non-empty warnings, got {body:?}"));
+    }
+
+    Ok(())
+}
+
 fn auth(req: reqwest::blocking::RequestBuilder, token: Option<&str>) -> reqwest::blocking::RequestBuilder {
     match token {
         Some(t) => req.header("Authorization", format!("Bearer {t}")),

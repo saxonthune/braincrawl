@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::model::{Endpoint, Graph, Link, Node, NodeId, Provenance, Warning};
 
-const FILE_SUFFIX: &str = ".l3.md";
+pub(crate) const FILE_SUFFIX: &str = ".l3.md";
 
 /// Read every `*.l3.md` under `root` (skipping `_`-prefixed files and `INDEX.md`)
 /// and lift a `Graph` from their bodies. Never fails — malformed input is
@@ -24,8 +24,31 @@ pub fn parse(root: &Path) -> (Graph, Vec<Warning>) {
     (Graph::build(nodes, links), warnings)
 }
 
+/// The same grammar as `parse`, over doc text held in memory rather than on
+/// disk. Each tuple is `(doc slug, full markdown text)`; `Provenance.path` for
+/// these nodes is the synthetic `<slug>.l3.md`. Semantics are identical to
+/// `parse` on a directory containing exactly these docs, modulo path.
+pub fn parse_sources(sources: &[(String, String)]) -> (Graph, Vec<Warning>) {
+    let mut ordered: Vec<&(String, String)> = sources.iter().collect();
+    ordered.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut nodes = Vec::new();
+    let mut links = Vec::new();
+    let mut warnings = Vec::new();
+
+    for (slug, content) in ordered {
+        let path = PathBuf::from(format!("{slug}{FILE_SUFFIX}"));
+        let (mut n, mut l, mut w) = parse_one(slug, path, content);
+        nodes.append(&mut n);
+        links.append(&mut l);
+        warnings.append(&mut w);
+    }
+
+    (Graph::build(nodes, links), warnings)
+}
+
 /// Every `*.l3.md` file under `root`, recursively, sorted for deterministic order.
-fn find_docs(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn find_docs(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_docs(root, &mut out);
     out.sort();
@@ -54,22 +77,39 @@ fn collect_docs(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn parse_file(path: &Path, nodes: &mut Vec<Node>, links: &mut Vec<Link>, warnings: &mut Vec<Warning>) {
     let Ok(content) = fs::read_to_string(path) else { return };
-    let (fm, body) = split_frontmatter(&content);
     let stem = path
         .file_name()
         .map(|n| n.to_string_lossy().trim_end_matches(FILE_SUFFIX).to_string())
         .unwrap_or_default();
-    let doc = fm_get(&fm, "doc").unwrap_or(stem);
+    let (mut n, mut l, mut w) = parse_one(&stem, path.to_path_buf(), &content);
+    nodes.append(&mut n);
+    links.append(&mut l);
+    warnings.append(&mut w);
+}
+
+/// The per-doc parse core shared by `parse` (real files) and `parse_sources`
+/// (in-memory docs). `doc_hint` names the doc when its frontmatter has no
+/// `doc:` key (the file stem, or the in-memory slug); `path` is the
+/// `Provenance.path` to record (real or synthetic).
+pub(crate) fn parse_one(doc_hint: &str, path: PathBuf, content: &str) -> (Vec<Node>, Vec<Link>, Vec<Warning>) {
+    let mut nodes = Vec::new();
+    let mut links = Vec::new();
+    let mut warnings = Vec::new();
+
+    let (fm, body) = split_frontmatter(content);
+    let doc = fm_get(&fm, "doc").unwrap_or_else(|| doc_hint.to_string());
 
     if fm.is_empty() {
-        warnings.push(warning(&doc, path, 0, "no YAML frontmatter block"));
+        warnings.push(warning(&doc, &path, 0, "no YAML frontmatter block"));
     }
 
     // Frontmatter occupies lines 1..=fm.len()+2 (the two `---` fences), so body
     // line numbers are offset to point warnings at the real file line.
     let body_offset = if fm.is_empty() { 0 } else { fm.len() + 2 };
 
-    parse_body(&doc, path, &body, body_offset, nodes, links, warnings);
+    parse_body(&doc, &path, &body, body_offset, &mut nodes, &mut links, &mut warnings);
+
+    (nodes, links, warnings)
 }
 
 fn warning(doc: &str, path: &Path, line: usize, message: &str) -> Warning {
@@ -595,6 +635,38 @@ schema: research
         write_doc(&root, "d", "## Node ^r-x\n- tags: #a\n");
         let (_graph, warnings) = parse(&root);
         assert!(warnings.iter().any(|w| w.message == "no YAML frontmatter block"));
+    }
+
+    #[test]
+    fn parse_sources_matches_parse_on_equivalent_docs() {
+        let root = temp_root("sources-equivalence");
+        write_doc(&root, "fixture-doc", FIXTURE);
+        write_doc(&root, "d2", "---\ndoc: d2\n---\n\n## Node two ^r-two1\n- tags: #x\n- catalog [[openalex:W2]] {why: 'cites'}\n");
+
+        let (from_dir, _) = parse(&root);
+        let sources = vec![
+            ("fixture-doc".to_string(), FIXTURE.to_string()),
+            ("d2".to_string(), "---\ndoc: d2\n---\n\n## Node two ^r-two1\n- tags: #x\n- catalog [[openalex:W2]] {why: 'cites'}\n".to_string()),
+        ];
+        let (from_sources, _) = parse_sources(&sources);
+
+        assert_eq!(from_dir.nodes.len(), from_sources.nodes.len());
+        for (a, b) in from_dir.nodes.iter().zip(from_sources.nodes.iter()) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.labels, b.labels);
+            assert_eq!(a.properties, b.properties);
+            assert_eq!(a.provenance.doc, b.provenance.doc);
+            assert_eq!(a.provenance.order, b.provenance.order);
+            assert_eq!(a.provenance.heading_line, b.provenance.heading_line);
+        }
+        assert_eq!(from_dir.links.len(), from_sources.links.len());
+        for (a, b) in from_dir.links.iter().zip(from_sources.links.iter()) {
+            assert_eq!(a.source, b.source);
+            assert_eq!(a.kind, b.kind);
+            assert_eq!(a.target, b.target);
+            assert_eq!(a.properties, b.properties);
+            assert_eq!(a.recorded_in, b.recorded_in);
+        }
     }
 
     #[test]

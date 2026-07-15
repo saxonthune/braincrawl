@@ -160,6 +160,25 @@ pub enum L3Cmd {
     },
     /// List every node with a `reading` property and its catalog work, grouped by role
     ReadingList,
+    /// Push local doc(s) to the worker's consolidated L3 store
+    Push {
+        /// Doc slug (omit to push every push-candidate doc)
+        doc: Option<String>,
+        /// Print the plan without transferring or touching sync state
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+        /// Bypass the worker's warning bounce (400) on push
+        #[arg(long)]
+        force: bool,
+    },
+    /// Pull doc(s) from the worker's consolidated L3 store into the local repo
+    Pull {
+        /// Doc slug (omit to pull every pull-candidate doc)
+        doc: Option<String>,
+        /// Print the plan without transferring or touching sync state
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
 }
 
 #[derive(Args)]

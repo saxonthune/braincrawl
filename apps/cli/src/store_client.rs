@@ -10,6 +10,34 @@ pub enum ClientError {
 
 pub type Result<T> = std::result::Result<T, ClientError>;
 
+/// One entry from `GET /api/l3/docs`.
+#[derive(Debug, serde::Deserialize)]
+pub struct L3RemoteDoc {
+    pub doc: String,
+    pub size: u64,
+    pub modified: String,
+}
+
+/// A parse warning surfaced by the worker's PUT `/api/l3/docs/{slug}` 400 response.
+#[derive(Debug, serde::Deserialize)]
+pub struct L3Warning {
+    pub doc: String,
+    pub line: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Error)]
+pub enum L3PutError {
+    /// 400 — the incoming doc has blocking parse warnings; retry with `force` to bypass.
+    #[error("doc rejected: {0:?}")]
+    Warnings(Vec<L3Warning>),
+    /// 409 — an anchor in the incoming doc collides with one already used elsewhere.
+    #[error("anchor conflicts with another doc: {0:?}")]
+    Conflicts(Vec<String>),
+    #[error(transparent)]
+    Client(#[from] ClientError),
+}
+
 /// CLI-local content outcome, mirroring the server's ContentOutcome over HTTP.
 #[derive(Debug)]
 pub enum ContentOutcome {
@@ -197,6 +225,67 @@ impl StoreClient {
             _ => {
                 let body = resp.text().unwrap_or_default();
                 Err(ClientError::Server { status, body })
+            }
+        }
+    }
+
+    /// GET /api/l3/docs — every doc currently in the consolidated L3 store.
+    pub fn l3_list(&self) -> Result<Vec<L3RemoteDoc>> {
+        let url = format!("{}/api/l3/docs", self.base_url);
+        let resp = self.apply_auth(self.http.get(&url)).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(resp.json()?)
+    }
+
+    /// GET /api/l3/docs/{slug} — the doc's raw markdown, or `None` on 404.
+    pub fn l3_get(&self, slug: &str) -> Result<Option<String>> {
+        let url = format!("{}/api/l3/docs/{}", self.base_url, slug);
+        let resp = self.apply_auth(self.http.get(&url)).send()?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(Some(resp.text()?))
+    }
+
+    /// PUT /api/l3/docs/{slug} — returns the worker's normalized markdown on success.
+    pub fn l3_put(&self, slug: &str, body: &str, force: bool) -> std::result::Result<String, L3PutError> {
+        let url = format!("{}/api/l3/docs/{}", self.base_url, slug);
+        let mut req = self.apply_auth(self.http.put(&url)).body(body.to_string());
+        if force {
+            req = req.query(&[("force", "1")]);
+        }
+        let resp = req.send().map_err(ClientError::from)?;
+        let status = resp.status();
+        match status.as_u16() {
+            200..=299 => Ok(resp.text().map_err(ClientError::from)?),
+            400 => {
+                let json: serde_json::Value = resp.json().map_err(ClientError::from)?;
+                let warnings: Vec<L3Warning> = serde_json::from_value(
+                    json.get("warnings").cloned().unwrap_or_default(),
+                )
+                .unwrap_or_default();
+                Err(L3PutError::Warnings(warnings))
+            }
+            409 => {
+                let json: serde_json::Value = resp.json().map_err(ClientError::from)?;
+                let conflicts: Vec<String> = serde_json::from_value(
+                    json.get("conflicts").cloned().unwrap_or_default(),
+                )
+                .unwrap_or_default();
+                Err(L3PutError::Conflicts(conflicts))
+            }
+            _ => {
+                let body = resp.text().unwrap_or_default();
+                Err(L3PutError::Client(ClientError::Server { status: status.as_u16(), body }))
             }
         }
     }

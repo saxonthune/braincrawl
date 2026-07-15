@@ -13,4 +13,7 @@ fn external_conformance() {
     braincrawl_conformance::run_all(&url, token.as_deref()).unwrap();
     braincrawl_conformance::check_health(&url).unwrap();
     braincrawl_conformance::check_cors_preflight(&url).unwrap();
+    if let Some(token) = token.as_deref() {
+        braincrawl_conformance::check_l3_docs(&url, token).unwrap();
+    }
 }

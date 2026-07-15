@@ -16,6 +16,12 @@
 //! - `GET /works/*id/content/{kind}`    → get_content
 //! - `PUT /works/*id/content/{kind}`    → put_content
 //!
+//! Plus worker-only Research Collection doc routes (see `l3` module):
+//! - `GET /api/l3/docs`
+//! - `GET /api/l3/docs/{slug}`
+//! - `PUT /api/l3/docs/{slug}`
+//! - `GET /api/l3/graph`
+//!
 //! ## Coordinator note
 //!
 //! `DoCoordinator::with_lock` routes through a `WorkDurableObject` stub keyed by the
@@ -27,6 +33,8 @@
 //! the single-threaded Wasm event loop prevents data races already.
 //! Full per-work serialization across concurrent Worker instances is a design
 //! evolution that requires restructuring the `Coordinator` trait (out of scope here).
+
+mod l3;
 
 use async_trait::async_trait;
 use braincrawl_blob_r2::R2BlobStore;
@@ -58,7 +66,7 @@ impl Clock for WasmClock {
     }
 }
 
-fn secs_to_rfc3339(secs: u64) -> String {
+pub(crate) fn secs_to_rfc3339(secs: u64) -> String {
     let s = secs % 60;
     let m = (secs / 60) % 60;
     let h = (secs / 3600) % 24;
@@ -91,6 +99,13 @@ fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
 
 fn is_leap(year: u32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+/// Today's date (UTC) as `yyyy-mm-dd`, for stamping L3 docs' `updated:` key.
+pub(crate) fn today_utc_date() -> String {
+    let ms = js_sys::Date::now() as u64;
+    let (y, mo, d) = days_to_ymd(ms / 1000 / 86400);
+    format!("{y:04}-{mo:02}-{d:02}")
 }
 
 // ── WasmIdGen ────────────────────────────────────────────────────────────────
@@ -445,6 +460,26 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
     // ─────────────────────────────────────────────────────────────────────────
 
     let store = build_store(&env)?;
+
+    // ── /api/l3/* ─────────────────────────────────────────────────────────────
+    if let Some(rest) = path.strip_prefix("/api/l3/") {
+        let bucket = env.bucket("BLOB_BUCKET")?;
+        if method == Method::Get && rest == "graph" {
+            return l3::handle_graph(&req, &bucket).await;
+        }
+        if method == Method::Get && rest == "docs" {
+            return l3::handle_list_docs(&bucket).await;
+        }
+        if let Some(slug) = rest.strip_prefix("docs/") {
+            match method {
+                Method::Get => return l3::handle_get_doc(slug, &bucket).await,
+                Method::Put => return l3::handle_put_doc(slug, &url, req, &bucket).await,
+                _ => {}
+            }
+        }
+        return Response::error("not found", 404);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // POST /works/have
     if method == Method::Post && path == "/works/have" {
