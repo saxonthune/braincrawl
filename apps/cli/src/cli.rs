@@ -74,6 +74,29 @@ pub enum Namespace {
     Web,
     #[command(name = "migrate-store", about = "Replay the local SQLite + blob corpus into a remote store over its HTTP API")]
     MigrateStore(MigrateStoreArgs),
+    #[command(about = "Rename a work file to its canonical bibliographic filename")]
+    Rename(RenameArgs),
+}
+
+#[derive(Args)]
+pub struct RenameArgs {
+    /// Path to the file to rename (extension is preserved)
+    pub file: String,
+    /// First author's surname (may contain spaces/particles, e.g. "Van De Mieroop")
+    #[arg(long)]
+    pub author: String,
+    /// The work has more than one author (renders the EtAl marker)
+    #[arg(long = "et-al")]
+    pub et_al: bool,
+    /// Publication year
+    #[arg(long)]
+    pub year: u32,
+    /// Work title (slugified for the filename)
+    #[arg(long)]
+    pub title: String,
+    /// Print the proposed new path; do not rename
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Args)]

@@ -10,6 +10,7 @@ pub mod output;
 pub mod pdf_text;
 pub mod provider;
 pub mod refs_backfill;
+pub mod rename;
 pub mod semanticscholar;
 pub mod store_client;
 pub mod web;

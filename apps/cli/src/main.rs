@@ -367,6 +367,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("--- remote stats ---");
             render_stats(&stats, &opts);
         }
+        Namespace::Rename(args) => {
+            braincrawl_cli::rename::run(args, &opts)?;
+        }
         Namespace::Get(args) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());
