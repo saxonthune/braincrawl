@@ -128,6 +128,9 @@ pub struct AppState {
     /// `/api/events` (SSE). Always present, even when `l3_root` is `None` —
     /// it just never fires in that case.
     pub changes: tokio::sync::broadcast::Sender<()>,
+    /// OpenRouter key for the `/api/llm/*` proxy (`OPENROUTER_API_KEY`);
+    /// `None` makes the proxy answer 503 and clients must bring their own key.
+    pub openrouter_key: Option<String>,
 }
 
 impl FromRef<AppState> for Arc<LocalStore> {
@@ -441,7 +444,12 @@ async fn handler_post_job(
 /// Build the axum router wired to the given store, auth config, and optional
 /// L3 root (`BRAINCRAWL_L3_ROOT`; `None` disables the `/api/l3/graph` route
 /// with a 404 rather than making the store construction fail).
-pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<PathBuf>) -> Router {
+pub fn make_app(
+    store: Arc<LocalStore>,
+    auth: Arc<AuthConfig>,
+    l3_root: Option<PathBuf>,
+    openrouter_key: Option<String>,
+) -> Router {
     // The wildcard route accepts arbitrarily large request bodies (book-sized
     // PDFs), so disable the default 2 MB body limit on it alone.
     let works_wildcard = Router::new()
@@ -473,12 +481,14 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<P
             get(handlers::handler_l3_agent_get).put(handlers::handler_l3_agent_put),
         )
         .route("/api/events", get(handlers::handler_events))
+        .route("/api/llm/*path", post(handlers::handler_llm_proxy))
         .merge(works_wildcard)
         .layer(axum::middleware::from_fn_with_state(auth, gate))
         .with_state(AppState {
             store,
             l3_root,
             changes: changes_tx,
+            openrouter_key,
         });
 
     // `/health` is merged outside the auth layer: an unauthenticated liveness

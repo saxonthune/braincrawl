@@ -45,7 +45,8 @@ async fn main() {
 
     let store =
         Arc::new(make_store(&db_path, &blob_root).expect("failed to initialise local store"));
-    let app = make_app(store, auth, None);
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY").ok().filter(|k| !k.is_empty());
+    let app = make_app(store, auth, None, openrouter_key);
 
     let listener = TcpListener::bind(&bind_addr)
         .await

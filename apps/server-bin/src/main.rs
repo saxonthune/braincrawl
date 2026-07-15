@@ -11,6 +11,7 @@
 //! | `BRAINCRAWL_AUTH_DISABLED`  | —                | Set to any non-empty value to bypass auth (dev only) |
 //! | `BRAINCRAWL_L3_ROOT`        | —                | L3 document store root; unset disables `/api/l3/graph` (404) |
 //! | `BRAINCRAWL_WEB_ROOT`       | —                | Built web UI dir (`web/dist`); unset disables `/web`        |
+//! | `OPENROUTER_API_KEY`        | —                | Key for the `/api/llm/*` proxy; unset makes it answer 503   |
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -78,7 +79,8 @@ async fn main() {
         factor: 2,
     };
 
-    let app = make_app(Arc::clone(&store), auth, l3_root);
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY").ok().filter(|k| !k.is_empty());
+    let app = make_app(Arc::clone(&store), auth, l3_root, openrouter_key);
     let app = match web_root {
         Some(root) => serve_web(app, root),
         None => app,

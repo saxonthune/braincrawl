@@ -1,5 +1,14 @@
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, For, type JSX } from "solid-js";
 import { getAllSettings, setSetting } from "../../services/settings";
+
+// OpenRouter slugs (proxy mode / sk-or- keys); "opus (direct)" is the plain
+// Anthropic id for a pasted sk-ant- key.
+const MODEL_PRESETS = [
+  { label: "sonnet", slug: "~anthropic/claude-sonnet-latest" },
+  { label: "sonnet 4.6", slug: "anthropic/claude-sonnet-4.6" },
+  { label: "deepseek v4 flash", slug: "deepseek/deepseek-v4-flash" },
+  { label: "opus (direct)", slug: "claude-opus-4-8" },
+];
 
 function PasswordField(props: {
   label: string;
@@ -37,8 +46,8 @@ export function Settings(): JSX.Element {
       </p>
       <h2>Settings</h2>
       <p class="chat-settings-note">
-        These values live only in this browser's localStorage — they are never sent anywhere
-        except the requests you make from here.
+        These values live only in this browser's localStorage — they are never sent anywhere except
+        the requests you make from here.
       </p>
       <form>
         <PasswordField
@@ -50,8 +59,8 @@ export function Settings(): JSX.Element {
           }}
         />
         <span class="chat-settings-note">
-          Optional — leave empty to use the server's key via the LLM proxy. A pasted key
-          overrides the proxy and talks to Anthropic or OpenRouter directly.
+          Optional — leave empty to use the server's key via the LLM proxy. A pasted key overrides
+          the proxy and talks to Anthropic or OpenRouter directly.
         </span>
         <label class="chat-settings-field">
           Store base URL
@@ -75,11 +84,27 @@ export function Settings(): JSX.Element {
               setSetting("model", e.currentTarget.value);
             }}
           />
+          <div class="chat-settings-presets">
+            <For each={MODEL_PRESETS}>
+              {(preset) => (
+                <button
+                  type="button"
+                  classList={{ active: model() === preset.slug }}
+                  onClick={() => {
+                    setModel(preset.slug);
+                    setSetting("model", preset.slug);
+                  }}
+                >
+                  {preset.label}
+                </button>
+              )}
+            </For>
+          </div>
           <span class="chat-settings-note">
             Proxy mode (empty key) and OpenRouter key: any OpenRouter slug —
-            anthropic/claude-sonnet-4.6, ~anthropic/claude-sonnet-latest, or a non-Anthropic
-            model like deepseek/deepseek-v4-flash. A pasted Anthropic sk-ant- key needs a
-            plain Anthropic model id instead, like claude-opus-4-8.
+            anthropic/claude-sonnet-4.6, ~anthropic/claude-sonnet-latest, or a non-Anthropic model
+            like deepseek/deepseek-v4-flash. A pasted Anthropic sk-ant- key needs a plain Anthropic
+            model id instead, like claude-opus-4-8.
           </span>
         </label>
       </form>

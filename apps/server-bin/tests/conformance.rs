@@ -17,7 +17,7 @@ async fn start_server(
         disabled: true,
         allowlist: SharedSecret::new("", ""),
     });
-    let app = make_app(store, auth, l3_root);
+    let app = make_app(store, auth, l3_root, None);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

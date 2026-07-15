@@ -15,7 +15,7 @@ async fn start_server_with_auth(
     std::fs::create_dir_all(dir.join("blobs")).unwrap();
 
     let store = Arc::new(make_store(&db_path, &blob_root).expect("store"));
-    let app = make_app(store, auth, None);
+    let app = make_app(store, auth, None, None);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

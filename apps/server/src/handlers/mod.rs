@@ -6,9 +6,11 @@
 pub mod events;
 pub mod fulltext;
 pub mod l3;
+pub mod llm;
 pub mod refs;
 
 pub use events::handler_events;
+pub use llm::handler_llm_proxy;
 pub use fulltext::FulltextHandler;
 pub use l3::{
     handler_l3_agent_get, handler_l3_agent_list, handler_l3_agent_put, handler_l3_doc_get,
