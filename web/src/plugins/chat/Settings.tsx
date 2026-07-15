@@ -81,8 +81,9 @@ export function Settings(): JSX.Element {
             }}
           />
           <span class="chat-settings-note">
-            Anthropic key: a model id like claude-opus-4-8. OpenRouter key: a slug like
-            anthropic/claude-sonnet-4.6 (Anthropic models only on this endpoint).
+            Anthropic key: a model id like claude-opus-4-8. OpenRouter key: any OpenRouter
+            slug — anthropic/claude-sonnet-4.6, or a non-Anthropic model like
+            deepseek/deepseek-v4-flash.
           </span>
         </label>
       </form>

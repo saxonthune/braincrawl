@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { callOpenRouter } from "./openaiCompletions";
 import { buildSystemBlocks } from "./prompt";
 import { getSetting } from "./settings";
 import { appendMessage, finalizeAssistantMessage, getSession, setPendingTurn, updateLastAssistantText } from "./store";
 import { findTool, tools } from "./tools";
-import type { ChatMessage, ChatSession, ContentBlock, ToolResultBlock, ToolUseBlock, Transport } from "./types";
+import type { ChatMessage, ChatSession, ContentBlock, ModelCall, ToolResultBlock, ToolUseBlock, Transport } from "./types";
 
 const MAX_ITERATIONS = 20;
 
@@ -76,25 +77,71 @@ function makeClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
 
+function anthropicModelCall(apiKey: string): ModelCall {
+  const client = makeClient(apiKey);
+  return async ({ model, system, messages, onText }) => {
+    const stream = client.messages.stream({
+      model,
+      max_tokens: 8192,
+      system: system as unknown as Anthropic.TextBlockParam[],
+      tools: toApiTools(),
+      messages: toApiMessages(messages),
+    });
+    let accumulated = "";
+    stream.on("text", (delta) => {
+      accumulated += delta;
+      onText(accumulated);
+    });
+    const finalMessage = await stream.finalMessage();
+    const stopReason =
+      finalMessage.stop_reason === "tool_use" ||
+      finalMessage.stop_reason === "max_tokens" ||
+      finalMessage.stop_reason === "refusal" ||
+      finalMessage.stop_reason === "end_turn"
+        ? finalMessage.stop_reason
+        : "other";
+    return {
+      content: finalMessage.content as unknown as ContentBlock[],
+      stopReason,
+    };
+  };
+}
+
+// Three-way provider selection on (apiKey, model): sk-ant- goes direct to Anthropic,
+// sk-or- + anthropic/~anthropic model uses OpenRouter's Anthropic-compatible endpoint
+// (still the Anthropic SDK path), sk-or- + any other slug uses the OpenAI-format call.
+function resolveModelCall(apiKey: string, model: string): ModelCall | ChatMessage {
+  if (!apiKey.startsWith("sk-or-")) {
+    return anthropicModelCall(apiKey);
+  }
+  if (model.startsWith("anthropic/") || model.startsWith("~anthropic/")) {
+    return anthropicModelCall(apiKey);
+  }
+  if (model.includes("/")) {
+    return callOpenRouter(apiKey);
+  }
+  return {
+    role: "assistant",
+    content: [
+      {
+        type: "text",
+        text: `OpenRouter key detected, but model "${model}" is not a valid OpenRouter slug — set Model in Settings to any OpenRouter slug, e.g. "anthropic/claude-sonnet-4.6" or "deepseek/deepseek-v4-flash".`,
+      },
+    ],
+  };
+}
+
 async function runLoop(sessionId: string, onDelta: (text: string) => void): Promise<ChatMessage[]> {
   const settings = {
     apiKey: getSetting("anthropicKey"),
     model: getSetting("model"),
   };
-  if (settings.apiKey.startsWith("sk-or-") && !settings.model.includes("/")) {
-    const note: ChatMessage = {
-      role: "assistant",
-      content: [
-        {
-          type: "text",
-          text: `OpenRouter key detected, but model "${settings.model}" is not an OpenRouter slug — set Model in Settings to e.g. "anthropic/claude-sonnet-4.6" or "~anthropic/claude-sonnet-latest".`,
-        },
-      ],
-    };
-    appendMessage(sessionId, note);
-    return [note];
+  const modelCallOrNote = resolveModelCall(settings.apiKey, settings.model);
+  if (!(typeof modelCallOrNote === "function")) {
+    appendMessage(sessionId, modelCallOrNote);
+    return [modelCallOrNote];
   }
-  const client = makeClient(settings.apiKey);
+  const modelCall = modelCallOrNote;
 
   setPendingTurn(sessionId, { messagesSnapshotAt: new Date().toISOString() });
   const appended: ChatMessage[] = [];
@@ -118,24 +165,20 @@ async function runLoop(sessionId: string, onDelta: (text: string) => void): Prom
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       const session = requireSession();
       const system = await buildSystemBlocks(session.activeBook);
-      const apiMessages = toApiMessages(session.messages);
 
-      let finalMessage: Anthropic.Message;
+      let result: Awaited<ReturnType<ModelCall>>;
+      let previousText = "";
       try {
-        const stream = client.messages.stream({
+        result = await modelCall({
           model: settings.model,
-          max_tokens: 8192,
-          system: system as unknown as Anthropic.TextBlockParam[],
-          tools: toApiTools(),
-          messages: apiMessages,
+          system,
+          messages: session.messages,
+          onText: (accumulatedSoFar) => {
+            onDelta(accumulatedSoFar.slice(previousText.length));
+            previousText = accumulatedSoFar;
+            updateLastAssistantText(sessionId, accumulatedSoFar);
+          },
         });
-        let accumulated = "";
-        stream.on("text", (delta) => {
-          onDelta(delta);
-          accumulated += delta;
-          updateLastAssistantText(sessionId, accumulated);
-        });
-        finalMessage = await stream.finalMessage();
       } catch (err) {
         const message: ChatMessage = {
           role: "assistant",
@@ -148,12 +191,12 @@ async function runLoop(sessionId: string, onDelta: (text: string) => void): Prom
 
       const assistantMessage: ChatMessage = {
         role: "assistant",
-        content: finalMessage.content as unknown as ContentBlock[],
+        content: result.content,
       };
       finalizeAssistantMessage(sessionId, assistantMessage.content);
       appended.push(assistantMessage);
 
-      if (finalMessage.stop_reason === "tool_use") {
+      if (result.stopReason === "tool_use") {
         const uses = toolUseBlocks(assistantMessage);
         const resultBlocks = await runToolCalls(uses);
         const toolResultMessage: ChatMessage = { role: "user", content: resultBlocks };
@@ -162,14 +205,14 @@ async function runLoop(sessionId: string, onDelta: (text: string) => void): Prom
         continue;
       }
 
-      if (finalMessage.stop_reason === "max_tokens") {
+      if (result.stopReason === "max_tokens") {
         const note: ChatMessage = {
           role: "assistant",
           content: [{ type: "text", text: "[response truncated: max_tokens reached]" }],
         };
         appendMessage(sessionId, note);
         appended.push(note);
-      } else if (finalMessage.stop_reason === "refusal") {
+      } else if (result.stopReason === "refusal") {
         const note: ChatMessage = {
           role: "assistant",
           content: [{ type: "text", text: "[the model declined to continue this response]" }],

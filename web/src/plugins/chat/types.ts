@@ -26,6 +26,25 @@ export interface ChatMessage {
   content: ContentBlock[];
 }
 
+export interface SystemBlockParam {
+  type: "text";
+  text: string;
+  cache_control?: { type: "ephemeral" };
+}
+
+export interface ModelTurnResult {
+  content: ContentBlock[];
+  stopReason: "end_turn" | "tool_use" | "max_tokens" | "refusal" | "other";
+}
+
+/** A single provider's model call, called once per loop iteration. */
+export type ModelCall = (args: {
+  model: string;
+  system: SystemBlockParam[];
+  messages: ChatMessage[];
+  onText: (accumulatedSoFar: string) => void;
+}) => Promise<ModelTurnResult>;
+
 export interface ActiveBook {
   workId: string;
   docSlug: string;
