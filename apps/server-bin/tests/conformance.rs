@@ -53,6 +53,7 @@ async fn conformance_l3_native() {
 
     tokio::task::spawn_blocking(move || {
         braincrawl_conformance::check_l3_docs(&base, "unused").unwrap();
+        braincrawl_conformance::check_l3_prev_backup(&base, "unused").unwrap();
         braincrawl_conformance::check_l3_agent_files(&base, "unused").unwrap();
     })
     .await

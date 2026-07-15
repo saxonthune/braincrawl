@@ -253,6 +253,88 @@ pub fn check_l3_agent_files(base_url: &str, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The prev-backup contract on `/api/l3/docs/{slug}` — both backends must
+/// keep exactly one prior version and serve it at `?version=prev`. See
+/// `.todo-tasks/tasks/worker-l3-prev-backup.md`.
+pub fn check_l3_prev_backup(base_url: &str, token: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let token = Some(token);
+
+    let slug = "conformance-l3-prev-backup";
+    let doc_v1 = "---\ndoc: conformance-l3-prev-backup\nschema: freeform\n---\n\n# L3 — Prev Backup v1\n\n## A heading with no anchor\n- tags: #smoke\n";
+    let doc_v2 = "---\ndoc: conformance-l3-prev-backup\nschema: freeform\n---\n\n# L3 — Prev Backup v2\n\n## A heading with no anchor\n- tags: #smoke\n";
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs/{slug}?version=prev")), token)
+        .send()
+        .map_err(|e| format!("check_l3_prev_backup: GET ?version=prev (never overwritten) failed: {e}"))?;
+    if res.status() != 404 {
+        return Err(format!(
+            "check_l3_prev_backup: GET ?version=prev on a never-overwritten doc expected 404, got {}",
+            res.status()
+        ));
+    }
+
+    let res = auth(client.put(format!("{base_url}/api/l3/docs/{slug}")).body(doc_v1), token)
+        .send()
+        .map_err(|e| format!("check_l3_prev_backup: PUT v1 failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_prev_backup: PUT v1 expected 200, got {}", res.status()));
+    }
+    let normalized_v1 = res.text()
+        .map_err(|e| format!("check_l3_prev_backup: PUT v1 body read failed: {e}"))?;
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs/{slug}?version=prev")), token)
+        .send()
+        .map_err(|e| format!("check_l3_prev_backup: GET ?version=prev (after v1) failed: {e}"))?;
+    if res.status() != 404 {
+        return Err(format!(
+            "check_l3_prev_backup: GET ?version=prev after the first PUT expected 404, got {}",
+            res.status()
+        ));
+    }
+
+    let res = auth(client.put(format!("{base_url}/api/l3/docs/{slug}")).body(doc_v2), token)
+        .send()
+        .map_err(|e| format!("check_l3_prev_backup: PUT v2 failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_prev_backup: PUT v2 expected 200, got {}", res.status()));
+    }
+    let normalized_v2 = res.text()
+        .map_err(|e| format!("check_l3_prev_backup: PUT v2 body read failed: {e}"))?;
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs/{slug}?version=prev")), token)
+        .send()
+        .map_err(|e| format!("check_l3_prev_backup: GET ?version=prev (after v2) failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!(
+            "check_l3_prev_backup: GET ?version=prev after the second PUT expected 200, got {}",
+            res.status()
+        ));
+    }
+    let prev = res.text()
+        .map_err(|e| format!("check_l3_prev_backup: GET ?version=prev body read failed: {e}"))?;
+    if prev != normalized_v1 {
+        return Err("check_l3_prev_backup: ?version=prev did not equal the normalized v1 content".to_string());
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs/{slug}")), token)
+        .send()
+        .map_err(|e| format!("check_l3_prev_backup: GET (plain) failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_prev_backup: GET (plain) expected 200, got {}", res.status()));
+    }
+    let current = res.text()
+        .map_err(|e| format!("check_l3_prev_backup: GET (plain) body read failed: {e}"))?;
+    if current != normalized_v2 {
+        return Err("check_l3_prev_backup: plain GET did not equal the normalized v2 content".to_string());
+    }
+
+    Ok(())
+}
+
 fn auth(req: reqwest::blocking::RequestBuilder, token: Option<&str>) -> reqwest::blocking::RequestBuilder {
     match token {
         Some(t) => req.header("Authorization", format!("Bearer {t}")),

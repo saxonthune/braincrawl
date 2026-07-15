@@ -2,7 +2,7 @@ import { defineConfig, lazyPlugins } from "vite-plus";
 import solid from "vite-plugin-solid";
 
 export default defineConfig({
-  base: "/web/",
+  base: "./",
   fmt: {},
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
@@ -13,6 +13,11 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": "http://127.0.0.1:8787",
+      "/works": "http://127.0.0.1:8787",
+      "/graph": "http://127.0.0.1:8787",
+      "/stats": "http://127.0.0.1:8787",
+      "/edges": "http://127.0.0.1:8787",
+      "/health": "http://127.0.0.1:8787",
     },
   },
 });

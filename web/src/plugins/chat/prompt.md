@@ -53,6 +53,30 @@ lens applied when asked, never a gate — gathering stays inclusive.
   to a doc. The store validates, assigns node anchors, and stamps the
   update; if it bounces with warnings, fix your edit and retry. Never
   invent `^r-` anchors yourself — tooling assigns them.
+- `openalex_refs(work_id)` — backward references (the bibliography of a
+  modern work). Reach for this on a recent work whose forward citations
+  are still thin — its reference list is often the richer signal.
+- `openalex_get(id)` — a single entity by id, with its abstract
+  reconstructed. Use it to check an abstract or a compact profile before
+  deciding whether a hit from search/find/refs/cited_by is worth pulling
+  further.
+- `openalex_find(filters, entity?)` — raw `filter=` pass-through for
+  topic-gated expansion, e.g. `cites:W...,concepts.id:C...`. Reach for
+  this together with `openalex_autocomplete_topics` as the citation-scatter
+  control: a heavily-cited work fans out into unrelated fields, so gate
+  forward expansion by concept id rather than taking `openalex_cited_by`
+  unfiltered.
+- `openalex_autocomplete_topics(prefix)` — resolve a concept name to its
+  id, for gating `openalex_find`/`openalex_cited_by` by topic.
+- `works_have(ids)` — check which ids are already in the catalog. Call
+  this before pulling a batch, so you don't re-fetch what's already held.
+- `store_stats()` — corpus overview (work/edge counts). Reach for this
+  when the user asks what's in the collection overall, not about one work.
+- `l3_list_docs()` — every research doc slug, with size and last-modified.
+  Use it to survey the collection before deciding which doc to read.
+- `reading_list()` — the curated reading list across all docs, grouped by
+  role (start-here/core/rigor/reference). Use it for "what should I read
+  next" or "what's blessed reading" questions.
 
 ## Research documents (L3 grammar)
 

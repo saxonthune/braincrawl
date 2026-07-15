@@ -139,3 +139,11 @@ web-test:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{justfile_directory()}}/web && vp test
+
+# Build the web app + deploy the worker (assets + API) as one unit. Requires
+# apps/worker/wrangler.toml (mirror the [assets] block from wrangler.toml.example
+# if you haven't already).
+deploy-worker: web-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/apps/worker && wrangler deploy

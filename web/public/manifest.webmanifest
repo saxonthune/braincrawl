@@ -1,0 +1,20 @@
+{
+  "name": "braincrawl",
+  "short_name": "braincrawl",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ede6ff",
+  "theme_color": "#863bff",
+  "icons": [
+    {
+      "src": "icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

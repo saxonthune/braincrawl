@@ -193,9 +193,24 @@ impl StoreClient {
         source: Option<&str>,
         source_url: Option<&str>,
     ) -> Result<()> {
-        let url = format!("{}/works/{}/content/{}", self.base_url, alias, kind);
         let fetched_at = rfc3339_now();
-        let params = build_put_content_params(mime, source, source_url, &fetched_at);
+        self.put_content_with_fetched_at(alias, kind, bytes, mime, source, source_url, &fetched_at)
+    }
+
+    /// Same as `put_content`, but with a caller-supplied `fetched_at` instead of "now" —
+    /// used by migration replay to preserve the original provenance timestamp.
+    pub fn put_content_with_fetched_at(
+        &self,
+        alias: &str,
+        kind: &str,
+        bytes: Vec<u8>,
+        mime: &str,
+        source: Option<&str>,
+        source_url: Option<&str>,
+        fetched_at: &str,
+    ) -> Result<()> {
+        let url = format!("{}/works/{}/content/{}", self.base_url, alias, kind);
+        let params = build_put_content_params(mime, source, source_url, fetched_at);
         let resp = self
             .apply_auth(self.http.put(&url).query(&params).body(bytes))
             .send()?;

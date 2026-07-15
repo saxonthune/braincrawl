@@ -12,9 +12,14 @@ use worker::{Bucket, Headers, Request, Response, Url};
 
 const PREFIX: &str = "l3/";
 const SUFFIX: &str = ".l3.md";
+const PREV_PREFIX: &str = "l3-prev/";
 
 fn doc_key(slug: &str) -> String {
     format!("{PREFIX}{slug}{SUFFIX}")
+}
+
+fn prev_doc_key(slug: &str) -> String {
+    format!("{PREV_PREFIX}{slug}{SUFFIX}")
 }
 
 fn slug_from_key(key: &str) -> Option<String> {
@@ -73,11 +78,16 @@ pub async fn handle_list_docs(bucket: &Bucket) -> worker::Result<Response> {
 
 // ── GET /api/l3/docs/{slug} ───────────────────────────────────────────────────
 
-pub async fn handle_get_doc(slug: &str, bucket: &Bucket) -> worker::Result<Response> {
+pub async fn handle_get_doc(slug: &str, url: &Url, bucket: &Bucket) -> worker::Result<Response> {
     if !is_valid_slug(slug) {
         return bad_request("invalid slug");
     }
-    match get_doc_text(bucket, &doc_key(slug)).await? {
+    let key = if url.query_pairs().any(|(k, v)| k == "version" && v == "prev") {
+        prev_doc_key(slug)
+    } else {
+        doc_key(slug)
+    };
+    match get_doc_text(bucket, &key).await? {
         Some(text) => {
             let headers = Headers::new();
             headers.set("Content-Type", "text/markdown; charset=utf-8")?;
@@ -118,6 +128,9 @@ pub async fn handle_put_doc(
             Ok(Response::from_json(&serde_json::json!({"conflicts": conflicts}))?.with_status(409))
         }
         l3::NormalizeOutcome::Normalized { content: final_content, .. } => {
+            if let Some(previous) = get_doc_text(bucket, &doc_key(slug)).await? {
+                bucket.put(prev_doc_key(slug), previous.into_bytes()).execute().await?;
+            }
             bucket
                 .put(doc_key(slug), final_content.clone().into_bytes())
                 .execute()

@@ -36,6 +36,13 @@ if [[ ! -f "$WORKER_DIR/wrangler.toml" ]]; then
     cp "$WORKER_DIR/wrangler.toml.example" "$WORKER_DIR/wrangler.toml"
 fi
 
+# 0b. `[assets].directory` points at web/dist; wrangler dev refuses to start if
+#     it's missing (fresh checkout, never built). Build it once rather than
+#     making the config existence-tolerant.
+if [[ ! -d "$REPO_ROOT/web/dist" ]]; then
+    (cd "$REPO_ROOT/web" && pnpm install && pnpm build)
+fi
+
 # 1. Fresh emulator state.
 rm -rf "$PERSIST_DIR"
 

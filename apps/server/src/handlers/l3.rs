@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use crate::AppState;
 
 const FILE_SUFFIX: &str = ".l3.md";
+const PREV_DIR: &str = "_prev";
 const AGENT_DIR: &str = "_agent";
 const AGENT_SUFFIX: &str = ".md";
 const AGENT_MAX_BYTES: usize = 64 * 1024;
@@ -132,6 +133,10 @@ fn doc_path(root: &Path, slug: &str) -> PathBuf {
     root.join(format!("{slug}{FILE_SUFFIX}"))
 }
 
+fn prev_doc_path(root: &Path, slug: &str) -> PathBuf {
+    root.join(PREV_DIR).join(format!("{slug}{FILE_SUFFIX}"))
+}
+
 fn agent_path(root: &Path, name: &str) -> PathBuf {
     root.join(AGENT_DIR).join(format!("{name}{AGENT_SUFFIX}"))
 }
@@ -176,20 +181,25 @@ pub async fn handler_l3_docs_list(State(state): State<AppState>) -> Response {
 pub async fn handler_l3_doc_get(
     State(state): State<AppState>,
     AxumPath(slug): AxumPath<String>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     let Some(root) = state.l3_root.clone() else { return root_missing() };
     if !is_valid_name(&slug) {
         return bad_request("invalid slug");
     }
+    let prev = params.get("version").map(|v| v == "prev").unwrap_or(false);
 
-    tokio::task::spawn_blocking(move || match std::fs::read_to_string(doc_path(&root, &slug)) {
+    tokio::task::spawn_blocking(move || {
+        let path = if prev { prev_doc_path(&root, &slug) } else { doc_path(&root, &slug) };
+        match std::fs::read_to_string(path) {
         Ok(text) => (
             StatusCode::OK,
             [(axum::http::header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
             text,
         )
             .into_response(),
-        Err(_) => not_found(),
+            Err(_) => not_found(),
+        }
     })
     .await
     .expect("blocking task panicked")
@@ -236,6 +246,17 @@ pub async fn handler_l3_doc_put(
             )
                 .into_response(),
             l3::NormalizeOutcome::Normalized { content: final_content, .. } => {
+                if target_path.exists() {
+                    let prev_path = prev_doc_path(&root, &slug);
+                    if let Some(parent) = prev_path.parent() {
+                        if std::fs::create_dir_all(parent).is_err() {
+                            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                        }
+                    }
+                    if std::fs::copy(&target_path, &prev_path).is_err() {
+                        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                    }
+                }
                 if let Some(parent) = target_path.parent() {
                     if std::fs::create_dir_all(parent).is_err() {
                         return StatusCode::INTERNAL_SERVER_ERROR.into_response();

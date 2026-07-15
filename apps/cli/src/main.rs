@@ -6,6 +6,7 @@ use braincrawl_cli::pdf_text;
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
 use braincrawl_cli::fetch_content;
+use braincrawl_cli::migrate;
 use braincrawl_cli::openalex::client::OpenAlexClient;
 use braincrawl_cli::openalex::OpenAlexProvider;
 use braincrawl_cli::output::{Envelope, QueryMeta, render};
@@ -355,6 +356,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Namespace::Web => {
             braincrawl_cli::web::print_url(&config);
+        }
+        Namespace::MigrateStore(args) => {
+            let store = StoreClient::new(&config.server_url)
+                .with_token(config.auth_token.clone());
+            let migrate_opts = migrate::MigrateOpts::resolve(args.db, args.blobs, args.dry_run);
+            let report = migrate::run(&migrate_opts, &store)?;
+            migrate::print_report(&report, migrate_opts.dry_run);
+            let stats = store.stats()?;
+            eprintln!("--- remote stats ---");
+            render_stats(&stats, &opts);
         }
         Namespace::Get(args) => {
             let store = StoreClient::new(&config.server_url)

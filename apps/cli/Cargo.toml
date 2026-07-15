@@ -25,6 +25,7 @@ pdf-extract = "0.7"
 text-splitter = { version = "0.32", features = ["tiktoken-rs"] }
 tiktoken-rs = "0.12"
 sha2 = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 braincrawl-server = { path = "../server", package = "braincrawl-server-lib" }

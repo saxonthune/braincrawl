@@ -72,6 +72,21 @@ pub enum Namespace {
     Chunk(ChunkArgs),
     #[command(about = "Print the Web UI URL for the configured server")]
     Web,
+    #[command(name = "migrate-store", about = "Replay the local SQLite + blob corpus into a remote store over its HTTP API")]
+    MigrateStore(MigrateStoreArgs),
+}
+
+#[derive(Args)]
+pub struct MigrateStoreArgs {
+    /// Path to the local SQLite database (default: $HOME/.local/share/braincrawl/braincrawl.db)
+    #[arg(long)]
+    pub db: Option<String>,
+    /// Path to the local blob root directory (default: $HOME/.local/share/braincrawl/blobs)
+    #[arg(long)]
+    pub blobs: Option<String>,
+    /// Print the plan counts without pushing any work, edge, or artifact
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 #[derive(Args)]

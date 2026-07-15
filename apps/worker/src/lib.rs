@@ -489,7 +489,7 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
         }
         if let Some(slug) = rest.strip_prefix("docs/") {
             match method {
-                Method::Get => return l3::handle_get_doc(slug, &bucket).await,
+                Method::Get => return l3::handle_get_doc(slug, &url, &bucket).await,
                 Method::Put => return l3::handle_put_doc(slug, &url, req, &bucket).await,
                 _ => {}
             }

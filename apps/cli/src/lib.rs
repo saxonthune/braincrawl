@@ -4,6 +4,7 @@ pub mod cli;
 pub mod config;
 pub mod fetch_content;
 pub mod l3;
+pub mod migrate;
 pub mod openalex;
 pub mod output;
 pub mod pdf_text;

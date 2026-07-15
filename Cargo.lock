@@ -271,6 +271,7 @@ dependencies = [
  "pdf-extract",
  "quick-xml",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
