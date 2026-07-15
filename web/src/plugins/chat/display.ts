@@ -24,7 +24,11 @@ function isNotice(text: string): boolean {
   return NOTICE_PREFIXES.includes(text) || text.startsWith("Turn failed: ");
 }
 
-function findToolResult(messages: ChatMessage[], fromIndex: number, toolUseId: string): ToolResultBlock | undefined {
+function findToolResult(
+  messages: ChatMessage[],
+  fromIndex: number,
+  toolUseId: string,
+): ToolResultBlock | undefined {
   for (let i = fromIndex; i < messages.length; i++) {
     const message = messages[i];
     if (message.role !== "user") continue;
@@ -43,10 +47,7 @@ function toolState(result: ToolResultBlock | undefined, input: unknown): ToolSta
   return { status: "ok", input, output: result.content };
 }
 
-export function toDisplayItems(
-  session: ChatSession,
-  opts: { streaming: boolean },
-): DisplayItem[] {
+export function toDisplayItems(session: ChatSession, opts: { streaming: boolean }): DisplayItem[] {
   const messages = session.messages;
   const items: DisplayItem[] = [];
 

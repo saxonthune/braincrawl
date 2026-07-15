@@ -148,7 +148,9 @@ describe("toDisplayItems", () => {
     const s = session([
       {
         role: "assistant",
-        content: [{ type: "text", text: "[stopped: reached the per-turn tool-call iteration cap]" }],
+        content: [
+          { type: "text", text: "[stopped: reached the per-turn tool-call iteration cap]" },
+        ],
       },
     ]);
     const items = toDisplayItems(s, { streaming: false });
