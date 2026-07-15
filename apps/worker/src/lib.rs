@@ -392,8 +392,42 @@ async fn handle_put_content(
 
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
+/// Stamp `Access-Control-Allow-Origin: *` onto any response — success or
+/// error — since the PWA client authenticates via bearer header, not cookies,
+/// making a wildcard origin safe.
+fn with_cors(resp: worker::Result<Response>) -> worker::Result<Response> {
+    let resp = resp?;
+    resp.headers().set("Access-Control-Allow-Origin", "*")?;
+    Ok(resp)
+}
+
+fn cors_preflight_response() -> worker::Result<Response> {
+    let headers = Headers::new();
+    headers.set("Access-Control-Allow-Origin", "*")?;
+    headers.set("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS")?;
+    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type")?;
+    headers.set("Access-Control-Max-Age", "86400")?;
+    Ok(Response::empty()?.with_status(204).with_headers(headers))
+}
+
 #[event(fetch)]
 async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+    if req.method() == Method::Options {
+        return cors_preflight_response();
+    }
+    with_cors(route(req, env).await)
+}
+
+async fn route(req: Request, env: Env) -> worker::Result<Response> {
+    let url = req.url()?;
+    let path = url.path();
+    let method = req.method();
+
+    // GET /health — unauthenticated liveness probe.
+    if method == Method::Get && path == "/health" {
+        return Response::from_json(&serde_json::json!({"status": "ok", "service": "braincrawl"}));
+    }
+
     // ── Auth gate ─────────────────────────────────────────────────────────────
     let secret = match env.secret("AUTH_TOKEN") {
         Ok(s) => s.to_string(),
@@ -411,9 +445,6 @@ async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response>
     // ─────────────────────────────────────────────────────────────────────────
 
     let store = build_store(&env)?;
-    let url = req.url()?;
-    let path = url.path();
-    let method = req.method();
 
     // POST /works/have
     if method == Method::Post && path == "/works/have" {

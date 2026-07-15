@@ -19,6 +19,59 @@ pub fn run_all(base_url: &str, token: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+/// GET `/health` with no Authorization header — checks the worker's
+/// unauthenticated liveness probe stays reachable behind the auth gate.
+pub fn check_health(base_url: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let res = client
+        .get(format!("{base_url}/health"))
+        .send()
+        .map_err(|e| format!("check_health: GET /health failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_health: expected 200, got {}", res.status()));
+    }
+    let body: Value = res.json()
+        .map_err(|e| format!("check_health: response parse failed: {e}"))?;
+    if body["status"] != "ok" {
+        return Err(format!("check_health: expected status=ok, got {:?}", body["status"]));
+    }
+    Ok(())
+}
+
+/// OPTIONS `/works/have` preflight with no Authorization header — checks the
+/// worker answers CORS preflights before the auth gate.
+pub fn check_cors_preflight(base_url: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let res = client
+        .request(reqwest::Method::OPTIONS, format!("{base_url}/works/have"))
+        .header("Origin", "https://example.invalid")
+        .header("Access-Control-Request-Method", "POST")
+        .send()
+        .map_err(|e| format!("check_cors_preflight: OPTIONS request failed: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("check_cors_preflight: expected 2xx, got {}", res.status()));
+    }
+    let allow_origin = res.headers().get("Access-Control-Allow-Origin")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if allow_origin != "*" {
+        return Err(format!("check_cors_preflight: expected Access-Control-Allow-Origin=*, got {allow_origin:?}"));
+    }
+    let allow_headers = res.headers().get("Access-Control-Allow-Headers")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !allow_headers.contains("Authorization") {
+        return Err(format!("check_cors_preflight: expected Access-Control-Allow-Headers to contain Authorization, got {allow_headers:?}"));
+    }
+    Ok(())
+}
+
 fn auth(req: reqwest::blocking::RequestBuilder, token: Option<&str>) -> reqwest::blocking::RequestBuilder {
     match token {
         Some(t) => req.header("Authorization", format!("Bearer {t}")),

@@ -11,4 +11,6 @@ fn external_conformance() {
     };
     let token = env::var("BRAINCRAWL_CONFORMANCE_TOKEN").ok();
     braincrawl_conformance::run_all(&url, token.as_deref()).unwrap();
+    braincrawl_conformance::check_health(&url).unwrap();
+    braincrawl_conformance::check_cors_preflight(&url).unwrap();
 }
