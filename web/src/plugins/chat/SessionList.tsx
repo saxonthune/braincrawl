@@ -15,7 +15,7 @@ export function SessionList(): JSX.Element {
   };
 
   return (
-    <div>
+    <div class="doc-page">
       <header class="chat-session-list-header">
         <h2>Chat sessions</h2>
         <div>
@@ -56,6 +56,7 @@ export function SessionList(): JSX.Element {
           },
         ]}
         rows={rows()}
+        empty="No chat sessions yet."
       />
     </div>
   );

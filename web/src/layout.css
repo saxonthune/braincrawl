@@ -1,0 +1,34 @@
+/* Layout primitives — views arrange content only by composing these.
+   Gap steps come from the space scale; no component sets its own outer margin. */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap, var(--space-4));
+}
+
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap, var(--space-2));
+}
+
+.gap-1 {
+  --gap: var(--space-1);
+}
+.gap-2 {
+  --gap: var(--space-2);
+}
+.gap-3 {
+  --gap: var(--space-3);
+}
+.gap-4 {
+  --gap: var(--space-4);
+}
+.gap-5 {
+  --gap: var(--space-5);
+}
+.gap-6 {
+  --gap: var(--space-6);
+}

@@ -1,4 +1,4 @@
-import { createSignal, For, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 
 export interface DataTableColumn<T> {
   key: string;
@@ -10,6 +10,7 @@ export interface DataTableColumn<T> {
 export interface DataTableProps<T> {
   columns: DataTableColumn<T>[];
   rows: T[];
+  empty?: string;
 }
 
 export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
@@ -42,28 +43,38 @@ export function DataTable<T>(props: DataTableProps<T>): JSX.Element {
   };
 
   return (
-    <table class="data-table">
-      <thead>
-        <tr>
-          <For each={props.columns}>
-            {(column) => (
-              <th classList={{ sortable: !!column.sortValue }} onClick={() => toggleSort(column)}>
-                {column.header}
-                {sortKey() === column.key ? (sortDir() === 1 ? " ▲" : " ▼") : ""}
-              </th>
-            )}
-          </For>
-        </tr>
-      </thead>
-      <tbody>
-        <For each={sortedRows()}>
-          {(row) => (
+    <Show
+      when={props.rows.length > 0}
+      fallback={<p class="data-table-empty">{props.empty ?? "No entries yet."}</p>}
+    >
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
             <tr>
-              <For each={props.columns}>{(column) => <td>{column.render(row)}</td>}</For>
+              <For each={props.columns}>
+                {(column) => (
+                  <th
+                    classList={{ sortable: !!column.sortValue }}
+                    onClick={() => toggleSort(column)}
+                  >
+                    {column.header}
+                    {sortKey() === column.key ? (sortDir() === 1 ? " ▲" : " ▼") : ""}
+                  </th>
+                )}
+              </For>
             </tr>
-          )}
-        </For>
-      </tbody>
-    </table>
+          </thead>
+          <tbody>
+            <For each={sortedRows()}>
+              {(row) => (
+                <tr>
+                  <For each={props.columns}>{(column) => <td>{column.render(row)}</td>}</For>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+      </div>
+    </Show>
   );
 }

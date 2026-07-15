@@ -1,6 +1,6 @@
-import { createMemo, For, type JSX } from "solid-js";
-import { DataTable } from "../components/DataTable";
+import { createMemo, For, Show, type JSX } from "solid-js";
 import { RequireGraph } from "../components/RequireGraph";
+import { WorkLink } from "../components/WorkLink";
 import { endpointNodeId, useGraphData, type GraphData } from "../graph";
 import type { Plugin } from "./types";
 
@@ -56,36 +56,43 @@ function ReadingListComponent(): JSX.Element {
   const groups = createMemo(() => groupByRole(readingRows(graph())));
 
   return (
-    <div>
-      <For each={[...groups().entries()]}>
-        {([role, rows]) => (
-          <section>
-            <h2>{role}</h2>
-            <DataTable
-              columns={[
-                {
-                  key: "work",
-                  header: "Work",
-                  sortValue: (row: ReadingRow) => row.workId ?? "",
-                  render: (row: ReadingRow) => row.workId ?? "—",
-                },
-                {
-                  key: "why",
-                  header: "Why",
-                  render: (row: ReadingRow) => row.why,
-                },
-                {
-                  key: "doc",
-                  header: "Source",
-                  sortValue: (row: ReadingRow) => row.doc,
-                  render: (row: ReadingRow) => <a href={`#/doc/${row.doc}`}>{row.doc}</a>,
-                },
-              ]}
-              rows={rows}
-            />
-          </section>
-        )}
-      </For>
+    <div class="doc-page stack gap-5">
+      <Show when={groups().size > 0} fallback={<p>No reading entries yet.</p>}>
+        <For each={[...groups().entries()]}>
+          {([role, rows]) => (
+            <section class="stack gap-2">
+              <h2 class="section-label">{role}</h2>
+              <div class="card node-card">
+                <div class="card-section">
+                  <ul class="row-list">
+                    <For each={rows}>
+                      {(row) => (
+                        <li class="stack gap-1">
+                          <div class="cluster gap-2">
+                            <Show when={row.workId} fallback={<span>—</span>}>
+                              {(workId) => (
+                                <span class="edge">
+                                  <WorkLink target={workId()} />
+                                </span>
+                              )}
+                            </Show>
+                            <span class="edge">
+                              in <a href={`#/doc/${row.doc}`}>{row.doc}</a>
+                            </span>
+                          </div>
+                          <Show when={row.why}>
+                            <p class="why">{row.why}</p>
+                          </Show>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </div>
+              </div>
+            </section>
+          )}
+        </For>
+      </Show>
     </div>
   );
 }
@@ -93,7 +100,14 @@ function ReadingListComponent(): JSX.Element {
 export const readingList: Plugin = {
   id: "reading-list",
   routes: [
-    { path: "/reading-list", component: () => <RequireGraph><ReadingListComponent /></RequireGraph> },
+    {
+      path: "/reading-list",
+      component: () => (
+        <RequireGraph>
+          <ReadingListComponent />
+        </RequireGraph>
+      ),
+    },
   ],
   nav: { label: "Reading list", path: "/reading-list" },
 };
