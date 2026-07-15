@@ -1,5 +1,6 @@
 import { createMemo, For, type JSX } from "solid-js";
 import { DataTable } from "../components/DataTable";
+import { RequireGraph } from "../components/RequireGraph";
 import { endpointNodeId, useGraphData, type GraphData } from "../graph";
 import type { Plugin } from "./types";
 
@@ -91,6 +92,8 @@ function ReadingListComponent(): JSX.Element {
 
 export const readingList: Plugin = {
   id: "reading-list",
-  routes: [{ path: "/reading-list", component: ReadingListComponent }],
+  routes: [
+    { path: "/reading-list", component: () => <RequireGraph><ReadingListComponent /></RequireGraph> },
+  ],
   nav: { label: "Reading list", path: "/reading-list" },
 };

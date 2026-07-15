@@ -1,4 +1,4 @@
-import { For, Match, Switch, type JSX } from "solid-js";
+import { For, type JSX } from "solid-js";
 import { A, HashRouter, Route } from "@solidjs/router";
 import { GraphProvider, useGraph } from "./graph";
 import { plugins } from "./plugins";
@@ -23,23 +23,13 @@ function Nav(): JSX.Element {
 }
 
 function Shell(props: { children?: JSX.Element }): JSX.Element {
-  const { graph } = useGraph();
   return (
     <>
       <header>
         <h1>braincrawl</h1>
         <Nav />
       </header>
-      <main>
-        <Switch fallback={<p>Loading graph…</p>}>
-          <Match when={graph.error}>
-            <p class="error">
-              Failed to load the graph: {String(graph.error?.message ?? graph.error)}
-            </p>
-          </Match>
-          <Match when={graph()}>{props.children}</Match>
-        </Switch>
-      </main>
+      <main>{props.children}</main>
     </>
   );
 }

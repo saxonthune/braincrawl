@@ -1,6 +1,7 @@
 import { createMemo, Show, type JSX } from "solid-js";
 import { useParams } from "@solidjs/router";
 import { DataTable } from "../components/DataTable";
+import { RequireGraph } from "../components/RequireGraph";
 import { useGraphData, type GraphNode } from "../graph";
 import type { Plugin } from "./types";
 
@@ -109,8 +110,8 @@ function DocumentDetail(): JSX.Element {
 export const documentIndex: Plugin = {
   id: "document-index",
   routes: [
-    { path: "/", component: DocumentList },
-    { path: "/doc/:slug", component: DocumentDetail },
+    { path: "/", component: () => <RequireGraph><DocumentList /></RequireGraph> },
+    { path: "/doc/:slug", component: () => <RequireGraph><DocumentDetail /></RequireGraph> },
   ],
   nav: { label: "Documents", path: "/" },
 };

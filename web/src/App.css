@@ -41,3 +41,83 @@ main {
   cursor: pointer;
   user-select: none;
 }
+
+.chat-session-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.chat-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 160px);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.chat-message {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.chat-message-user {
+  background: var(--bubble-user, #eef2ff);
+}
+
+.chat-message-assistant {
+  background: var(--bubble-assistant, #f5f5f5);
+}
+
+.chat-message-role {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+.chat-block-tool,
+.chat-block-tool-result {
+  margin: 4px 0;
+}
+
+.chat-block-error {
+  color: #c0392b;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-input textarea {
+  flex: 1;
+  min-height: 60px;
+  resize: vertical;
+}
+
+.chat-settings-field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.chat-settings-password-row {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-settings-note {
+  opacity: 0.7;
+  font-size: 13px;
+}
