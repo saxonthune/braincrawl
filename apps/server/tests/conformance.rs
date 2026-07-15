@@ -4,7 +4,10 @@ use braincrawl_auth::SharedSecret;
 use braincrawl_server_lib::{make_app, make_store, AuthConfig};
 use tokio::net::TcpListener;
 
-async fn start_server(dir: &std::path::Path) -> (String, tokio::task::JoinHandle<()>) {
+async fn start_server(
+    dir: &std::path::Path,
+    l3_root: Option<std::path::PathBuf>,
+) -> (String, tokio::task::JoinHandle<()>) {
     let db_path = dir.join("test.db").to_string_lossy().to_string();
     let blob_root = dir.join("blobs").to_string_lossy().to_string();
     std::fs::create_dir_all(dir.join("blobs")).unwrap();
@@ -14,7 +17,7 @@ async fn start_server(dir: &std::path::Path) -> (String, tokio::task::JoinHandle
         disabled: true,
         allowlist: SharedSecret::new("", ""),
     });
-    let app = make_app(store, auth, None);
+    let app = make_app(store, auth, l3_root);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -30,10 +33,27 @@ async fn start_server(dir: &std::path::Path) -> (String, tokio::task::JoinHandle
 #[tokio::test]
 async fn conformance_native() {
     let dir = tempfile::tempdir().unwrap();
-    let (base, handle) = start_server(dir.path()).await;
+    let (base, handle) = start_server(dir.path(), None).await;
 
     tokio::task::spawn_blocking(move || {
         braincrawl_conformance::run_all(&base, None).unwrap();
+    })
+    .await
+    .unwrap();
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn conformance_l3_native() {
+    let dir = tempfile::tempdir().unwrap();
+    let l3_root = dir.path().join("l3-root");
+    std::fs::create_dir_all(&l3_root).unwrap();
+    let (base, handle) = start_server(dir.path(), Some(l3_root)).await;
+
+    tokio::task::spawn_blocking(move || {
+        braincrawl_conformance::check_l3_docs(&base, "unused").unwrap();
+        braincrawl_conformance::check_l3_agent_files(&base, "unused").unwrap();
     })
     .await
     .unwrap();

@@ -462,6 +462,16 @@ pub fn make_app(store: Arc<LocalStore>, auth: Arc<AuthConfig>, l3_root: Option<P
         .route("/graph/neighborhood", post(handler_neighborhood))
         .route("/stats", get(handler_stats))
         .route("/api/l3/graph", get(handlers::handler_l3_graph))
+        .route("/api/l3/docs", get(handlers::handler_l3_docs_list))
+        .route(
+            "/api/l3/docs/:slug",
+            get(handlers::handler_l3_doc_get).put(handlers::handler_l3_doc_put),
+        )
+        .route("/api/l3/agent", get(handlers::handler_l3_agent_list))
+        .route(
+            "/api/l3/agent/:name",
+            get(handlers::handler_l3_agent_get).put(handlers::handler_l3_agent_put),
+        )
         .route("/api/events", get(handlers::handler_events))
         .merge(works_wildcard)
         .layer(axum::middleware::from_fn_with_state(auth, gate))

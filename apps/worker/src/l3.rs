@@ -8,7 +8,6 @@
 //! separate, file-shaped R2 prefix.
 
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
 use worker::{Bucket, Headers, Request, Response, Url};
 
 const PREFIX: &str = "l3/";
@@ -102,48 +101,33 @@ pub async fn handle_put_doc(
     let force = url.query_pairs().any(|(k, v)| k == "force" && v == "1");
     let body = req.text().await?;
 
-    let (incoming_graph, incoming_warnings) = l3::parse_sources(&[(slug.to_string(), body.clone())]);
-    // "heading without anchor" is the expected, normal case a write resolves via
-    // assign_ids_source below — it never blocks a write. Every other warning kind
-    // (malformed flow map, missing frontmatter, ...) means a garbled edit and blocks.
-    let blocking_warnings: Vec<_> =
-        incoming_warnings.iter().filter(|w| w.message != "heading without anchor").collect();
-    if !blocking_warnings.is_empty() && !force {
-        let warnings: Vec<_> = blocking_warnings
-            .iter()
-            .map(|w| serde_json::json!({"doc": w.doc, "line": w.line, "message": w.message}))
-            .collect();
-        return Ok(Response::from_json(&serde_json::json!({"warnings": warnings}))?.with_status(400));
-    }
-
     let existing_docs = load_all_docs(bucket).await?;
     let other_docs: Vec<(String, String)> =
         existing_docs.into_iter().filter(|(s, _)| s != slug).collect();
-    let other_anchors = l3::collect_anchors(&other_docs);
-
-    let incoming_ids: HashSet<String> =
-        incoming_graph.nodes.iter().filter_map(|n| n.id.as_ref().map(|id| id.0.clone())).collect();
-    let mut conflicts: Vec<&String> = incoming_ids.intersection(&other_anchors).collect();
-    if !conflicts.is_empty() {
-        conflicts.sort();
-        return Ok(Response::from_json(&serde_json::json!({"conflicts": conflicts}))?.with_status(409));
-    }
-
-    let mut anchors = other_anchors;
-    anchors.extend(incoming_ids);
-    let (assigned_content, _assigned) = l3::assign_ids_source(&body, &mut anchors);
 
     let today = crate::today_utc_date();
-    let final_content = l3::upsert_frontmatter_key(&assigned_content, "updated", &today);
+    match l3::normalize_doc(slug, &body, &other_docs, &today, force) {
+        l3::NormalizeOutcome::BlockingWarnings(blocking_warnings) => {
+            let warnings: Vec<_> = blocking_warnings
+                .iter()
+                .map(|w| serde_json::json!({"doc": w.doc, "line": w.line, "message": w.message}))
+                .collect();
+            Ok(Response::from_json(&serde_json::json!({"warnings": warnings}))?.with_status(400))
+        }
+        l3::NormalizeOutcome::AnchorConflicts(conflicts) => {
+            Ok(Response::from_json(&serde_json::json!({"conflicts": conflicts}))?.with_status(409))
+        }
+        l3::NormalizeOutcome::Normalized { content: final_content, .. } => {
+            bucket
+                .put(doc_key(slug), final_content.clone().into_bytes())
+                .execute()
+                .await?;
 
-    bucket
-        .put(doc_key(slug), final_content.clone().into_bytes())
-        .execute()
-        .await?;
-
-    let headers = Headers::new();
-    headers.set("Content-Type", "text/markdown; charset=utf-8")?;
-    Ok(Response::ok(final_content)?.with_headers(headers))
+            let headers = Headers::new();
+            headers.set("Content-Type", "text/markdown; charset=utf-8")?;
+            Ok(Response::ok(final_content)?.with_headers(headers))
+        }
+    }
 }
 
 // ── GET /api/l3/graph ──────────────────────────────────────────────────────────

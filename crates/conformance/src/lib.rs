@@ -72,8 +72,10 @@ pub fn check_cors_preflight(base_url: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Worker-only: the R2-backed L3 doc routes (`/api/l3/*`). Not part of
-/// `run_all` since the native server has no such routes.
+/// The L3 doc routes (`/api/l3/*`), backed by R2 on the worker and the
+/// filesystem on the native server — both must satisfy this check verbatim.
+/// Not part of `run_all` since it needs an L3 root/bucket configured, which
+/// `run_all`'s callers don't always set up.
 pub fn check_l3_docs(base_url: &str, token: &str) -> Result<(), String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
@@ -170,8 +172,9 @@ pub fn check_l3_docs(base_url: &str, token: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Worker-only: the opaque `/api/l3/agent/*` context-file routes. Not part of
-/// `run_all` since the native server has no such routes. See
+/// The opaque `/api/l3/agent/*` context-file routes, backed by R2 on the
+/// worker and the filesystem on the native server. Not part of `run_all`
+/// since it needs an L3 root/bucket configured. See
 /// `.todo-tasks/tasks/worker-l3-agent-files.md`.
 pub fn check_l3_agent_files(base_url: &str, token: &str) -> Result<(), String> {
     let client = Client::builder()
