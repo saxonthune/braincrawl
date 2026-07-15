@@ -1,5 +1,5 @@
 import corePrompt from "./prompt.md?raw";
-import { getSetting } from "./settings";
+import { storeFetch } from "../../services/store";
 import type { ActiveBook } from "./types";
 
 export interface SystemBlock {
@@ -8,19 +8,9 @@ export interface SystemBlock {
   cache_control?: { type: "ephemeral" };
 }
 
-function storeUrl(path: string): string {
-  const base = getSetting("storeBaseUrl").replace(/\/$/, "");
-  return `${base}${path}`;
-}
-
-function storeHeaders(): Record<string, string> {
-  const token = getSetting("storeToken");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function fetchAgentFile(name: string): Promise<string | null> {
   try {
-    const res = await fetch(storeUrl(`/api/l3/agent/${name}`), { headers: storeHeaders() });
+    const res = await storeFetch(`/api/l3/agent/${name}`);
     if (!res.ok) return null;
     return await res.text();
   } catch {
@@ -30,9 +20,7 @@ async function fetchAgentFile(name: string): Promise<string | null> {
 
 async function fetchDoc(slug: string): Promise<string | null> {
   try {
-    const res = await fetch(storeUrl(`/api/l3/docs/${encodeURIComponent(slug)}`), {
-      headers: storeHeaders(),
-    });
+    const res = await storeFetch(`/api/l3/docs/${encodeURIComponent(slug)}`);
     if (!res.ok) return null;
     return await res.text();
   } catch {

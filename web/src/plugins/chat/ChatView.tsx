@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
 import { useParams } from "@solidjs/router";
-import { getSetting } from "./settings";
+import { getSetting } from "../../services/settings";
+import { storeFetch } from "../../services/store";
 import { appendMessage, setActiveBook, useChatStore } from "./store";
 import { anthropicTransport, needsResume, resumeTurn } from "./transport";
 import { stubTransport, type ChatMessage, type ChatSession, type ContentBlock, type Transport } from "./types";
@@ -67,11 +68,7 @@ function ActiveBookHeader(props: { session: ChatSession }): JSX.Element {
     if (!id || !slug) return;
     let title = id;
     try {
-      const base = getSetting("storeBaseUrl").replace(/\/$/, "");
-      const token = getSetting("storeToken");
-      const res = await fetch(`${base}/works/${encodeURIComponent(id)}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await storeFetch(`/works/${encodeURIComponent(id)}`);
       if (res.ok) {
         const work = (await res.json()) as { attrs?: { display_name?: string; title?: string } };
         title = work.attrs?.display_name ?? work.attrs?.title ?? id;

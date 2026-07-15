@@ -335,6 +335,51 @@ pub fn check_l3_prev_backup(base_url: &str, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `request-code` for an arbitrary (unallowlisted) address must answer the
+/// same uniform 200 as an allowlisted one, and `verify` with a bogus code
+/// must 401 — exercised with no `ALLOWED_EMAILS`/`RESEND_API_KEY` secrets
+/// configured, so this only proves the uniform-response branch, not delivery.
+pub fn check_auth_otp_uniform(base_url: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+
+    let res = client
+        .post(format!("{base_url}/api/auth/request-code"))
+        .json(&serde_json::json!({"email": "conformance-otp-smoke@example.invalid"}))
+        .send()
+        .map_err(|e| format!("check_auth_otp_uniform: POST request-code failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!(
+            "check_auth_otp_uniform: POST request-code expected 200, got {}",
+            res.status()
+        ));
+    }
+    let body: Value = res.json()
+        .map_err(|e| format!("check_auth_otp_uniform: request-code response parse failed: {e}"))?;
+    if body["ok"] != true {
+        return Err(format!("check_auth_otp_uniform: expected ok=true, got {body:?}"));
+    }
+
+    let res = client
+        .post(format!("{base_url}/api/auth/verify"))
+        .json(&serde_json::json!({
+            "email": "conformance-otp-smoke@example.invalid",
+            "code": "000000",
+        }))
+        .send()
+        .map_err(|e| format!("check_auth_otp_uniform: POST verify failed: {e}"))?;
+    if res.status() != 401 {
+        return Err(format!(
+            "check_auth_otp_uniform: POST verify (bogus code) expected 401, got {}",
+            res.status()
+        ));
+    }
+
+    Ok(())
+}
+
 fn auth(req: reqwest::blocking::RequestBuilder, token: Option<&str>) -> reqwest::blocking::RequestBuilder {
     match token {
         Some(t) => req.header("Authorization", format!("Bearer {t}")),

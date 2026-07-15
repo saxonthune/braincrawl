@@ -1,4 +1,4 @@
-import { getSetting } from "./settings";
+import { storeFetch } from "../../services/store";
 import { endpointNodeId, type GraphData } from "../../graph";
 
 export interface ToolDefinition {
@@ -41,22 +41,6 @@ function ok(payload: unknown): ToolResult {
 
 function fail(message: string): ToolResult {
   return { content: message, is_error: true };
-}
-
-function storeUrl(path: string): string {
-  const base = getSetting("storeBaseUrl").replace(/\/$/, "");
-  return `${base}${path}`;
-}
-
-function storeHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = getSetting("storeToken");
-  const headers: Record<string, string> = { ...extra };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
-}
-
-async function storeFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(storeUrl(path), { ...init, headers: { ...storeHeaders(), ...(init?.headers as Record<string, string> | undefined) } });
 }
 
 // ── openalex_search ─────────────────────────────────────────────────────────

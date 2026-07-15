@@ -38,12 +38,21 @@ binding = "ID_RESOLVER_KV"
 id = "placeholder-fill-at-deploy"
 # preview_id = "placeholder-fill-for-dev"   # fill for wrangler dev
 
-# AUTH_KV: declared intent for a future multi-token allowlist (SHA-256(token) → {tenant,status}).
-# Not wired in this task; the current gate uses the AUTH_TOKEN shared secret only.
+# AUTH_KV: multi-token allowlist, wired alongside the AUTH_TOKEN shared secret.
+# Entries: key = SHA-256(token) hex, value = {"tenant":<t>,"status":"active"|"revoked"}.
+# Tried only when the shared secret does not match; revoked/absent/malformed entries → 401.
 # Provision the shared secret via: wrangler secret put AUTH_TOKEN
 [[kv_namespaces]]
 binding = "AUTH_KV"
 id = "placeholder-fill-at-deploy"
+
+# EMAIL_FROM: the From header for OTP sign-in emails (see auth_otp module).
+# Two secrets pair with it, both optional for local dev — a missing secret
+# means "nothing sent / nobody allowlisted", not a panic:
+#   wrangler secret put ALLOWED_EMAILS   # comma-separated allowlisted addresses
+#   wrangler secret put RESEND_API_KEY   # Resend API key used to send codes
+[vars]
+EMAIL_FROM = "braincrawl <auth@example.com>"
 
 [durable_objects]
 bindings = [

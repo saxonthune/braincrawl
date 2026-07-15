@@ -7,6 +7,7 @@ import {
   type JSX,
   type Resource,
 } from "solid-js";
+import { storeFetch } from "./services/store";
 
 export type Endpoint = string;
 
@@ -37,7 +38,7 @@ interface GraphContextValue {
 const GraphContext = createContext<GraphContextValue>();
 
 async function fetchGraph(): Promise<GraphData> {
-  const res = await fetch("/api/l3/graph");
+  const res = await storeFetch("/api/l3/graph");
   if (!res.ok) {
     throw new Error(`GET /api/l3/graph failed: ${res.status} ${res.statusText}`);
   }
@@ -46,14 +47,21 @@ async function fetchGraph(): Promise<GraphData> {
 
 /**
  * Subscribes to the server's SSE change feed and calls `refetch` on each
- * "changed" signal. On a static/edge deploy `/api/events` doesn't exist, so
- * `EventSource` fails to connect — that's expected, and we close quietly
- * rather than retrying: the manual Refresh button remains the fallback.
+ * "changed" signal. On a static/edge deploy (the worker) `/api/events`
+ * doesn't exist, so `EventSource` retries the connection forever by default —
+ * close it for good the first time it errors before ever opening, leaving the
+ * manual Refresh button as the fallback there.
  */
 function watchForChanges(refetch: () => void): void {
   const source = new EventSource("/api/events");
+  let opened = false;
+  source.onopen = () => {
+    opened = true;
+  };
   source.onmessage = () => refetch();
-  source.onerror = () => source.close();
+  source.onerror = () => {
+    if (!opened) source.close();
+  };
   onCleanup(() => source.close());
 }
 

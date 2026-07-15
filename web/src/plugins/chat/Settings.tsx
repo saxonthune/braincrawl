@@ -1,5 +1,5 @@
 import { createSignal, type JSX } from "solid-js";
-import { getAllSettings, setSetting } from "./settings";
+import { getAllSettings, setSetting } from "../../services/settings";
 
 function PasswordField(props: {
   label: string;

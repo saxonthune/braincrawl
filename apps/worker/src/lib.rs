@@ -28,6 +28,11 @@
 //! - `GET /api/l3/agent/{name}`
 //! - `PUT /api/l3/agent/{name}`
 //!
+//! Plus unauthenticated email OTP sign-in routes (see `auth_otp` module),
+//! mounted before the auth gate like `/health`:
+//! - `POST /api/auth/request-code`
+//! - `POST /api/auth/verify`
+//!
 //! ## Coordinator note
 //!
 //! `DoCoordinator::with_lock` routes through a `WorkDurableObject` stub keyed by the
@@ -40,6 +45,7 @@
 //! Full per-work serialization across concurrent Worker instances is a design
 //! evolution that requires restructuring the `Coordinator` trait (out of scope here).
 
+mod auth_otp;
 mod l3;
 
 use async_trait::async_trait;
@@ -449,6 +455,15 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
         return Response::from_json(&serde_json::json!({"status": "ok", "service": "braincrawl"}));
     }
 
+    // POST /api/auth/request-code, POST /api/auth/verify — unauthenticated;
+    // these ARE the way in. Mounted before the gate.
+    if method == Method::Post && path == "/api/auth/request-code" {
+        return auth_otp::handle_request_code(req, &env).await;
+    }
+    if method == Method::Post && path == "/api/auth/verify" {
+        return auth_otp::handle_verify(req, &env).await;
+    }
+
     // ── Auth gate ─────────────────────────────────────────────────────────────
     let secret = match env.secret("AUTH_TOKEN") {
         Ok(s) => s.to_string(),
@@ -461,7 +476,23 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
         braincrawl_auth::AuthOutcome::Unauthenticated => {
             return Response::error("unauthorized", 401)
         }
-        braincrawl_auth::AuthOutcome::Forbidden => return Response::error("forbidden", 403),
+        braincrawl_auth::AuthOutcome::Forbidden => {
+            // Shared secret missed — fall back to the AUTH_KV allowlist before rejecting.
+            let kv_authenticated = match braincrawl_auth::parse_bearer(auth_header.as_deref()) {
+                Some(token) => {
+                    let hash = braincrawl_auth::hash_token(token);
+                    let kv = env.kv("AUTH_KV")?;
+                    let text = kv.get(&hash).text().await?;
+                    text.as_deref()
+                        .and_then(braincrawl_auth::parse_kv_entry)
+                        .is_some_and(|entry| entry.is_active())
+                }
+                None => false,
+            };
+            if !kv_authenticated {
+                return Response::error("unauthorized", 401);
+            }
+        }
     }
     // ─────────────────────────────────────────────────────────────────────────
 

@@ -69,6 +69,57 @@ impl Allowlist for SharedSecret {
     }
 }
 
+/// An `AUTH_KV` entry: `SHA-256(token) → KvEntry` (doc02.05).
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct KvEntry {
+    pub tenant: String,
+    pub status: String,
+}
+
+impl KvEntry {
+    pub fn is_active(&self) -> bool {
+        self.status == "active"
+    }
+}
+
+/// Parse a KV value into a `KvEntry`. `None` on malformed JSON.
+pub fn parse_kv_entry(json: &str) -> Option<KvEntry> {
+    serde_json::from_str(json).ok()
+}
+
+/// Trim + lowercase, so `" User@Example.com "` and `user@example.com` compare equal.
+pub fn normalize_email(raw: &str) -> String {
+    raw.trim().to_lowercase()
+}
+
+/// Whether `email` (after normalizing) exact-matches an entry in the
+/// comma-separated `allowlist_csv` (each entry also normalized).
+pub fn email_allowed(allowlist_csv: &str, email: &str) -> bool {
+    let target = normalize_email(email);
+    allowlist_csv
+        .split(',')
+        .map(normalize_email)
+        .any(|entry| !entry.is_empty() && entry == target)
+}
+
+/// An `otp/<sha256(email)>` KV entry: the hash of the outstanding code and
+/// how many wrong guesses have been made against it.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct OtpRecord {
+    pub code_hash: String,
+    pub attempts: u32,
+}
+
+impl OtpRecord {
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("OtpRecord serialization is infallible")
+    }
+
+    pub fn parse(json: &str) -> Option<Self> {
+        serde_json::from_str(json).ok()
+    }
+}
+
 /// Decide an outcome from the raw Authorization header value.
 pub fn authorize(allowlist: &dyn Allowlist, header: Option<&str>) -> AuthOutcome {
     let token = match parse_bearer(header) {
@@ -148,5 +199,55 @@ mod tests {
             authorize(&al, Some("Bearer wrongtoken")),
             AuthOutcome::Forbidden
         ));
+    }
+
+    #[test]
+    fn parse_kv_entry_active() {
+        let entry = parse_kv_entry(r#"{"tenant":"default","status":"active"}"#).unwrap();
+        assert_eq!(entry.tenant, "default");
+        assert!(entry.is_active());
+    }
+
+    #[test]
+    fn parse_kv_entry_revoked_rejected_by_is_active() {
+        let entry = parse_kv_entry(r#"{"tenant":"default","status":"revoked"}"#).unwrap();
+        assert!(!entry.is_active());
+    }
+
+    #[test]
+    fn parse_kv_entry_malformed_json() {
+        assert!(parse_kv_entry("not json").is_none());
+    }
+
+    #[test]
+    fn normalize_email_trims_and_lowercases() {
+        assert_eq!(normalize_email("  User@Example.com  "), "user@example.com");
+    }
+
+    #[test]
+    fn email_allowed_case_and_space_insensitive() {
+        let csv = " Alice@Example.com , bob@example.com";
+        assert!(email_allowed(csv, "alice@example.com"));
+        assert!(email_allowed(csv, "  BOB@EXAMPLE.COM  "));
+        assert!(!email_allowed(csv, "carol@example.com"));
+    }
+
+    #[test]
+    fn email_allowed_empty_csv_matches_nothing() {
+        assert!(!email_allowed("", "alice@example.com"));
+    }
+
+    #[test]
+    fn otp_record_round_trip() {
+        let rec = OtpRecord { code_hash: hash_token("123456"), attempts: 2 };
+        let json = rec.to_json();
+        let parsed = OtpRecord::parse(&json).unwrap();
+        assert_eq!(parsed.code_hash, rec.code_hash);
+        assert_eq!(parsed.attempts, 2);
+    }
+
+    #[test]
+    fn otp_record_parse_malformed() {
+        assert!(OtpRecord::parse("not json").is_none());
     }
 }

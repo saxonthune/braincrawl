@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { callOpenRouter } from "./openaiCompletions";
 import { buildSystemBlocks } from "./prompt";
-import { getSetting } from "./settings";
+import { getSetting } from "../../services/settings";
 import { appendMessage, finalizeAssistantMessage, getSession, setPendingTurn, updateLastAssistantText } from "./store";
 import { findTool, tools } from "./tools";
 import type { ChatMessage, ChatSession, ContentBlock, ModelCall, ToolResultBlock, ToolUseBlock, Transport } from "./types";
