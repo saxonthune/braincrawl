@@ -1,5 +1,3 @@
-import { appendMessage } from "./store";
-
 export interface TextBlock {
   type: "text";
   text: string;
@@ -72,19 +70,3 @@ export interface ChatSession {
 export interface Transport {
   sendTurn(session: ChatSession, onDelta: (text: string) => void): Promise<ChatMessage[]>;
 }
-
-export const stubTransport: Transport = {
-  async sendTurn(session: ChatSession): Promise<ChatMessage[]> {
-    const reply: ChatMessage = {
-      role: "assistant",
-      content: [
-        {
-          type: "text",
-          text: "Transport not configured — set an Anthropic API key in Settings to enable the agent loop.",
-        },
-      ],
-    };
-    appendMessage(session.id, reply);
-    return [reply];
-  },
-};

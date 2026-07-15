@@ -1,16 +1,9 @@
 import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
 import { useParams } from "@solidjs/router";
-import { getSetting } from "../../services/settings";
 import { storeFetch } from "../../services/store";
 import { appendMessage, setActiveBook, useChatStore } from "./store";
 import { anthropicTransport, needsResume, resumeTurn } from "./transport";
-import {
-  stubTransport,
-  type ChatMessage,
-  type ChatSession,
-  type ContentBlock,
-  type Transport,
-} from "./types";
+import { type ChatMessage, type ChatSession, type ContentBlock, type Transport } from "./types";
 
 function ContentBlockView(props: { block: ContentBlock }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
@@ -141,8 +134,9 @@ export function ChatView(): JSX.Element {
     if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
   });
 
-  const transport = (): Transport =>
-    getSetting("anthropicKey") ? anthropicTransport : stubTransport;
+  // Empty key field is proxy mode, not "unconfigured" — anthropicTransport's
+  // resolveModelCall handles the no-key path (and reports a bad model slug itself).
+  const transport = (): Transport => anthropicTransport;
 
   const send = async () => {
     const id = params.id;
