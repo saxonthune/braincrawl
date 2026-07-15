@@ -1,60 +1,94 @@
-import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js";
 import { useParams } from "@solidjs/router";
 import { storeFetch } from "../../services/store";
 import { appendMessage, setActiveBook, useChatStore } from "./store";
 import { anthropicTransport, needsResume, resumeTurn } from "./transport";
-import { type ChatMessage, type ChatSession, type ContentBlock, type Transport } from "./types";
+import { toDisplayItems, type DisplayItem } from "./display";
+import { type ChatSession, type Transport } from "./types";
 
-function ContentBlockView(props: { block: ContentBlock }): JSX.Element {
+function DisplayItemView(props: { item: DisplayItem }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
 
   return (
     <Switch>
-      <Match when={props.block.type === "text"}>
-        <p class="chat-block-text">{(props.block as { text: string }).text}</p>
+      <Match when={props.item.kind === "user-text"}>
+        <div class="chat-message chat-message-user">
+          <div class="chat-message-role">user</div>
+          <p class="chat-block-text">{(props.item as { text: string }).text}</p>
+        </div>
       </Match>
-      <Match when={props.block.type === "tool_use"}>
+      <Match when={props.item.kind === "assistant-text"}>
         {(() => {
-          const block = props.block as { name: string; input: unknown };
+          const item = props.item as { text: string; streaming: boolean };
           return (
-            <div class="chat-block-tool">
+            <div class="chat-message chat-message-assistant">
+              <div class="chat-message-role">assistant</div>
+              <p class="chat-block-text">
+                {item.text}
+                <Show when={item.streaming}>
+                  <span class="chat-stream-caret" />
+                </Show>
+              </p>
+            </div>
+          );
+        })()}
+      </Match>
+      <Match when={props.item.kind === "tool-activity"}>
+        {(() => {
+          const item = props.item as Extract<DisplayItem, { kind: "tool-activity" }>;
+          return (
+            <div
+              classList={{
+                "chat-block-tool": true,
+                "chat-block-error": item.state.status === "error",
+              }}
+            >
               <button type="button" onClick={() => setExpanded((v) => !v)}>
-                ⚙ {block.name}(...)
+                ⚙ {item.toolName}(...)
+                <Switch>
+                  <Match when={item.state.status === "running"}>
+                    <span class="chat-tool-spinner"> …running</span>
+                  </Match>
+                  <Match when={item.state.status === "error"}>
+                    <span> (error)</span>
+                  </Match>
+                </Switch>
               </button>
               <Show when={expanded()}>
-                <pre>{JSON.stringify(block.input, null, 2)}</pre>
+                <pre>{JSON.stringify(item.input, null, 2)}</pre>
+                <Show when={item.state.status !== "running"}>
+                  <pre>{(item.state as { output: string }).output}</pre>
+                </Show>
               </Show>
             </div>
           );
         })()}
       </Match>
-      <Match when={props.block.type === "tool_result"}>
+      <Match when={props.item.kind === "notice"}>
         {(() => {
-          const block = props.block as { content: string; is_error?: boolean };
+          const item = props.item as { text: string; tone: "error" | "info" };
           return (
             <div
-              classList={{ "chat-block-tool-result": true, "chat-block-error": !!block.is_error }}
+              classList={{
+                "chat-block-tool-result": true,
+                "chat-block-error": item.tone === "error",
+              }}
             >
-              <button type="button" onClick={() => setExpanded((v) => !v)}>
-                ⚙ tool result{block.is_error ? " (error)" : ""}
-              </button>
-              <Show when={expanded()}>
-                <pre>{block.content}</pre>
-              </Show>
+              {item.text}
             </div>
           );
         })()}
       </Match>
     </Switch>
-  );
-}
-
-function MessageView(props: { message: ChatMessage }): JSX.Element {
-  return (
-    <div classList={{ "chat-message": true, [`chat-message-${props.message.role}`]: true }}>
-      <div class="chat-message-role">{props.message.role}</div>
-      <For each={props.message.content}>{(block) => <ContentBlockView block={block} />}</For>
-    </div>
   );
 }
 
@@ -129,6 +163,22 @@ export function ChatView(): JSX.Element {
 
   const session = () => store.sessions[params.id ?? ""];
 
+  const displayItems = createMemo(() => {
+    const current = session();
+    if (!current) return [];
+    return toDisplayItems(current, { streaming: sending() });
+  });
+
+  const turnStatus = createMemo<"idle" | "streaming" | "running-tools">(() => {
+    if (!sending()) return "idle";
+    const items = displayItems();
+    const last = items[items.length - 1];
+    if (last?.kind === "tool-activity" && last.state.status === "running") {
+      return "running-tools";
+    }
+    return "streaming";
+  });
+
   createEffect(() => {
     session()?.messages.length;
     if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
@@ -181,8 +231,13 @@ export function ChatView(): JSX.Element {
         <h2>{session().title}</h2>
         <ActiveBookHeader session={session()} />
         <div class="chat-messages" ref={scrollRef}>
-          <For each={session().messages}>{(message) => <MessageView message={message} />}</For>
+          <For each={displayItems()}>{(item) => <DisplayItemView item={item} />}</For>
         </div>
+        <Show when={turnStatus() !== "idle"}>
+          <div class="chat-turn-status">
+            {turnStatus() === "running-tools" ? "running tool…" : "thinking…"}
+          </div>
+        </Show>
         <Show when={needsResume(session()) && !sending()}>
           <div class="chat-resume">
             <p>This turn was interrupted before it finished.</p>

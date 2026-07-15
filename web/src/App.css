@@ -343,6 +343,33 @@ main {
   color: #c0392b;
 }
 
+.chat-stream-caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  opacity: 0.6;
+  animation: chat-caret-pulse 1s step-start infinite;
+}
+
+@keyframes chat-caret-pulse {
+  50% {
+    opacity: 0;
+  }
+}
+
+.chat-turn-status {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-bottom: 12px;
+}
+
+.chat-tool-spinner {
+  opacity: 0.7;
+}
+
 .chat-active-book {
   display: flex;
   align-items: center;
