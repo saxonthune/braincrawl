@@ -7,15 +7,15 @@
 name = "braincrawl-worker"
 main = "build/worker/shim.mjs"
 compatibility_date = "2024-01-01"
-
-[build]
-command = "cargo install -q worker-build && worker-build --release"
-
-# Custom domain (optional): serves PWA + API on one hostname. The zone must
-# be on the same Cloudflare account; Cloudflare creates the DNS record + cert.
+# Custom domain (optional): serves PWA + API on one hostname. Top-level key —
+# must stay above the first [section] or TOML assigns it to that table.
+# The zone must be on the same Cloudflare account; deploy creates DNS + cert.
 # routes = [
 #   { pattern = "bcp.example.com", custom_domain = true }
 # ]
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
 
 [assets]
 directory = "../../web/dist"
