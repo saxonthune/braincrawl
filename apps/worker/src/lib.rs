@@ -22,6 +22,12 @@
 //! - `PUT /api/l3/docs/{slug}`
 //! - `GET /api/l3/graph`
 //!
+//! Plus opaque agent context-file routes (unparsed markdown, excluded from
+//! the above — see `.todo-tasks/tasks/worker-l3-agent-files.md`):
+//! - `GET /api/l3/agent`
+//! - `GET /api/l3/agent/{name}`
+//! - `PUT /api/l3/agent/{name}`
+//!
 //! ## Coordinator note
 //!
 //! `DoCoordinator::with_lock` routes through a `WorkDurableObject` stub keyed by the
@@ -464,6 +470,17 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
     // ── /api/l3/* ─────────────────────────────────────────────────────────────
     if let Some(rest) = path.strip_prefix("/api/l3/") {
         let bucket = env.bucket("BLOB_BUCKET")?;
+        if method == Method::Get && rest == "agent" {
+            return l3::handle_list_agent_files(&bucket).await;
+        }
+        if let Some(name) = rest.strip_prefix("agent/") {
+            match method {
+                Method::Get => return l3::handle_get_agent_file(name, &bucket).await,
+                Method::Put => return l3::handle_put_agent_file(name, req, &bucket).await,
+                _ => {}
+            }
+            return Response::error("not found", 404);
+        }
         if method == Method::Get && rest == "graph" {
             return l3::handle_graph(&req, &bucket).await;
         }

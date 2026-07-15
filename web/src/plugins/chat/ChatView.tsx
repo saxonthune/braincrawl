@@ -1,7 +1,9 @@
 import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
 import { useParams } from "@solidjs/router";
-import { appendMessage, useChatStore } from "./store";
-import { stubTransport, type ChatMessage, type ContentBlock } from "./types";
+import { getSetting } from "./settings";
+import { appendMessage, setActiveBook, useChatStore } from "./store";
+import { anthropicTransport, needsResume, resumeTurn } from "./transport";
+import { stubTransport, type ChatMessage, type ChatSession, type ContentBlock, type Transport } from "./types";
 
 function ContentBlockView(props: { block: ContentBlock }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
@@ -54,6 +56,63 @@ function MessageView(props: { message: ChatMessage }): JSX.Element {
   );
 }
 
+function ActiveBookHeader(props: { session: ChatSession }): JSX.Element {
+  const [editing, setEditing] = createSignal(!props.session.activeBook);
+  const [workId, setWorkId] = createSignal(props.session.activeBook?.workId ?? "");
+  const [docSlug, setDocSlug] = createSignal(props.session.activeBook?.docSlug ?? "");
+
+  const save = async () => {
+    const id = workId().trim();
+    const slug = docSlug().trim();
+    if (!id || !slug) return;
+    let title = id;
+    try {
+      const base = getSetting("storeBaseUrl").replace(/\/$/, "");
+      const token = getSetting("storeToken");
+      const res = await fetch(`${base}/works/${encodeURIComponent(id)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const work = (await res.json()) as { attrs?: { display_name?: string; title?: string } };
+        title = work.attrs?.display_name ?? work.attrs?.title ?? id;
+      }
+    } catch {
+      // best-effort title lookup; fall back to the work id
+    }
+    setActiveBook(props.session.id, { workId: id, docSlug: slug, title });
+    setEditing(false);
+  };
+
+  return (
+    <div class="chat-active-book">
+      <Show
+        when={!editing()}
+        fallback={
+          <div class="chat-active-book-form">
+            <input type="text" placeholder="Work id" value={workId()} onInput={(e) => setWorkId(e.currentTarget.value)} />
+            <input
+              type="text"
+              placeholder="Doc slug"
+              value={docSlug()}
+              onInput={(e) => setDocSlug(e.currentTarget.value)}
+            />
+            <button type="button" onClick={() => void save()} disabled={!workId().trim() || !docSlug().trim()}>
+              Set
+            </button>
+          </div>
+        }
+      >
+        <span class="chat-active-book-summary">
+          📖 {props.session.activeBook?.title} ({props.session.activeBook?.docSlug})
+        </span>
+        <button type="button" onClick={() => setEditing(true)}>
+          Edit
+        </button>
+      </Show>
+    </div>
+  );
+}
+
 export function ChatView(): JSX.Element {
   const params = useParams();
   const store = useChatStore();
@@ -68,6 +127,8 @@ export function ChatView(): JSX.Element {
     if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
   });
 
+  const transport = (): Transport => (getSetting("anthropicKey") ? anthropicTransport : stubTransport);
+
   const send = async () => {
     const id = params.id;
     const text = draft().trim();
@@ -77,10 +138,19 @@ export function ChatView(): JSX.Element {
     setSending(true);
     try {
       const current = store.sessions[id];
-      const replies = await stubTransport.sendTurn(current, () => {});
-      for (const reply of replies) {
-        appendMessage(id, reply);
-      }
+      await transport().sendTurn(current, () => {});
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const resume = async () => {
+    const id = params.id;
+    if (!id || sending()) return;
+    setSending(true);
+    try {
+      const current = store.sessions[id];
+      await resumeTurn(current, () => {});
     } finally {
       setSending(false);
     }
@@ -100,9 +170,18 @@ export function ChatView(): JSX.Element {
           <a href="#/chat">&larr; Sessions</a>
         </p>
         <h2>{session().title}</h2>
+        <ActiveBookHeader session={session()} />
         <div class="chat-messages" ref={scrollRef}>
           <For each={session().messages}>{(message) => <MessageView message={message} />}</For>
         </div>
+        <Show when={needsResume(session()) && !sending()}>
+          <div class="chat-resume">
+            <p>This turn was interrupted before it finished.</p>
+            <button type="button" onClick={() => void resume()}>
+              Resume turn
+            </button>
+          </div>
+        </Show>
         <div class="chat-input">
           <textarea
             value={draft()}

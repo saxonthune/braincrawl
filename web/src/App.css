@@ -96,6 +96,30 @@ main {
   color: #c0392b;
 }
 
+.chat-active-book {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.chat-active-book-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chat-resume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .chat-input {
   display: flex;
   gap: 8px;

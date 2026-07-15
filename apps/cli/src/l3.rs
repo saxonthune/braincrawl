@@ -448,6 +448,52 @@ fn format_put_error(slug: &str, err: &L3PutError) -> String {
     }
 }
 
+/// One agent context file's content on each side, and the sync-state key it's
+/// tracked under (`agent:<name>`, distinct from a doc slug's own state key).
+struct AgentSides {
+    name: String,
+    local: Option<String>,
+    remote: Option<String>,
+}
+
+fn agent_state_key(name: &str) -> String {
+    format!("agent:{name}")
+}
+
+fn agent_path(root: &Path, name: &str) -> PathBuf {
+    root.join("_agent").join(format!("{name}.md"))
+}
+
+/// Gather local/remote content for every agent context file known on either
+/// side (the union of local `_agent/*.md` stems and remote names). Only
+/// called for whole-store push/pull — the agent-file namespace has no
+/// single-name selector on the CLI surface.
+fn collect_agent_sides(root: &Path, store: &StoreClient) -> Result<Vec<AgentSides>, DynErr> {
+    let agent_dir = root.join("_agent");
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    if agent_dir.exists() {
+        for entry in fs::read_dir(&agent_dir)? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            if let Some(stem) = file_name.strip_suffix(".md") {
+                names.insert(stem.to_string());
+            }
+        }
+    }
+    let remote_files = store.l3_agent_list()?;
+    names.extend(remote_files.into_iter().map(|f| f.name));
+
+    let mut out = Vec::with_capacity(names.len());
+    for name in names {
+        let path = agent_path(root, &name);
+        let local = if path.exists() { Some(fs::read_to_string(&path)?) } else { None };
+        let remote = store.l3_agent_get(&name)?;
+        out.push(AgentSides { name, local, remote });
+    }
+    Ok(out)
+}
+
 fn cmd_push(
     root: &Path,
     store: &StoreClient,
@@ -509,6 +555,50 @@ fn cmd_push(
         }
     }
 
+    if !named {
+        for side in collect_agent_sides(root, store)? {
+            let key = agent_state_key(&side.name);
+            let recorded = state.get(&key).map(|e| e.hash.as_str());
+            let local_hash = side.local.as_deref().map(|s| sha256_hex(s.as_bytes()));
+            let remote_hash = side.remote.as_deref().map(|s| sha256_hex(s.as_bytes()));
+            let action = classify(local_hash.as_deref(), remote_hash.as_deref(), recorded);
+
+            if action == SyncAction::Conflict {
+                eprintln!("CONFLICT agent:{} (changed on both sides)", side.name);
+                conflicts += 1;
+                continue;
+            }
+            if action != SyncAction::Push {
+                eprintln!("skip agent:{} (in sync)", side.name);
+                skipped += 1;
+                continue;
+            }
+            let Some(local_content) = &side.local else {
+                eprintln!("skip agent:{} (no local copy to push)", side.name);
+                skipped += 1;
+                continue;
+            };
+
+            eprintln!("push agent:{}", side.name);
+            if dry_run {
+                pushed += 1;
+                continue;
+            }
+
+            match store.l3_agent_put(&side.name, local_content) {
+                Ok(()) => {
+                    let hash = sha256_hex(local_content.as_bytes());
+                    state.insert(key, SyncEntry { hash });
+                    pushed += 1;
+                }
+                Err(e) => {
+                    eprintln!("error: agent:{}: {e}", side.name);
+                    errors += 1;
+                }
+            }
+        }
+    }
+
     if !dry_run {
         write_sync_state(root, &state)?;
     }
@@ -566,6 +656,48 @@ fn cmd_pull(root: &Path, store: &StoreClient, doc: Option<String>, dry_run: bool
         state.insert(side.slug.clone(), SyncEntry { hash });
         pulled += 1;
         wrote_any = true;
+    }
+
+    if !named {
+        for side in collect_agent_sides(root, store)? {
+            let key = agent_state_key(&side.name);
+            let recorded = state.get(&key).map(|e| e.hash.as_str());
+            let local_hash = side.local.as_deref().map(|s| sha256_hex(s.as_bytes()));
+            let remote_hash = side.remote.as_deref().map(|s| sha256_hex(s.as_bytes()));
+            let action = classify(local_hash.as_deref(), remote_hash.as_deref(), recorded);
+
+            if action == SyncAction::Conflict {
+                eprintln!("CONFLICT agent:{} (changed on both sides)", side.name);
+                conflicts += 1;
+                continue;
+            }
+            if action != SyncAction::Pull {
+                eprintln!("skip agent:{} (in sync)", side.name);
+                skipped += 1;
+                continue;
+            }
+            let Some(remote_content) = &side.remote else {
+                eprintln!("skip agent:{} (no remote copy to pull)", side.name);
+                skipped += 1;
+                continue;
+            };
+
+            eprintln!("pull agent:{}", side.name);
+            if dry_run {
+                pulled += 1;
+                continue;
+            }
+
+            let path = agent_path(root, &side.name);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&path, remote_content)?;
+            let hash = sha256_hex(remote_content.as_bytes());
+            state.insert(key, SyncEntry { hash });
+            pulled += 1;
+            wrote_any = true;
+        }
     }
 
     if !dry_run {

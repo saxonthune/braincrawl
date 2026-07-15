@@ -171,3 +171,69 @@ fn hex_digest(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+// ── /api/l3/agent/* ──────────────────────────────────────────────────────────
+//
+// Opaque markdown files (agent principles/memory) — no parsing, no anchors, no
+// `updated:` stamping, excluded from docs/graph/INDEX. See
+// `.todo-tasks/tasks/worker-l3-agent-files.md`.
+
+const AGENT_PREFIX: &str = "l3-agent/";
+const AGENT_SUFFIX: &str = ".md";
+const AGENT_MAX_BYTES: usize = 64 * 1024;
+
+fn agent_key(name: &str) -> String {
+    format!("{AGENT_PREFIX}{name}{AGENT_SUFFIX}")
+}
+
+fn agent_name_from_key(key: &str) -> Option<String> {
+    key.strip_prefix(AGENT_PREFIX)?.strip_suffix(AGENT_SUFFIX).map(str::to_string)
+}
+
+fn is_valid_agent_name(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+pub async fn handle_list_agent_files(bucket: &Bucket) -> worker::Result<Response> {
+    let listed = bucket.list().prefix(AGENT_PREFIX).execute().await?;
+    let mut files = Vec::new();
+    for obj in listed.objects() {
+        let Some(name) = agent_name_from_key(&obj.key()) else { continue };
+        files.push(serde_json::json!({
+            "name": name,
+            "size": obj.size(),
+            "modified": crate::secs_to_rfc3339(obj.uploaded().as_millis() / 1000),
+        }));
+    }
+    Response::from_json(&files)
+}
+
+pub async fn handle_get_agent_file(name: &str, bucket: &Bucket) -> worker::Result<Response> {
+    if !is_valid_agent_name(name) {
+        return bad_request("invalid name");
+    }
+    match get_doc_text(bucket, &agent_key(name)).await? {
+        Some(text) => {
+            let headers = Headers::new();
+            headers.set("Content-Type", "text/markdown; charset=utf-8")?;
+            Ok(Response::ok(text)?.with_headers(headers))
+        }
+        None => Response::error("not found", 404),
+    }
+}
+
+pub async fn handle_put_agent_file(
+    name: &str,
+    mut req: Request,
+    bucket: &Bucket,
+) -> worker::Result<Response> {
+    if !is_valid_agent_name(name) {
+        return bad_request("invalid name");
+    }
+    let bytes = req.bytes().await?;
+    if bytes.len() > AGENT_MAX_BYTES {
+        return Response::error("payload too large", 413);
+    }
+    bucket.put(agent_key(name), bytes).execute().await?;
+    Ok(Response::empty()?.with_status(204))
+}

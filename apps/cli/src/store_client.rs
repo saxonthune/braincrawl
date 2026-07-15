@@ -18,6 +18,14 @@ pub struct L3RemoteDoc {
     pub modified: String,
 }
 
+/// One entry from `GET /api/l3/agent`.
+#[derive(Debug, serde::Deserialize)]
+pub struct L3RemoteAgentFile {
+    pub name: String,
+    pub size: u64,
+    pub modified: String,
+}
+
 /// A parse warning surfaced by the worker's PUT `/api/l3/docs/{slug}` 400 response.
 #[derive(Debug, serde::Deserialize)]
 pub struct L3Warning {
@@ -288,6 +296,45 @@ impl StoreClient {
                 Err(L3PutError::Client(ClientError::Server { status: status.as_u16(), body }))
             }
         }
+    }
+
+    /// GET /api/l3/agent — every opaque agent context file currently stored.
+    pub fn l3_agent_list(&self) -> Result<Vec<L3RemoteAgentFile>> {
+        let url = format!("{}/api/l3/agent", self.base_url);
+        let resp = self.apply_auth(self.http.get(&url)).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(resp.json()?)
+    }
+
+    /// GET /api/l3/agent/{name} — the file's raw markdown, or `None` on 404.
+    pub fn l3_agent_get(&self, name: &str) -> Result<Option<String>> {
+        let url = format!("{}/api/l3/agent/{}", self.base_url, name);
+        let resp = self.apply_auth(self.http.get(&url)).send()?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(Some(resp.text()?))
+    }
+
+    /// PUT /api/l3/agent/{name} — store the body verbatim.
+    pub fn l3_agent_put(&self, name: &str, body: &str) -> Result<()> {
+        let url = format!("{}/api/l3/agent/{}", self.base_url, name);
+        let resp = self.apply_auth(self.http.put(&url)).body(body.to_string()).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        Ok(())
     }
 }
 

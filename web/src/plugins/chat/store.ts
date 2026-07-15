@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store";
-import type { ChatMessage, ChatSession } from "./types";
+import type { ActiveBook, ChatMessage, ChatSession, PendingTurn } from "./types";
 
 const SESSION_KEY_PREFIX = "bc.chat.session.";
 const SESSIONS_INDEX_KEY = "bc.chat.sessions";
@@ -92,6 +92,12 @@ export function useChatStore(): {
   return state;
 }
 
+/** Live snapshot of one session, read fresh from the store each call. */
+export function getSession(id: string): ChatSession | undefined {
+  hydrate();
+  return state.sessions[id];
+}
+
 export function createSession(title = "New session"): ChatSession {
   hydrate();
   const id = newId();
@@ -138,6 +144,52 @@ export function appendMessage(id: string, msg: ChatMessage): void {
   setState(
     produce((s) => {
       s.sessions[id].messages.push(msg);
+      s.sessions[id].updatedAt = nowIso();
+    }),
+  );
+  writeSession(state.sessions[id]);
+}
+
+export function setActiveBook(id: string, activeBook: ActiveBook): void {
+  hydrate();
+  if (!state.sessions[id]) return;
+  setState(
+    produce((s) => {
+      s.sessions[id].activeBook = activeBook;
+      s.sessions[id].updatedAt = nowIso();
+    }),
+  );
+  writeSession(state.sessions[id]);
+}
+
+export function setPendingTurn(id: string, pendingTurn: PendingTurn | undefined): void {
+  hydrate();
+  if (!state.sessions[id]) return;
+  setState(
+    produce((s) => {
+      s.sessions[id].pendingTurn = pendingTurn;
+    }),
+  );
+  writeSession(state.sessions[id]);
+}
+
+/**
+ * Replace the streaming-in-progress assistant message (created by
+ * `updateLastAssistantText`) with the API's final content blocks, or append a new
+ * message if none was started (e.g. a turn that produced no text deltas).
+ */
+export function finalizeAssistantMessage(id: string, content: ChatMessage["content"]): void {
+  hydrate();
+  if (!state.sessions[id]) return;
+  setState(
+    produce((s) => {
+      const messages = s.sessions[id].messages;
+      const last = messages[messages.length - 1];
+      if (last && last.role === "assistant") {
+        last.content = content;
+      } else {
+        messages.push({ role: "assistant", content });
+      }
       s.sessions[id].updatedAt = nowIso();
     }),
   );

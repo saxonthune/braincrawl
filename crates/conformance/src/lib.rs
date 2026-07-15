@@ -170,6 +170,86 @@ pub fn check_l3_docs(base_url: &str, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Worker-only: the opaque `/api/l3/agent/*` context-file routes. Not part of
+/// `run_all` since the native server has no such routes. See
+/// `.todo-tasks/tasks/worker-l3-agent-files.md`.
+pub fn check_l3_agent_files(base_url: &str, token: &str) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let token = Some(token);
+
+    let name = "principles";
+    let body = "# Conformance smoke principles\n\nBe kind.\n";
+
+    let res = auth(client.put(format!("{base_url}/api/l3/agent/{name}")).body(body), token)
+        .send()
+        .map_err(|e| format!("check_l3_agent_files: PUT failed: {e}"))?;
+    if res.status() != 204 {
+        return Err(format!("check_l3_agent_files: PUT expected 204, got {}", res.status()));
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/agent/{name}")), token)
+        .send()
+        .map_err(|e| format!("check_l3_agent_files: GET failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_agent_files: GET expected 200, got {}", res.status()));
+    }
+    let fetched = res.text()
+        .map_err(|e| format!("check_l3_agent_files: GET body read failed: {e}"))?;
+    if fetched != body {
+        return Err(format!(
+            "check_l3_agent_files: GET body did not match PUT body, got {fetched:?}"
+        ));
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/agent")), token)
+        .send()
+        .map_err(|e| format!("check_l3_agent_files: GET list failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_agent_files: GET list expected 200, got {}", res.status()));
+    }
+    let listing: Value = res.json()
+        .map_err(|e| format!("check_l3_agent_files: GET list parse failed: {e}"))?;
+    let files = listing.as_array().ok_or("check_l3_agent_files: list did not return an array")?;
+    if !files.iter().any(|f| f["name"] == name) {
+        return Err(format!("check_l3_agent_files: expected {name:?} in list, got {files:?}"));
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/agent/does-not-exist")), token)
+        .send()
+        .map_err(|e| format!("check_l3_agent_files: GET missing failed: {e}"))?;
+    if res.status() != 404 {
+        return Err(format!("check_l3_agent_files: GET missing expected 404, got {}", res.status()));
+    }
+
+    let oversize = "x".repeat(64 * 1024 + 1);
+    let res = auth(client.put(format!("{base_url}/api/l3/agent/{name}")).body(oversize), token)
+        .send()
+        .map_err(|e| format!("check_l3_agent_files: PUT oversize failed: {e}"))?;
+    if res.status() != 413 {
+        return Err(format!("check_l3_agent_files: PUT oversize expected 413, got {}", res.status()));
+    }
+
+    let res = auth(client.get(format!("{base_url}/api/l3/docs")), token)
+        .send()
+        .map_err(|e| format!("check_l3_agent_files: GET /api/l3/docs failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("check_l3_agent_files: GET /api/l3/docs expected 200, got {}", res.status()));
+    }
+    let docs: Value = res.json()
+        .map_err(|e| format!("check_l3_agent_files: GET /api/l3/docs parse failed: {e}"))?;
+    let docs = docs.as_array().ok_or("check_l3_agent_files: /api/l3/docs did not return an array")?;
+    if docs.iter().any(|d| d["doc"] == name) {
+        return Err(format!(
+            "check_l3_agent_files: agent file {name:?} must not appear in /api/l3/docs, got {docs:?}"
+        ));
+    }
+
+    Ok(())
+}
+
 fn auth(req: reqwest::blocking::RequestBuilder, token: Option<&str>) -> reqwest::blocking::RequestBuilder {
     match token {
         Some(t) => req.header("Authorization", format!("Bearer {t}")),
