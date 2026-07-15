@@ -1,4 +1,5 @@
 /target
+/.wrangler/
 /.temp/
 /CLAUDE.local.md
 /.claude/worktrees/
