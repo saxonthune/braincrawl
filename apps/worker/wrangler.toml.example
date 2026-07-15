@@ -41,4 +41,6 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["WorkDurableObject"]
+# SQLite-backed: required on the free plan (API error 10097 with new_classes),
+# and this DO is an advisory-lock stub that uses no storage anyway.
+new_sqlite_classes = ["WorkDurableObject"]
