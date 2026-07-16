@@ -124,12 +124,7 @@ async function openalexSearch(input: Record<string, unknown>): Promise<ToolResul
     await Promise.all(results.map((r) => pushWork(entity, r)));
   }
 
-  const summary = results.map((r) => ({
-    id: r.id,
-    title: r.display_name ?? r.title,
-    year: r.publication_year,
-    authors: extractAuthorships(r),
-  }));
+  const summary = summarizeWorks(results);
   return ok({ query, entity, count: summary.length, results: summary });
 }
 
@@ -142,6 +137,24 @@ function extractAuthorships(record: Record<string, unknown>): string[] {
       return typeof author?.display_name === "string" ? author.display_name : undefined;
     })
     .filter((v): v is string => !!v);
+}
+
+export function summarizeWork(record: Record<string, unknown>): {
+  id: unknown;
+  title: unknown;
+  year: unknown;
+  authors: string[];
+} {
+  return {
+    id: record.id,
+    title: record.display_name ?? record.title,
+    year: record.publication_year,
+    authors: extractAuthorships(record),
+  };
+}
+
+export function summarizeWorks(records: Record<string, unknown>[]) {
+  return records.map(summarizeWork);
 }
 
 // ── openalex_cited_by ────────────────────────────────────────────────────────
@@ -182,12 +195,7 @@ async function openalexCitedBy(input: Record<string, unknown>): Promise<ToolResu
     });
   }
 
-  const summary = results.map((r) => ({
-    id: r.id,
-    title: r.display_name ?? r.title,
-    year: r.publication_year,
-    authors: extractAuthorships(r),
-  }));
+  const summary = summarizeWorks(results);
   return ok({ work_id: workId, count: summary.length, results: summary });
 }
 
@@ -249,12 +257,7 @@ async function openalexRefs(input: Record<string, unknown>): Promise<ToolResult>
     });
   }
 
-  const summary = results.map((r) => ({
-    id: r.id,
-    title: r.display_name ?? r.title,
-    year: r.publication_year,
-    authors: extractAuthorships(r),
-  }));
+  const summary = summarizeWorks(results);
   return ok({ work_id: workId, count: summary.length, results: summary });
 }
 
@@ -320,10 +323,7 @@ async function openalexGet(input: Record<string, unknown>): Promise<ToolResult> 
   const source = primaryLocation?.source as Record<string, unknown> | undefined;
 
   return ok({
-    id: record.id,
-    title: record.display_name ?? record.title,
-    year: record.publication_year,
-    authors: extractAuthorships(record),
+    ...summarizeWork(record),
     venue: source?.display_name,
     cited_by_count: record.cited_by_count,
     abstract: withAbstract ? invertAbstract(abstractIndex) : undefined,
@@ -348,12 +348,7 @@ async function openalexFind(input: Record<string, unknown>): Promise<ToolResult>
     await Promise.all(results.map((r) => pushWork(entity, r)));
   }
 
-  const summary = results.map((r) => ({
-    id: r.id,
-    title: r.display_name ?? r.title,
-    year: r.publication_year,
-    authors: extractAuthorships(r),
-  }));
+  const summary = summarizeWorks(results);
   return ok({ filters, entity, count: summary.length, results: summary });
 }
 
@@ -608,7 +603,9 @@ export const tools: Tool[] = [
     definition: {
       name: "openalex_cited_by",
       description:
-        "Find works that cite the given work id (forward citations). Pushes works and citation edges into the store.",
+        "Find works that cite the given work id (forward citations). Pushes works and citation edges into the store. " +
+        "Rich for old works, but watch for citation scatter: heavily cited works fan out into unrelated fields, so " +
+        "gate by topic with concept_filter (get a concept id from openalex_autocomplete_topics) when expanding.",
       input_schema: {
         type: "object",
         properties: {
@@ -628,7 +625,9 @@ export const tools: Tool[] = [
     definition: {
       name: "openalex_refs",
       description:
-        "Find works referenced by (cited in the bibliography of) the given work id — backward references. Pushes works and citation edges into the store.",
+        "Find works referenced by (cited in the bibliography of) the given work id — backward references. Pushes " +
+        "works and citation edges into the store. Prefer this over openalex_cited_by for a recent work whose forward " +
+        "citations are still thin — its reference list is often the richer signal.",
       input_schema: {
         type: "object",
         properties: {
@@ -644,7 +643,9 @@ export const tools: Tool[] = [
     definition: {
       name: "openalex_get",
       description:
-        "Fetch a single OpenAlex entity by id (any type — works, authors, sources, topics, concepts, …). Reconstructs the abstract text when available. Pushes the record into the store.",
+        "Fetch a single OpenAlex entity by id (any type — works, authors, sources, topics, concepts, …). Reconstructs " +
+        "the abstract text when available. Pushes the record into the store. Use it to check an abstract or a compact " +
+        "profile before deciding whether a hit from search/find/refs/cited_by is worth pulling further.",
       input_schema: {
         type: "object",
         properties: {
@@ -667,7 +668,10 @@ export const tools: Tool[] = [
     definition: {
       name: "openalex_find",
       description:
-        'Raw OpenAlex filter= query for topic-gated expansion (e.g. "cites:W...,concepts.id:C..."). Pushes work results into the store.',
+        'Raw OpenAlex filter= query for topic-gated expansion (e.g. "cites:W...,concepts.id:C..."). Pushes work ' +
+        "results into the store. Pairs with openalex_autocomplete_topics as the citation-scatter control: a heavily " +
+        "cited work fans out into unrelated fields, so gate forward expansion by a concept id from autocomplete " +
+        "rather than taking openalex_cited_by unfiltered.",
       input_schema: {
         type: "object",
         properties: {
@@ -687,7 +691,8 @@ export const tools: Tool[] = [
     definition: {
       name: "openalex_autocomplete_topics",
       description:
-        "Autocomplete a concept name by prefix, for finding a concept id to gate citation expansion with.",
+        "Autocomplete a concept name by prefix, for finding a concept id to gate citation expansion with. Pairs with " +
+        "openalex_find as the citation-scatter control on a heavily-cited work.",
       input_schema: {
         type: "object",
         properties: { prefix: { type: "string", description: "Prefix to autocomplete" } },
@@ -699,7 +704,10 @@ export const tools: Tool[] = [
   {
     definition: {
       name: "read_pages",
-      description: "Read page-anchored text chunks of a stored work between two book pages.",
+      description:
+        "Read page-anchored text chunks of a stored work between two book pages. Pages are book pages unless the " +
+        "user says otherwise; if the stored chunk pages are offset from book pages, calibrate the offset via " +
+        "headings and remember it for the rest of the session.",
       input_schema: {
         type: "object",
         properties: {
@@ -716,7 +724,8 @@ export const tools: Tool[] = [
     definition: {
       name: "graph_neighborhood",
       description:
-        "Read the stored citation graph's neighborhood around one or more seed work ids.",
+        "Read the stored citation graph's neighborhood around one or more seed work ids, without hitting OpenAlex. " +
+        "Rank results by in-degree within the relevant subgraph.",
       input_schema: {
         type: "object",
         properties: {
@@ -754,7 +763,9 @@ export const tools: Tool[] = [
     definition: {
       name: "l3_edit_doc",
       description:
-        "Edit a research document: append text, or replace an exact single occurrence of old_str with text.",
+        "Edit a research document: append text, or replace an exact single occurrence of old_str with text. The " +
+        "store validates the edit, assigns node anchors, and stamps the update; if it bounces with warnings, fix " +
+        "the edit and retry. Never invent `^r-` anchors yourself — the store assigns them on save.",
       input_schema: {
         type: "object",
         properties: {
@@ -794,7 +805,8 @@ export const tools: Tool[] = [
     definition: {
       name: "store_stats",
       description:
-        "Aggregate stats for the whole catalog: work counts, edge counts, and similar corpus-overview numbers.",
+        "Aggregate stats for the whole catalog: work counts, edge counts, and similar corpus-overview numbers. Reach " +
+        "for this when the user asks what's in the collection overall, not about one work.",
       input_schema: { type: "object", properties: {} },
     },
     handler: storeStats,
@@ -803,7 +815,8 @@ export const tools: Tool[] = [
     definition: {
       name: "l3_list_docs",
       description:
-        "List every research document slug in the store, with size and last-modified time.",
+        "List every research document slug in the store, with size and last-modified time. Use it to survey the " +
+        "collection before deciding which doc to read.",
       input_schema: { type: "object", properties: {} },
     },
     handler: l3ListDocs,
@@ -812,7 +825,9 @@ export const tools: Tool[] = [
     definition: {
       name: "reading_list",
       description:
-        "The user's curated reading list: nodes tagged with a reading role (start-here/core/rigor/reference) across all docs, each with its why and linked work id.",
+        "The user's curated reading list: nodes tagged with a reading role (start-here/core/rigor/reference) across " +
+        'all docs, each with its why and linked work id. Use it for "what should I read next" or "what\'s blessed ' +
+        'reading" questions.',
       input_schema: { type: "object", properties: {} },
     },
     handler: readingList,

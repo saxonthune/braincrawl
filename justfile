@@ -140,6 +140,12 @@ web-test:
     set -euo pipefail
     cd {{justfile_directory()}}/web && vp test
 
+# Run only the golden-turn harness tests (the fixed offline eval set)
+web-eval:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{justfile_directory()}}/web && vp test golden
+
 # Bring the local dev stack current with the working tree: rebuild the server
 # binary + web dist the systemd user service serves, restart it. The production
 # deploy is deliberately a separate command (deploy-worker).

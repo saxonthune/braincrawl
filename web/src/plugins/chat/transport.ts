@@ -198,17 +198,23 @@ function resolveModelCall(apiKey: string, model: string): ModelCall | ChatMessag
   };
 }
 
-async function runLoop(sessionId: string, onDelta: (text: string) => void): Promise<ChatMessage[]> {
-  const settings = {
-    apiKey: getSetting("anthropicKey"),
-    model: getSetting("model"),
-  };
-  const modelCallOrNote = resolveModelCall(settings.apiKey, settings.model);
-  if (!(typeof modelCallOrNote === "function")) {
-    appendMessage(sessionId, modelCallOrNote);
-    return [modelCallOrNote];
+export async function runLoop(
+  sessionId: string,
+  onDelta: (text: string) => void,
+  modelCallOverride?: ModelCall,
+): Promise<ChatMessage[]> {
+  const model = getSetting("model");
+  let modelCall: ModelCall;
+  if (modelCallOverride) {
+    modelCall = modelCallOverride;
+  } else {
+    const modelCallOrNote = resolveModelCall(getSetting("anthropicKey"), model);
+    if (!(typeof modelCallOrNote === "function")) {
+      appendMessage(sessionId, modelCallOrNote);
+      return [modelCallOrNote];
+    }
+    modelCall = modelCallOrNote;
   }
-  const modelCall = modelCallOrNote;
 
   setPendingTurn(sessionId, { messagesSnapshotAt: new Date().toISOString() });
   const appended: ChatMessage[] = [];
@@ -237,7 +243,7 @@ async function runLoop(sessionId: string, onDelta: (text: string) => void): Prom
       let previousText = "";
       try {
         result = await modelCall({
-          model: settings.model,
+          model,
           system,
           messages: session.messages,
           onText: (accumulatedSoFar) => {
