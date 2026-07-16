@@ -28,5 +28,7 @@ One markdown file per item under the consolidated store. A worked example is
   claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/`complicates`
   are free domain words. A `reading: {role, why}` property plus a `catalog` link marks a
   recommended reading (`role` = `start-here`/`core`/`rigor`/`reference`, or any string).
-- **The one hard rule** — reference, never copy: store ids, look facts up from the server at
-  read time so a doc never drifts. Prefer `openalex:W…` as the join key.
+- **The one hard rule** — reference, never copy: store references, look facts up from the server
+  at read time so a doc never drifts. A work's canonical identity is its store-minted UUID; name
+  it with an `openalex:`/`doi:` reference that resolves to that UUID — never treat the provider
+  id as the identity itself.
