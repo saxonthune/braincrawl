@@ -21,17 +21,17 @@ Facts are n-ary and native: a fact may bind two, three, or four roles without re
 ## The three layers
 braincrawl separates knowledge built once and shared — the first two layers — from a consumer's own research, the third.
 
-- **Library** (Layer 1) — the store of works keyed by a UUID, holding each work's artifacts.
+- **Library** (Layer 1) — the store of works keyed by a **canonical id** (a UUID), holding each work's artifacts.
 - **Catalog** (Layer 2) — the shared index over the library: every work's metadata, which artifacts are held and where, and the citation links between works.
-- **Research Collection** (Layer 3) — a consumer's own research, made of **Research Documents** that point at UUIDs in the catalog rather than copying them. A Research Document is the singular artifact: questions, selected works, findings, and links for one line of work.
+- **Research Collection** (Layer 3) — a consumer's own research, made of **Research Documents** that point at works by their canonical id in the catalog rather than copying them. A Research Document is the singular artifact: questions, selected works, findings, and links for one line of work.
 - **braincrawl store** (or sometimes just **braincrawl** as a noun) — refers to everything: L1, L2, L3.
 - **L1 / L2 / L3** — shorthand for Library, Catalog, Research Documents.
 ## The catalog: nodes and edges
 - The catalog stores **nodes** — most commonly articles, books, and authors — and the **edges** between them.
 - The catalog is comprised of **catalog entries**, which form the nodes of the graph.
 - A **citation** is the primary edge between catalog entries — one work citing another.
-- braincrawl tries to map different identification schemes into a single **UUID**.
-- An **identifier** (or alias) is one identification scheme — such as a DOI, ISBN, or OCLC number — that braincrawl maps to a UUID.
+- A **canonical id** is a work's single, braincrawl-minted identity — a **UUID**, opaque and provider-neutral. It is *the* identity of a work across every layer: L1 keys artifacts by it, L2 keys nodes by it, L3 references works by it. No external scheme — not even an OpenAlex `W…` id — is ever the canonical id. (`CanonicalId` in the code is this UUID.)
+- An **identifier** (or **alias**) is one external identification scheme — a DOI, ISBN, OCLC, PMID, or OpenAlex id — that braincrawl maps to a canonical id. braincrawl routes every alias naming the same work to one canonical id (`doc02.01.02`).
 ## Topics and coverage
 - A **topic** (or question) is what works are *about* — an OpenAlex concept/topic, or a consumer's research question.
 - `relates-to(artifact, topic)` — an artifact bears on a topic.

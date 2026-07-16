@@ -11,11 +11,13 @@ Identity resolution is a **core feature**, not a consumer concern. A consumer ha
 braincrawl any external id (DOI, ISBN, OCLC, PMID, OpenAlex `W…`, …) and braincrawl
 routes every id naming the same resource to the same UUID.
 
-## UUID
+## Canonical id — a UUID
 
-The UUID is a braincrawl-generated identifier — opaque and provider-neutral. No
-external scheme (not even OpenAlex `W…`) is the primary key; every external id is an
-alias pointing at the UUID.
+A work's **canonical id** is a braincrawl-minted **UUID** — opaque and provider-neutral.
+It is *the* identity of the work: L1 keys artifacts by it, L2 keys nodes by it, L3
+references works by it (`doc02.01.01`). No external scheme — not even OpenAlex `W…` — is
+ever the canonical id; every external id is an **alias** that resolves to it. `CanonicalId`
+in the code is this UUID, never a provider id.
 
 ## The model — incremental union-find
 
