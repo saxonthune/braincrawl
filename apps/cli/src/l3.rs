@@ -285,10 +285,10 @@ fn cmd_reading_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
                     }
                     match (&l.source, &l.target) {
                         (l3::Endpoint::Node(src), l3::Endpoint::Catalog(dst)) if src.0 == id.0 => {
-                            Some(dst.0.clone())
+                            Some(format!("{}:{}", dst.namespace, dst.value))
                         }
                         (l3::Endpoint::Catalog(src), l3::Endpoint::Node(dst)) if dst.0 == id.0 => {
-                            Some(src.0.clone())
+                            Some(format!("{}:{}", src.namespace, src.value))
                         }
                         _ => None,
                     }
@@ -810,7 +810,7 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     // target still renders as an out-edge, just without a matching backref).
     let mut outrefs: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
     let mut backrefs: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
-    // canonical id → docs referencing it
+    // work-reference alias string (ns:value) → docs referencing it
     let mut work_index: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
 
     for link in &graph.links {
@@ -822,7 +822,7 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
         for endpoint in [&link.source, &link.target] {
             match endpoint {
                 l3::Endpoint::Catalog(id) => {
-                    work_index.entry(id.0.clone()).or_default().insert(source_doc);
+                    work_index.entry(format!("{}:{}", id.namespace, id.value)).or_default().insert(source_doc);
                 }
                 l3::Endpoint::Node(id) => {
                     let target_doc = if let Some(slug) = id.0.strip_prefix("doc:") {
@@ -887,7 +887,7 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     }
 
     out.push_str("\n## Work index\n\n");
-    out.push_str("Canonical ids (`openalex:`/`doi:`) → docs that reference them — the split-proof join key.\n\n");
+    out.push_str("Work references (`openalex:`/`doi:`/`isbn:`/…/`uuid:`) → docs that reference them.\n\n");
     out.push_str("| id | docs |\n|---|---|\n");
     for (id, slugs) in &work_index {
         let cells: Vec<String> = slugs.iter().map(|s| format!("[{s}]({s}{FILE_SUFFIX})")).collect();

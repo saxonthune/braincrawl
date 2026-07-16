@@ -256,9 +256,11 @@ no H1:
   `- tags: #a #b` turns each `#`-token into a label.
 - A link line is `- kind [[target]]` (implicit source) or `- [[src]] kind [[dst]]`, with
   optional trailing `{props}`. A target is a node anchor `^r-…`, a bare `slug` (that doc's
-  intro node), or `openalex:…`/`doi:…` (a catalog entry). `catalog` names a work-link;
-  `contradicts` is the blessed word for a claim-link (never `refutes`); `supports`/
-  `builds-on`/`relates-to`/`bridges`/`complicates` are free domain vocabulary.
+  intro node), or any `namespace:value` catalog reference (`openalex:`/`doi:`/`isbn:`/
+  `pmid:`/…, or `uuid:` for a work — e.g. a book — that has no external id, referenced by
+  its canonical id directly). `catalog` names a work-link; `contradicts` is the blessed word
+  for a claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/
+  `complicates` are free domain vocabulary.
 - Anchors are **store-global**: `assign-ids` keeps every `^r-…` unique across the whole store,
   so a bare `^r-…` resolves to its node from any doc — no `slug#` prefix, and the reference
   survives if the node moves docs.

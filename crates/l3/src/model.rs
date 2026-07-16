@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use braincrawl_core::types::CanonicalId;
+use braincrawl_core::types::Alias;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -18,19 +18,34 @@ pub struct NodeId(pub String);
 #[derive(Clone, Debug, PartialEq)]
 pub enum Endpoint {
     Node(NodeId),
-    Catalog(CanonicalId),
+    Catalog(Alias),
+}
+
+/// Splits `"namespace:value"` into an `Alias`, or `None` if there's no `:` or the
+/// namespace/value don't fit the reserved shape. Any namespace is accepted —
+/// `uuid:` is not special-cased here; the convention that its value is the work's
+/// canonical id belongs to alias resolution (a later phase), not to parsing.
+fn parse_alias(s: &str) -> Option<Alias> {
+    let (ns, value) = s.split_once(':')?;
+    if value.is_empty() || !ns.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')) {
+        return None;
+    }
+    Some(Alias { namespace: ns.to_string(), value: value.to_string() })
 }
 
 impl Endpoint {
-    /// `openalex:…`/`doi:…` → a catalog entry; `^r-…` → a research node, resolved
-    /// by its store-global anchor from any doc; a bare `slug` → that doc's intro
-    /// node. Never fails — an unrecognized string still resolves to a doc-level id.
+    /// `^r-…` → a research node, resolved by its store-global anchor from any doc;
+    /// any `namespace:value` → a catalog reference (an unresolved external alias,
+    /// e.g. `openalex:`/`doi:`/`isbn:`/…, or `uuid:` for a work referenced by its
+    /// canonical id directly); a bare `slug` → that doc's intro node. Never fails —
+    /// an unrecognized string still resolves to a doc-level id. `^anchor` is
+    /// checked first so an anchor never parses as an alias.
     pub fn resolve(target: &str) -> Endpoint {
-        if target.starts_with("openalex:") || target.starts_with("doi:") {
-            return Endpoint::Catalog(CanonicalId(target.to_string()));
-        }
         if let Some(anchor) = target.strip_prefix('^') {
             return Endpoint::Node(NodeId(anchor.to_string()));
+        }
+        if let Some(alias) = parse_alias(target) {
+            return Endpoint::Catalog(alias);
         }
         Endpoint::Node(NodeId(format!("doc:{target}")))
     }
@@ -40,7 +55,7 @@ impl Serialize for Endpoint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let s = match self {
             Endpoint::Node(id) => format!("node:{}", id.0),
-            Endpoint::Catalog(id) => id.0.clone(),
+            Endpoint::Catalog(a) => format!("{}:{}", a.namespace, a.value),
         };
         serializer.serialize_str(&s)
     }
@@ -51,7 +66,10 @@ impl<'de> Deserialize<'de> for Endpoint {
         let s = String::deserialize(deserializer)?;
         Ok(match s.strip_prefix("node:") {
             Some(rest) => Endpoint::Node(NodeId(rest.to_string())),
-            None => Endpoint::Catalog(CanonicalId(s)),
+            None => match parse_alias(&s) {
+                Some(alias) => Endpoint::Catalog(alias),
+                None => Endpoint::Catalog(Alias { namespace: String::new(), value: s }),
+            },
         })
     }
 }
