@@ -287,7 +287,7 @@ emit_stale() {
 # archive time, so `age` orders by most-recently-archived. Old-format archives
 # that predate the agent/merge split have no classifiable result → overall "-".
 emit_archived() {
-  local spec base stem ts slug agent_md merge_md overall commits age notes dev err
+  local spec base stem ts slug agent_md merge_md overall commits age notes dev err disp_file
   for spec in "$TODO"/.archived/*.md; do
     base="$(basename "$spec")"
     # Only the spec copy keys a record; skip the derived result files.
@@ -303,8 +303,20 @@ emit_archived() {
     [[ -f "$merge_md" ]] || merge_md=""
 
     overall="$NONE"; commits="$NONE"; notes=""
+    disp_file="${TODO}/.archived/${ts}-${slug}.disposition"
+    if [[ -f "$disp_file" ]]; then
+      overall="$(<"$disp_file")"; overall="${overall//[$'\t\r\n ']/}"
+    elif [[ -n "$agent_md" ]]; then
+      # Old archive, no stamp: best-effort — a genuine success stays success; any
+      # non-success archived task is shown as abandoned/done (we cannot retroactively
+      # know it was resolved).
+      if [[ "$(classify_task "$agent_md" "$merge_md")" == "$SM_OVERALL_SUCCESS" ]]; then
+        overall="$SM_OVERALL_SUCCESS"
+      else
+        overall="$SM_ARCHIVE_ABANDONED"
+      fi
+    fi
     if [[ -n "$agent_md" ]]; then
-      overall="$(classify_task "$agent_md" "$merge_md")"
       commits="$(parse_result_field "$agent_md" commits)"; commits="${commits:-0}"
       dev="$(parse_result_field "$agent_md" "surface deviations")"
       err="$(parse_result_field "$agent_md" error)"
