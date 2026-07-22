@@ -13,7 +13,7 @@ routes every id naming the same resource to the same UUID.
 
 ## Canonical id — a UUID
 
-A work's **canonical id** is a braincrawl-minted **UUID** — opaque and provider-neutral.
+A work's **canonical id** is a braincrawl-generated **UUID** — opaque and provider-neutral.
 It is *the* identity of the work: L1 keys artifacts by it, L2 keys nodes by it, L3
 references works by it (`doc02.01.01`). No external scheme — not even OpenAlex `W…` — is
 ever the canonical id; every external id is an **alias** that resolves to it. `CanonicalId`

@@ -21,15 +21,15 @@ One markdown file per item under the consolidated store. A worked example is
   [[dst]]`, with an optional trailing `{props}`. A target is a node anchor `^r-…`, a bare
   `slug` (that doc's intro node), or any `namespace:value` catalog reference
   (`openalex:`/`doi:`/`isbn:`/`pmid:`/…, or `uuid:` for a work referenced by its canonical
-  id directly). A `[[wikilink]]` inside a property value is prose, not an edge.
+  id directly). A `[[wikilink]]` inside a property value is prose, not a link.
 - **Anchors are store-global.** `assign-ids` keeps every `^r-…` unique across the whole store,
   so a bare `^r-…` resolves to its node from **any** doc — no slug prefix — and the reference
   survives if that node later moves to another doc.
-- **Edge vocabulary** — `catalog` links a node to a work; `contradicts` is the blessed
+- **Link vocabulary** — `catalog` links a node to a work; `contradicts` is the standard
   claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/`complicates`
   are free domain words. A `reading: {role, why}` property plus a `catalog` link marks a
   recommended reading (`role` = `start-here`/`core`/`rigor`/`reference`, or any string).
 - **The one hard rule** — reference, never copy: store references, look facts up from the server
-  at read time so a doc never drifts. A work's canonical identity is its store-minted UUID; name
+  at read time so a doc never drifts. A work's canonical identity is its store-generated UUID; name
   it with an `openalex:`/`doi:` reference that resolves to that UUID — never treat the provider
   id as the identity itself.

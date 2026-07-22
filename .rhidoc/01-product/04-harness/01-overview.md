@@ -20,7 +20,7 @@ braincrawl, feeds the result back, and repeats until the model answers.
   requests, append the result, repeat until the model returns a final answer or a stop
   condition trips (an iteration cap or a failure).
 - **The tools.** The agent's access to braincrawl — the search providers, the store, and
-  the Research Collection documents. Through them the agent both reads and writes on the
+  the Research Documents. Through them the agent both reads and writes on the
   user's behalf.
 - **The model transport.** How a session reaches a model — provider selection and the
   server-side proxy that holds the key, so a browser need not.

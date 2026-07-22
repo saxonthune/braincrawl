@@ -1,6 +1,6 @@
 ---
 title: Layers
-summary: Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on.
+summary: Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared concern both depend on.
 tags: [architecture, core, layers, storage, separation]
 deps: []
 ---
@@ -20,7 +20,7 @@ The separation is by **storage kind**, not by feature:
 > easily. Any such metadata is a redundant convenience copy — the Catalog remains the
 > single source of truth.
 
-## Identity — the shared spine
+## Identity — the shared concern
 
 Both layers point at a **UUID** — a braincrawl-generated identifier. Every external id
 (doi, isbn, oclc, pmid, OpenAlex `W…`, …) is an alias of that UUID. Identity is its
@@ -63,13 +63,13 @@ Consequences:
 
 ## Building the Library and Catalog separately
 
-Once identity is extracted as the spine, the two layers are independent workstreams:
+Once identity is extracted as its own concern, the two layers are independent lines of work:
 
 - Library work is byte handling — fetch, store, version. It depends on
-  the spine for the id, nothing more.
+  identity for the id, nothing more.
 - Catalog work is relational — aliases, edges, provenance, `payloads`. It records
-  citation targets with no metadata yet through the spine but never reads bytes.
+  citation targets with no metadata yet through id resolution but never reads bytes.
 
-The single ordering constraint is **spine first**. The ingestion fetch stays in the
-spine's per-work coordinator so one upstream call feeds both layers and respects the
-provider rate budget.
+The single ordering constraint is **identity first**. The ingestion fetch stays in the
+per-work coordinator (`doc02.01.02`) so one upstream call feeds both layers and respects
+the provider rate budget.

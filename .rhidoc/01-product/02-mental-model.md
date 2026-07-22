@@ -14,6 +14,6 @@ It builds up the Library and Catalog — work it does faster than a human would 
 manager.
 
 It also acts as the translator between the user and the library itself. Only the best works
-are read directly by a human. As the work builds toward the moments when a work must be
-encountered directly, the user instead asks a question as a prompt; the LLM carries that
+are read directly by a human. As the session builds toward the moments when a work must be
+read directly, the user instead asks a question as a prompt; the LLM carries that
 question to the artifacts in the library and returns a response drawn from the library.

@@ -165,7 +165,7 @@ first-class design choice, not an afterthought [anthropic-tools]. The techniques
   precision in retrieval tasks by reducing hallucinations." Prefer fields like `name`,
   `image_url`, and `file_type` over `uuid`, `256px_image_url`, and `mime_type`
   [anthropic-tools].
-- **Response format is itself a design variable.** There is no universal best; JSON, XML, and
+- **Response format is itself a design variable.** No format is universally best; JSON, XML, and
   Markdown each perform differently by task and by what the model saw in training, so the
   format should be chosen empirically [anthropic-tools]. This echoes the agent-building advice
   to keep formats "close to what the model has seen naturally occurring in text on the
@@ -188,7 +188,7 @@ looks like closes the loop the model would otherwise thrash in [gorilla]. MCP se
 error channels for exactly this: protocol errors (unknown tool, invalid arguments) versus
 tool-execution errors reported in the result with `isError: true`, so the model can tell "I
 called wrong" from "the world pushed back" [mcp-tools]. The framing to hold onto: an error is
-not a dead end, it is the input to the model's self-correction.
+not a dead end but the input to the model's self-correction.
 
 ## Making tools hard to misuse
 
@@ -334,7 +334,7 @@ what the cited practitioners and papers actually recommend, not invented doctrin
   treats structural constraints (enums, strict mode, unrepresentable invalid states) as the
   first defense [openai-fc]. Both work; under a limited effort budget they would spend it in
   different places.
-- **Response format.** The sources agree there is *no* universal best format and that it must
+- **Response format.** The sources agree no format is universally best and that it must
   be chosen empirically per task and model [anthropic-tools] — itself a disagreement with any
   fixed "always return JSON" convention.
 

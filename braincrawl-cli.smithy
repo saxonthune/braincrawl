@@ -2,27 +2,40 @@ $version: "2.0"
 
 namespace braincrawl.cli
 
-/// braincrawl CLI — current surface ("so far"), modeled as a protocol-neutral
-/// resource interface in Smithy. Provider-specific operations
-/// (OpenAlex*/SemanticScholar*/Crossref*/OpenCitations*) are kept separate to
-/// mirror today's command tree; the irregularities they create are flagged in
+/// braincrawl CLI, modeled as a protocol-neutral resource interface in Smithy.
+///
+/// The command tree is organized by storage layer: `library` (Layer 1, artifact
+/// bytes), `catalog` (Layer 2, metadata and citation edges), and `collection`
+/// (Layer 3, research documents). Provider-specific operations are kept separate
+/// to mirror the command tree; the irregularities they create are flagged in
 /// comments so the model doubles as a rationalization worksheet.
 service Braincrawl {
     version: "0.1.0"
     resources: [
-        Work
-        Graph
-        L3
+        Library
+        Catalog
+        Collection
     ]
     operations: [
-        // Catalog search/filter. NOTE: provider is baked into the op NAME today
+        // Provider reads. NOTE: the provider is baked into the operation NAME
         // rather than being a parameter — the "provider-as-branch" smell.
+        OpenAlexGet
         OpenAlexSearch
         OpenAlexFind
         OpenAlexAutocomplete
+        OpenAlexCitedBy
+        OpenAlexRefs
+        SemanticScholarGet
         SemanticScholarSearch
-        Stats
+        SemanticScholarCitedBy
+        SemanticScholarRefs
+        ArxivGet
+        ArxivSearch
+        CrossrefRefs
+        OpenCitationsRefs
         Web
+        MigrateStore
+        Rename
     ]
 }
 
@@ -30,8 +43,17 @@ service Braincrawl {
 // Shared vocabulary
 // ---------------------------------------------------------------------------
 
-/// A work id in `ns:value` form (e.g. `openalex:W123`, `doi:10.x/y`).
+/// A work id in `ns:value` form (e.g. `openalex:W123`, `doi:10.x/y`). Every id
+/// parameter accepts any external identifier; braincrawl resolves it to a
+/// canonical id internally.
 string WorkId
+
+/// An artifact role slug — `abstract`, `fulltext`, `text`, `chunks`, or any
+/// other `[a-z0-9_-]+` name. A work holds one artifact per (role, version).
+string Role
+
+/// A Research Document slug in kebab-case — the document's primary key.
+string DocSlug
 
 list WorkIdList {
     member: WorkId
@@ -46,26 +68,33 @@ enum OutputFormat {
     TEXT = "text"
 }
 
-/// Upstream read-only providers. NOTE: coverage is NOT uniform — search/find/
-/// autocomplete exist for OpenAlex, only search for S2, neither for the rest.
+/// Upstream read-only providers. NOTE: coverage is NOT uniform — get/search/
+/// find/autocomplete/cited-by/refs exist for OpenAlex, a subset for Semantic
+/// Scholar and arXiv, and refs alone for Crossref and OpenCitations.
 enum Provider {
     OPENALEX = "openalex"
     SEMANTIC_SCHOLAR = "semanticscholar"
+    ARXIV = "arxiv"
     CROSSREF = "crossref"
     OPENCITATIONS = "opencitations"
 }
 
-enum Entity {
+enum OpenAlexEntity {
     WORKS = "works"
     AUTHORS = "authors"
     SOURCES = "sources"
-    CONCEPTS = "concepts"
+    INSTITUTIONS = "institutions"
+    TOPICS = "topics"
+    KEYWORDS = "keywords"
+    PUBLISHERS = "publishers"
+    FUNDERS = "funders"
 }
 
-enum Rights {
-    OPEN = "open"
-    LINK_ONLY = "link_only"
-    RESTRICTED = "restricted"
+/// NOTE: a different entity vocabulary from OpenAlex's — the two providers do
+/// not agree on what a searchable collection is called.
+enum SemanticScholarEntity {
+    PAPERS = "papers"
+    AUTHORS = "authors"
 }
 
 /// Where to resolve a fulltext artifact URL from.
@@ -94,14 +123,19 @@ structure CommonOutput {
     fields: String
     /// --full
     full: Boolean
-    /// --skip-push  (do not write results to the local store)
+    /// --skip-push  (do not write provider results to the catalog)
     skipPush: Boolean
     /// --abstract  (irregular: noun-shaped flag; reads better as include-abstract)
     abstractText: Boolean
+    /// --emission  (emit the Emission wire frame instead of the display
+    /// envelope, so the result can be piped into CatalogPut). Ignores `fields`
+    /// and conflicts with TEXT format: the Emission is a wire frame, not a
+    /// display shape.
+    emission: Boolean
 }
 
 /// The provenance-bearing record emitted on stdout. Opaque here; every field
-/// would carry per-source provenance + freshness in the real schema.
+/// carries per-source provenance and freshness in the real schema.
 structure WorkRecord {
     id: WorkId
 }
@@ -124,36 +158,249 @@ structure Subgraph {}
 structure Bytes {}
 
 // ---------------------------------------------------------------------------
-// Work resource — everything keyed by a single work id
+// The Emission — the wire frame between a provider read and a catalog write
 // ---------------------------------------------------------------------------
 
-resource Work {
+/// An external identifier: a namespace and a value.
+structure Alias {
+    @required
+    namespace: String
+    @required
+    value: String
+}
+
+list AliasList {
+    member: Alias
+}
+
+/// A catalog-ready work, already lowered to the store's neutral vocabulary.
+structure WorkInput {
+    @required
+    source: String
+    @required
+    kind: String
+    @required
+    aliases: AliasList
+    attrs: Document
+}
+
+list WorkInputList {
+    member: WorkInput
+}
+
+/// A catalog-ready citation edge.
+structure EdgeInput {
+    @required
+    src: Alias
+    @required
+    dst: Alias
+    @required
+    relation: String
+    @required
+    source: String
+    attrs: Document
+    @required
+    fetchedAt: String
+}
+
+list EdgeInputList {
+    member: EdgeInput
+}
+
+/// Everything a provider read produces for the catalog, fully lowered. This is
+/// the output half of the subprocess plugin protocol, and the input CatalogPut
+/// accepts — which is what makes a provider read decomposable into a lookup and
+/// a store write.
+structure Emission {
+    @required
+    records: WorkInputList
+    @required
+    edges: EdgeInputList
+    /// Records the provider returned whose kind has no catalog mapping.
+    skippedUnmappable: Integer
+}
+
+// ---------------------------------------------------------------------------
+// Library (Layer 1) — artifact bytes held against a work
+// ---------------------------------------------------------------------------
+
+/// An artifact descriptor: what a work holds at a given role and version.
+structure Artifact {
+    @required
+    role: Role
+    @required
+    version: Integer
+    @required
+    byteSize: Long
+    @required
+    mime: String
+    source: String
+    sourceUrl: String
+    @required
+    fetchedAt: String
+    /// Whether this is the version LibraryGet serves for the role.
+    @required
+    isCurrent: Boolean
+}
+
+list ArtifactList {
+    member: Artifact
+}
+
+resource Library {
     identifiers: { id: WorkId }
-    read: StoreGet
     operations: [
-        OpenAlexGet
-        OpenAlexCitedBy
-        OpenAlexRefs
-        SemanticScholarGet
-        SemanticScholarCitedBy
-        SemanticScholarRefs
-        CrossrefRefs
-        OpenCitationsRefs
-        FetchContent
-        ExtractText
-        Chunk
-        FetchPdf
-        PushPdf
-        GetPdf
-    ]
-    collectionOperations: [
-        StoreHave
+        LibraryPut
+        LibraryGet
+        LibraryList
+        LibraryFetch
+        LibraryExtractText
+        LibraryChunk
     ]
 }
 
-/// `store get <id>` — read from the local store only.
+/// `library put <id> [file]` — store bytes from stdin or a file as an artifact
+/// at the given role. Minting a new version rather than overwriting the old one.
+operation LibraryPut {
+    input := with [CommonOutput] {
+        @required
+        id: WorkId
+        /// optional positional FILE (else stdin)
+        file: String
+        /// --mime  (default: sniff `%PDF`, else application/octet-stream)
+        mime: String
+        /// --role  (default `fulltext`)
+        role: Role
+        source: String
+        sourceUrl: String
+    }
+    output := {
+        artifact: Artifact
+    }
+}
+
+/// `library get <id>` — read a stored artifact's bytes to stdout or a file.
+/// Serves the current version of the role.
 @readonly
-operation StoreGet {
+operation LibraryGet {
+    input := with [CommonOutput] {
+        @required
+        id: WorkId
+        /// -o / --output  (sink: file else stdout)
+        outputPath: String
+        /// --role  (default `fulltext`)
+        role: Role
+    }
+    output := {
+        bytes: Bytes
+    }
+}
+
+/// `library list <id>` — list every artifact the work holds: role, version,
+/// size, mime, provenance, and which version is current. Without this the roles
+/// a work holds are only reachable by guessing their names.
+@readonly
+operation LibraryList {
+    input := with [CommonOutput] {
+        @required
+        id: WorkId
+        /// --role  (restrict to one role; otherwise every role)
+        role: Role
+        /// --all-versions  (include superseded versions, not just current)
+        allVersions: Boolean
+    }
+    output := {
+        artifacts: ArtifactList
+    }
+}
+
+/// `library fetch <id>` — acquire a work's fulltext from the open web and store
+/// it at role `fulltext`.
+operation LibraryFetch {
+    input := with [CommonOutput] {
+        @required
+        id: WorkId
+        /// --from  (auto|openalex|unpaywall)
+        from: FromSource
+        /// --force  (re-fetch even if the role already holds an artifact)
+        force: Boolean
+        /// --require-pdf  (reject HTML and other content types)
+        requirePdf: Boolean
+        /// --stdout  (emit bytes instead of storing)
+        stdout: Boolean
+        /// -o / --output  (write bytes to a path instead of storing)
+        outputPath: String
+    }
+    output := {
+        artifact: Artifact
+        bytes: Bytes
+    }
+}
+
+/// `library extract-text <id>` — extract text from the work's stored fulltext
+/// PDF and store it at role `text`. Refuses input with no text layer rather
+/// than emitting unfaithful text — no OCR.
+operation LibraryExtractText {
+    input := with [CommonOutput] {
+        @required
+        id: WorkId
+        /// --role  (default `text`)
+        role: Role
+        /// --force  (re-extract even if the role already holds an artifact)
+        force: Boolean
+        /// --stdout  (emit text instead of storing)
+        stdout: Boolean
+    }
+    output := {
+        artifact: Artifact
+    }
+}
+
+/// `library chunk <id>` — partition a work's stored fulltext into a
+/// citation-carrying `chunks` artifact (structure-first, token-capped, small
+/// overlap; each chunk carries provenance for citing back into the source).
+/// An unstored external `file` is PIPE-ONLY: it emits to stdout and is never
+/// stored. Refuses scanned or image-only input rather than emitting chunks it
+/// cannot stand behind — no OCR.
+operation LibraryChunk {
+    input := with [CommonOutput] {
+        id: WorkId
+        /// optional external PDF file — pipe-only: emits to stdout, never stored
+        file: String
+        /// --role  (default `chunks`)
+        role: Role
+        maxTokens: Integer
+        overlap: Integer
+        /// --stdout  (stream JSON instead of storing; forced when `file` is used)
+        stdout: Boolean
+        /// --allow-partial  (chunk faithful pages, skip image-only ones)
+        allowPartial: Boolean
+        /// --force  (re-chunk even if the role already holds an artifact)
+        force: Boolean
+    }
+    output := {
+        artifact: Artifact
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Catalog (Layer 2) — metadata, aliases, citation edges
+// ---------------------------------------------------------------------------
+
+resource Catalog {
+    identifiers: { id: WorkId }
+    read: CatalogGet
+    collectionOperations: [
+        CatalogPut
+        CatalogHave
+        CatalogNeighborhood
+        CatalogStats
+    ]
+}
+
+/// `catalog get <id>` — read a work by any external id.
+@readonly
+operation CatalogGet {
     input := with [CommonOutput] {
         @required
         id: WorkId
@@ -163,9 +410,27 @@ operation StoreGet {
     }
 }
 
-/// `store have <ids>...` — presence check over the local store.
+/// `catalog put` — read an Emission from stdin or a file and write its works
+/// and edges to the catalog. The write atom the provider reads compose from:
+/// a provider read with `--skip-push --emission` piped into this operation is
+/// equivalent to the same provider read with its default push.
+operation CatalogPut {
+    input := with [CommonOutput] {
+        /// optional positional FILE (else stdin)
+        file: String
+        /// the parsed frame read from that source
+        emission: Emission
+    }
+    output := {
+        nodesWritten: Integer
+        edgesWritten: Integer
+        skippedUnmappable: Integer
+    }
+}
+
+/// `catalog have <ids>...` — report which of the given ids are already present.
 @readonly
-operation StoreHave {
+operation CatalogHave {
     input := with [CommonOutput] {
         @required
         ids: WorkIdList
@@ -175,8 +440,226 @@ operation StoreHave {
     }
 }
 
-/// `openalex get <id>` — fetch one entity upstream. NOTE: duplicates StoreGet's
-/// intent against a different source; the source is the op name, not a param.
+/// `catalog neighborhood <seeds>...` — bounded traversal of the citation graph.
+@readonly
+operation CatalogNeighborhood {
+    input := with [CommonOutput] {
+        @required
+        seeds: WorkIdList
+        /// --dir  (the ONLY operation with an explicit direction; the provider
+        /// cited-by/refs pairs imply it in the verb instead)
+        dir: Direction
+        /// --depth
+        depth: Integer
+        /// --max-nodes
+        maxNodes: Integer
+    }
+    output := {
+        subgraph: Subgraph
+    }
+}
+
+/// `catalog stats` — aggregate counts over the metadata network.
+@readonly
+operation CatalogStats {
+    input := with [CommonOutput] {}
+    output := {}
+}
+
+// ---------------------------------------------------------------------------
+// Collection (Layer 3) — the consolidated research-document store
+// ---------------------------------------------------------------------------
+
+structure AssignedAnchor {
+    doc: DocSlug
+    headingLine: Integer
+    id: String
+    title: String
+}
+
+list AssignedAnchorList {
+    member: AssignedAnchor
+}
+
+structure DocSummary {
+    doc: DocSlug
+    title: String
+    updated: String
+}
+
+list DocSummaryList {
+    member: DocSummary
+}
+
+structure ReadingEntry {
+    doc: DocSlug
+    anchor: String
+    work: WorkId
+    role: String
+}
+
+list ReadingEntryList {
+    member: ReadingEntry
+}
+
+resource Collection {
+    identifiers: { doc: DocSlug }
+    operations: [
+        CollectionNew
+        CollectionPath
+        CollectionRm
+    ]
+    collectionOperations: [
+        CollectionList
+        CollectionCheck
+        CollectionIndex
+        CollectionImport
+        CollectionAssignIds
+        CollectionReadingList
+        CollectionPush
+        CollectionPull
+    ]
+}
+
+/// `collection new <doc>` — create a Research Document; prints its path.
+operation CollectionNew {
+    input := with [CommonOutput] {
+        @required
+        doc: DocSlug
+        /// --title  (H1 heading; defaults to the slug)
+        title: String
+        /// --force  (overwrite an existing document with this slug)
+        force: Boolean
+    }
+    output := {
+        path: String
+    }
+}
+
+/// `collection path <doc>` — print an existing document's absolute path.
+@readonly
+operation CollectionPath {
+    input := with [CommonOutput] {
+        @required
+        doc: DocSlug
+    }
+    output := {
+        path: String
+    }
+}
+
+/// `collection rm <doc>` — delete a document and reindex.
+operation CollectionRm {
+    input := with [CommonOutput] {
+        @required
+        doc: DocSlug
+    }
+    output := {}
+}
+
+/// `collection list` — list every document in the store.
+@readonly
+operation CollectionList {
+    input := with [CommonOutput] {}
+    output := {
+        docs: DocSummaryList
+    }
+}
+
+/// `collection check [doc] [--all]` — lint against the required frontmatter.
+/// Advisory: reports findings and never fails.
+@readonly
+operation CollectionCheck {
+    input := with [CommonOutput] {
+        /// doc slug (omit with --all)
+        doc: DocSlug
+        /// --all  (check every document)
+        all: Boolean
+    }
+    output := {
+        findings: StringList
+    }
+}
+
+/// `collection index` — regenerate INDEX.md from every document's frontmatter.
+operation CollectionIndex {
+    input := with [CommonOutput] {}
+    output := {}
+}
+
+/// `collection import <file>` — adopt an existing markdown file, normalizing
+/// its frontmatter.
+operation CollectionImport {
+    input := with [CommonOutput] {
+        @required
+        file: String
+        /// --doc  (slug override; default from frontmatter, else filename stem)
+        doc: DocSlug
+        /// --mv  (remove the source file after a successful import)
+        mv: Boolean
+    }
+    output := {
+        doc: DocSlug
+    }
+}
+
+/// `collection assign-ids [--dry-run]` — mint `^r-…` anchors for every `##`
+/// heading that lacks one and append them to the heading line. The one
+/// operation in this layer that writes to document bodies: node identity is
+/// tooling-owned, and anchors are store-global so they never need rewriting.
+operation CollectionAssignIds {
+    input := with [CommonOutput] {
+        /// --dry-run  (report what would be assigned; write nothing)
+        dryRun: Boolean
+    }
+    output := {
+        assigned: AssignedAnchorList
+    }
+}
+
+/// `collection reading-list` — list every node carrying a `reading` property
+/// alongside its catalog work, grouped by role.
+@readonly
+operation CollectionReadingList {
+    input := with [CommonOutput] {}
+    output := {
+        entries: ReadingEntryList
+    }
+}
+
+/// `collection push [doc]` — send local documents to the worker's consolidated
+/// store. NOTE: `push`/`pull` here are a two-way sync with a remote, not the
+/// layer write that LibraryPut and CatalogPut perform — a distinct sense of the
+/// word, carried by a distinct verb on purpose.
+operation CollectionPush {
+    input := with [CommonOutput] {
+        /// doc slug (omit to push every push-candidate document)
+        doc: DocSlug
+        /// --dry-run  (print the plan; transfer nothing, touch no sync state)
+        dryRun: Boolean
+        /// --force  (bypass the worker's warning bounce)
+        force: Boolean
+    }
+    output := {}
+}
+
+/// `collection pull [doc]` — bring documents down from the worker's store.
+operation CollectionPull {
+    input := with [CommonOutput] {
+        /// doc slug (omit to pull every pull-candidate document)
+        doc: DocSlug
+        /// --dry-run
+        dryRun: Boolean
+    }
+    output := {}
+}
+
+// ---------------------------------------------------------------------------
+// Providers — upstream reads. Results are written to the catalog by default;
+// `--skip-push` suppresses the write and `--emission` yields the wire frame.
+// ---------------------------------------------------------------------------
+
+/// `openalex get <id>` — fetch one entity, inferring its type from the id.
 @readonly
 operation OpenAlexGet {
     input := with [CommonOutput] {
@@ -188,8 +671,50 @@ operation OpenAlexGet {
     }
 }
 
+/// `openalex search <entity> <query>` — full-text search over a collection.
+@readonly
+operation OpenAlexSearch {
+    input := with [CommonOutput] {
+        @required
+        entity: OpenAlexEntity
+        @required
+        query: String
+    }
+    output := {
+        results: WorkList
+    }
+}
+
+/// `openalex find <entity> <filters>...` — filter by `key:value` expressions.
+@readonly
+operation OpenAlexFind {
+    input := with [CommonOutput] {
+        @required
+        entity: OpenAlexEntity
+        @required
+        filters: StringList
+    }
+    output := {
+        results: WorkList
+    }
+}
+
+/// `openalex autocomplete <entity> <q>` — complete entity names by prefix.
+@readonly
+operation OpenAlexAutocomplete {
+    input := with [CommonOutput] {
+        @required
+        entity: OpenAlexEntity
+        @required
+        q: String
+    }
+    output := {
+        results: WorkList
+    }
+}
+
 /// `openalex cited-by <id>` — forward citations. NOTE: direction is implied by
-/// the verb; only Graph/Neighborhood exposes an explicit --dir.
+/// the verb; only CatalogNeighborhood exposes an explicit --dir.
 @readonly
 operation OpenAlexCitedBy {
     input := with [CommonOutput] {
@@ -225,6 +750,21 @@ operation SemanticScholarGet {
     }
 }
 
+/// `semanticscholar search <entity> <query>`. NOTE: no find/autocomplete twin —
+/// a coverage gap against OpenAlex.
+@readonly
+operation SemanticScholarSearch {
+    input := with [CommonOutput] {
+        @required
+        entity: SemanticScholarEntity
+        @required
+        query: String
+    }
+    output := {
+        results: WorkList
+    }
+}
+
 /// `semanticscholar cited-by <id>`
 @readonly
 operation SemanticScholarCitedBy {
@@ -249,7 +789,33 @@ operation SemanticScholarRefs {
     }
 }
 
-/// `crossref refs <id>`
+/// `arxiv get <id>` — accepts `arxiv:…`, a bare numeric id, an old-style
+/// `hep-th/…` id, or a full URL.
+@readonly
+operation ArxivGet {
+    input := with [CommonOutput] {
+        @required
+        id: WorkId
+    }
+    output := {
+        work: WorkRecord
+    }
+}
+
+/// `arxiv search <query>`. NOTE: no entity parameter — arXiv has one searchable
+/// collection, so the query carries field operators (`ti:`/`au:`/`cat:`) instead.
+@readonly
+operation ArxivSearch {
+    input := with [CommonOutput] {
+        @required
+        query: String
+    }
+    output := {
+        results: WorkList
+    }
+}
+
+/// `crossref refs <id>` — from Crossref's deposited reference list.
 @readonly
 operation CrossrefRefs {
     input := with [CommonOutput] {
@@ -261,7 +827,7 @@ operation CrossrefRefs {
     }
 }
 
-/// `opencitations refs <id>`
+/// `opencitations refs <id>` — from the OpenCitations COCI index.
 @readonly
 operation OpenCitationsRefs {
     input := with [CommonOutput] {
@@ -277,237 +843,54 @@ operation OpenCitationsRefs {
 //   provider — the single strongest argument for collapsing them into one
 //   `Refs(id, provider: Provider)`. Same story for *CitedBy and *Get.
 
-/// `fetch-content <id>` — acquire fulltext into the store.
-operation FetchContent {
-    input := with [CommonOutput] {
-        @required
-        id: WorkId
-        from: FromSource
-        force: Boolean
-        requirePdf: Boolean
-    }
-    output := {
-        work: WorkRecord
-    }
-}
-
-/// `extract-text <id>` — extract text from a stored PDF payload.
-operation ExtractText {
-    input := with [CommonOutput] {
-        @required
-        id: WorkId
-    }
-    output := {
-        work: WorkRecord
-    }
-}
-
-/// `chunk <id>` — partition a work's stored fulltext into a citation-carrying
-/// `chunks` artifact (structure-first, token-capped, small overlap; each chunk
-/// carries provenance). One of many secondary derived artifacts a work may hold —
-/// not part of any abstract/fulltext dichotomy. Store target is a PUSHED work only;
-/// an unstored external `file` is pipe-only (stdout, never stored). Reports whether
-/// it can faithfully chunk (born-digital text layer) and refuses scanned/image-only
-/// input rather than emitting unfaithful chunks — no OCR.
-operation Chunk {
-    input := with [CommonOutput] {
-        id: WorkId
-        /// optional external PDF file — pipe-only: emits to stdout, never stored
-        file: String
-        /// output artifact role (default "chunks")
-        role: String
-        maxTokens: Integer
-        overlap: Integer
-        /// stream JSON to stdout instead of storing (forced when `file` is used)
-        stdout: Boolean
-        /// re-chunk even if a chunks artifact already exists
-        force: Boolean
-    }
-    output := {
-        work: WorkRecord
-    }
-}
-
-/// `fetch-pdf <id>` — resolve + download to stdout/file (no store write).
-@readonly
-operation FetchPdf {
-    input := with [CommonOutput] {
-        @required
-        id: WorkId
-        from: FromSource
-        requirePdf: Boolean
-        /// -o / --output  (sink: file else stdout — see "where does the signal land")
-        outputPath: String
-    }
-    output := {
-        bytes: Bytes
-    }
-}
-
-/// `push-pdf <id> [file]` — store bytes from stdin/file as the fulltext payload.
-operation PushPdf {
-    input := with [CommonOutput] {
-        @required
-        id: WorkId
-        /// optional positional FILE (else stdin)
-        file: String
-        mime: String
-        rights: Rights
-        source: String
-        sourceUrl: String
-    }
-    output := {
-        work: WorkRecord
-    }
-}
-
-/// `get-pdf <id>` — read stored fulltext bytes to stdout/file.
-@readonly
-operation GetPdf {
-    input := with [CommonOutput] {
-        @required
-        id: WorkId
-        /// -o / --output
-        outputPath: String
-    }
-    output := {
-        bytes: Bytes
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Graph resource
+// Operations that belong to no layer
 // ---------------------------------------------------------------------------
 
-resource Graph {
-    operations: [
-        Neighborhood
-    ]
-}
-
-/// `graph neighborhood <seeds>... --dir --depth --max-nodes`
-@readonly
-operation Neighborhood {
-    input := with [CommonOutput] {
-        @required
-        seeds: WorkIdList
-        /// --dir  (the ONLY command with an explicit direction)
-        dir: Direction
-        /// --depth
-        depth: Integer
-        /// --max-nodes
-        maxNodes: Integer
-    }
-    output := {
-        subgraph: Subgraph
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Catalog search — provider baked into op name; S2 lacks find/autocomplete
-// ---------------------------------------------------------------------------
-
-/// `openalex search <entity> <query>`
-@readonly
-operation OpenAlexSearch {
-    input := with [CommonOutput] {
-        @required
-        entity: Entity
-        @required
-        query: String
-    }
-    output := {
-        results: WorkList
-    }
-}
-
-/// `openalex find <entity> <filters>...`
-@readonly
-operation OpenAlexFind {
-    input := with [CommonOutput] {
-        @required
-        entity: Entity
-        @required
-        filters: StringList
-    }
-    output := {
-        results: WorkList
-    }
-}
-
-/// `openalex autocomplete <entity> <q>`
-@readonly
-operation OpenAlexAutocomplete {
-    input := with [CommonOutput] {
-        @required
-        entity: Entity
-        @required
-        q: String
-    }
-    output := {
-        results: WorkList
-    }
-}
-
-/// `semanticscholar search <entity> <query>`  (no find/autocomplete twin — a gap)
-@readonly
-operation SemanticScholarSearch {
-    input := with [CommonOutput] {
-        @required
-        entity: Entity
-        @required
-        query: String
-    }
-    output := {
-        results: WorkList
-    }
-}
-
-/// `stats` — aggregate counts over the metadata network.
-@readonly
-operation Stats {
-    input := with [CommonOutput] {}
-    output := {}
-}
-
-/// `web` — prints `<server_url>/web`, the Web UI URL for the configured server.
+/// `web` — print `<server_url>/web`, the Web UI URL for the configured server.
 @readonly
 operation Web {
     input := {}
+    output := {
+        url: String
+    }
+}
+
+/// `migrate-store` — replay a local SQLite and blob corpus into a remote store
+/// over its HTTP API.
+operation MigrateStore {
+    input := with [CommonOutput] {
+        /// --db  (default ~/.local/share/braincrawl/braincrawl.db)
+        db: String
+        /// --blobs  (default ~/.local/share/braincrawl/blobs)
+        blobs: String
+        /// --dry-run  (print plan counts; push nothing)
+        dryRun: Boolean
+    }
     output := {}
 }
 
-// ---------------------------------------------------------------------------
-// L3 resource — the consolidated research-document store
-// ---------------------------------------------------------------------------
-
-structure AssignedAnchor {
-    doc: String
-    headingLine: Integer
-    id: String
-    title: String
-}
-
-list AssignedAnchorList {
-    member: AssignedAnchor
-}
-
-resource L3 {
-    collectionOperations: [
-        AssignIds
-    ]
-}
-
-/// `l3 assign-ids [--dry-run]` — mint `^r-…` anchors for every `##` heading
-/// that lacks one and append them to the heading line. The one command in the
-/// L3 surface that writes to doc files: node identity is tooling-owned.
-/// `--dry-run` reports what would be assigned and writes nothing.
-operation AssignIds {
+/// `rename <file>` — rename a work file to its canonical bibliographic
+/// filename. NOTE: operates on a loose file on disk, not on anything the store
+/// holds — the one operation with no store contact at all.
+operation Rename {
     input := with [CommonOutput] {
-        /// --dry-run  (report what would be assigned; write nothing)
+        @required
+        file: String
+        /// --author  (first author's surname; may contain spaces or particles)
+        @required
+        author: String
+        /// --et-al
+        etAl: Boolean
+        @required
+        year: Integer
+        /// --title  (slugified for the filename)
+        @required
+        title: String
+        /// --dry-run  (print the proposed path; rename nothing)
         dryRun: Boolean
     }
     output := {
-        assigned: AssignedAnchorList
+        path: String
     }
 }

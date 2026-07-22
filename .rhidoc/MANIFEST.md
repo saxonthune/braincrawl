@@ -2,7 +2,7 @@
 
 Machine-readable index for AI navigation. Read this file first, then open only the docs relevant to your query.
 
-**Retrieval strategy:** See doc00.00 (codex index) for how to find and read docs efficiently.
+**Retrieval strategy:** See doc00.00 (handbook index) for how to find and read docs efficiently.
 
 ## Column Definitions
 
@@ -56,7 +56,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 
 | doc02.00 | `00-index.md` |  |  | — | doc02.04 | — |
 | doc02.04 | `04-monorepo-rust-runtimes.md` | A single Cargo workspace in Rust. The platform-agnostic core defines traits; concrete backends bind them to Cloudflare or to a local stack. Two entry points — a Wasm Worker and a native dev server — wire the backends, and are the only crates that name infrastructure. | architecture, monorepo, rust, cloudflare, runtime, traits-and-backends, separation | doc02.00, doc02.01.01, doc02.02.00 | — | — |
-| doc02.05 | `05-auth-tenancy.md` | Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Research Collections. Core stays auth-blind; the entry points gate every request before any use-case runs. | architecture, auth, security, tenancy, token | doc02.01.03, doc02.02.00 | — | — |
+| doc02.05 | `05-auth-tenancy.md` | Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Research Collections. Core never sees a token; the entry points run every request through the gate before any use-case runs. | architecture, auth, security, tenancy, token | doc02.01.03, doc02.02.00 | — | — |
 
 ### Core
 
@@ -64,7 +64,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.01.00 | `01-core/00-index.md` |  |  | — | — | — |
-| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared spine both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.01.04, doc02.04 | — |
+| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared concern both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.01.04, doc02.04 | — |
 | doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one UUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
 | doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a UUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
 | doc02.01.04 | `01-core/04-l3-conventions.md` | An L3 Research Document is markdown with two required frontmatter fields (doc, updated) and a body of research nodes — headings carrying property and link lines. Node anchors are store-global; reference ids, never copy metadata. A worked example ships with the braincrawl skill. | architecture, core, l3, research-collection, conventions, node-grammar | doc02.01.01 | — | — |

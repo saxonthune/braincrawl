@@ -9,7 +9,7 @@ deps: [doc01.01]
 
 The Web UI is a feature of braincrawl. It provides read-only views of everything
 braincrawl holds, across all three layers (Library, Catalog, Research
-Collections). It performs no write operations.
+Collections). It performs no writes.
 
 ## Web UI plugins
 

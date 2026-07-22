@@ -21,7 +21,7 @@ output shape, upstream client behavior, and persistence behavior.
 
 S2 exposes **works** (`papers`) and **authors** as its entity kinds. The namespace
 provides four orthogonal verbs. Complex workflows compose these verbs; they are not
-extended with bespoke flags.
+extended with custom flags.
 
 | Verb | Entity | Binds to | Intent |
 |---|---|---|---|
@@ -38,7 +38,7 @@ All verbs honor the global output flags: `--text`, `--json`, `--limit N`, `--all
 
 ## Output
 
-Default output is the **shared structured envelope** (same shape as doc02.06.01.01):
+Default output is the shared **response wrapper** (same shape as doc02.06.01.01):
 
 ```json
 {
@@ -67,9 +67,9 @@ reproduce it:
 
 ## Persistence
 
-Per doc02.06, results **push to the metadata server by default** alongside the context
-return, over HTTP to the server's upsert API (doc02.01.03). `--skip-push` suppresses
-persistence for a read-only-to-context call.
+Per doc02.06, results **push to the metadata server by default** in addition to
+returning to context, over HTTP to the server's upsert API (doc02.01.03). `--skip-push`
+suppresses persistence for a context-only call.
 
 Pushing maps an S2 entity onto the store's node model. Only identity and kind are
 extracted; the trimmed record is the payload:

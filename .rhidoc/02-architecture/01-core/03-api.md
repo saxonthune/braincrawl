@@ -18,7 +18,7 @@ accumulates across questions and projects instead of being re-fetched.
 OpenAlex `W…`, or a braincrawl UUID. The API resolves it to the UUID
 internally before doing anything (see Id Resolution, `doc02.01.02`). Consumers never
 resolve, crosswalk, or dedupe identity themselves — they store and query by
-whatever id they happen to hold, and braincrawl guarantees all ids of one resource
+whatever id they happen to hold, and braincrawl guarantees all ids of one work
 land on the same node.
 
 ## Surface
@@ -60,4 +60,4 @@ Lets a consumer skip re-fetching what an earlier question already stored — the
 accumulation payoff that distinguishes braincrawl from one-shot research.
 
 > A later session fleshes out request/response shapes, pagination on `get_edges`
-> (hubs are large), and the read-time edge merge policy.
+> (heavily cited works are large), and the read-time edge merge policy.

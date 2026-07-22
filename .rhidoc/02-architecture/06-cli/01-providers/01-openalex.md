@@ -22,7 +22,7 @@ the base vocabulary, output shape, and persistence behavior.
 A small, orthogonal set of verbs. Each is entity-generic where it makes sense
 (`<entity>` ∈ works, authors, sources, institutions, topics, keywords,
 publishers, funders). Complex workflows compose these verbs; they are not
-extended with bespoke flags.
+extended with custom flags.
 
 | Verb | Binds to | Intent |
 |---|---|---|
@@ -38,8 +38,8 @@ hides non-obvious upstream mechanics the caller should not have to reproduce.
 
 ## Output
 
-Default output is a **structured envelope**, machine-parseable so both an agent's
-context and braincrawl's own routing layer can consume it:
+Default output is a structured **response wrapper**, machine-parseable so both an
+agent's context and braincrawl's own routing layer can consume it:
 
 ```json
 {
@@ -70,10 +70,10 @@ discovered as an empty result.
 
 ## Persistence
 
-Per doc02.06, results **push to the metadata server by default** alongside the
-context return, over HTTP to the server's upsert API (doc02.01.03). The fork is
+Per doc02.06, results **push to the metadata server by default** in addition to
+returning to context, over HTTP to the server's upsert API (doc02.01.03). The fork is
 about reaching OpenAlex directly, not about discarding what it returns.
-`--skip-push` suppresses persistence for a read-only-to-context call.
+`--skip-push` suppresses persistence for a context-only call.
 
 Pushing maps an OpenAlex entity onto the store's node model. The mapping is thin
 because a node's `attrs` is free-form JSON — the trimmed record is the payload;

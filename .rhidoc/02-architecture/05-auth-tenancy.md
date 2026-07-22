@@ -1,6 +1,6 @@
 ---
 title: Auth & Tenancy
-summary: Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Research Collections. Core stays auth-blind; the entry points gate every request before any use-case runs.
+summary: Access is a bearer token in the Authorization header, validated at the entry point against a hashed allowlist in KV. Each token maps to a tenant, and tenant is the isolation key for Research Collections. Core never sees a token; the entry points run every request through the gate before any use-case runs.
 tags: [architecture, auth, security, tenancy, token]
 deps: [doc02.01.03, doc02.02.00]
 ---
@@ -25,7 +25,7 @@ once (the thin client keeps it in `~/.braincrawl/config`) and sends it on every 
 
 Auth is an **entry-point concern, not a core one** (doc02.04). The `core` crate never
 sees a token — it operates on a tenant the entry point has already resolved. Both entry
-points gate identically:
+points run the same gate:
 
 1. Extract the bearer token; reject with `401` if absent or malformed.
 2. Resolve token → tenant via the allowlist; reject with `403` if unknown or revoked.

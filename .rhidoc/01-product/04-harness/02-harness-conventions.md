@@ -95,10 +95,10 @@ default [dbreunig, cc-search]:
 
 The balance is: speak *little* and *at the boundaries* — a short intent line before a
 cluster of actions, minimal threading between them, and a compact summary at the end.
-The actions themselves are the work; narration is orientation, priced in words.
+The actions themselves are the work; narration is orientation, paid for in words.
 
 The exact figures above (≤25 words between tool calls, ≤100-word finals) trace to a
-practitioner reverse-engineering of the Claude Code prompt, not an official Anthropic
+practitioner who reverse-engineered the Claude Code prompt, not to an official Anthropic
 document, so treat the numbers as reported rather than canonical — though two independent
 secondary sources agree on them [dbreunig, cc-search].
 

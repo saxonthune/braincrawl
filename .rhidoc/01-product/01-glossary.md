@@ -28,10 +28,11 @@ braincrawl separates knowledge built once and shared — the first two layers �
 - **L1 / L2 / L3** — shorthand for Library, Catalog, Research Documents.
 ## The catalog: nodes and edges
 - The catalog stores **nodes** — most commonly articles, books, and authors — and the **edges** between them.
-- The catalog is comprised of **catalog entries**, which form the nodes of the graph.
+- The catalog is made of **catalog entries**, which form the nodes of the graph.
 - A **citation** is the primary edge between catalog entries — one work citing another.
-- A **canonical id** is a work's single, braincrawl-minted identity — a **UUID**, opaque and provider-neutral. It is *the* identity of a work across every layer: L1 keys artifacts by it, L2 keys nodes by it, L3 references works by it. No external scheme — not even an OpenAlex `W…` id — is ever the canonical id. (`CanonicalId` in the code is this UUID.)
+- A **canonical id** is a work's single, braincrawl-generated identity — a **UUID**, opaque and provider-neutral. It is *the* identity of a work across every layer: L1 keys artifacts by it, L2 keys nodes by it, L3 references works by it. No external scheme — not even an OpenAlex `W…` id — is ever the canonical id. (`CanonicalId` in the code is this UUID.)
 - An **identifier** (or **alias**) is one external identification scheme — a DOI, ISBN, OCLC, PMID, or OpenAlex id — that braincrawl maps to a canonical id. braincrawl routes every alias naming the same work to one canonical id (`doc02.01.02`).
+- **Identity** is its own concern — resolving every alias to one canonical id. Both the Library and the Catalog depend on it; neither owns it.
 ## Topics and coverage
 - A **topic** (or question) is what works are *about* — an OpenAlex concept/topic, or a consumer's research question.
 - `relates-to(artifact, topic)` — an artifact bears on a topic.
@@ -66,3 +67,5 @@ A provider has two roles: pulling information from the provider's store, and pus
 - `pulls-from(provider, source)` and `pushes-to(provider, braincrawl-store)` — the two provider facts.
 - A provider's store is usually accessed via an API.
 - What a provider pulls and pushes is **catalog entries**, **artifacts**, or both, depending on the operation.
+- The **response wrapper** is the JSON object a provider verb returns — the query echo, counts, a truncation flag, and the trimmed records (`results`).
+- A **context-only call** returns results to the caller's context without pushing them to the store (`--skip-push`).
