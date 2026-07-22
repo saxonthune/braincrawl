@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use braincrawl_auth::SharedSecret;
-use braincrawl_cli::cli::{Cli, GraphCmd, Namespace};
+use braincrawl_cli::cli::{CatalogCmd, Cli, Namespace};
 use braincrawl_cli::store_client::StoreClient;
 use braincrawl_server::{make_app, make_store, AuthConfig};
 use clap::Parser;
@@ -12,17 +12,18 @@ use clap::Parser;
 
 #[test]
 fn parse_graph_neighborhood_defaults() {
-    let cli = Cli::parse_from(["braincrawl", "graph", "neighborhood", "openalex:W1"]);
+    let cli = Cli::parse_from(["braincrawl", "catalog", "neighborhood", "openalex:W1"]);
     match cli.namespace {
-        Namespace::Graph(g) => match g.cmd {
-            GraphCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
+        Namespace::Catalog(c) => match c.cmd {
+            CatalogCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
                 assert_eq!(seeds, vec!["openalex:W1"]);
                 assert_eq!(dir, "forward");
                 assert_eq!(depth, 1);
                 assert_eq!(max_nodes, 200);
             }
+            _ => panic!("expected Neighborhood command"),
         },
-        _ => panic!("expected Graph namespace"),
+        _ => panic!("expected Catalog namespace"),
     }
 }
 
@@ -30,7 +31,7 @@ fn parse_graph_neighborhood_defaults() {
 fn parse_graph_neighborhood_explicit_flags() {
     let cli = Cli::parse_from([
         "braincrawl",
-        "graph",
+        "catalog",
         "neighborhood",
         "openalex:W1",
         "doi:10.x/y",
@@ -42,15 +43,16 @@ fn parse_graph_neighborhood_explicit_flags() {
         "10",
     ]);
     match cli.namespace {
-        Namespace::Graph(g) => match g.cmd {
-            GraphCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
+        Namespace::Catalog(c) => match c.cmd {
+            CatalogCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
                 assert_eq!(seeds, vec!["openalex:W1", "doi:10.x/y"]);
                 assert_eq!(dir, "backward");
                 assert_eq!(depth, 2);
                 assert_eq!(max_nodes, 10);
             }
+            _ => panic!("expected Neighborhood command"),
         },
-        _ => panic!("expected Graph namespace"),
+        _ => panic!("expected Catalog namespace"),
     }
 }
 

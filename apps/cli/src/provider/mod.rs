@@ -198,6 +198,46 @@ mod tests {
     }
 
     #[test]
+    fn emission_pretty_round_trip() {
+        let em = Emission {
+            records: vec![WorkRecord {
+                source: "openalex".to_string(),
+                kind: "Work".to_string(),
+                aliases: vec![
+                    Alias { namespace: "openalex".to_string(), value: "W123".to_string() },
+                    Alias { namespace: "doi".to_string(), value: "10.1000/test".to_string() },
+                ],
+                attrs: json!({"title": "Test paper"}),
+            }],
+            edges: vec![EdgeInput {
+                src: Alias { namespace: "openalex".to_string(), value: "W111".to_string() },
+                dst: Alias { namespace: "openalex".to_string(), value: "W222".to_string() },
+                relation: "cites".to_string(),
+                source: "openalex".to_string(),
+                attrs: serde_json::Value::Null,
+                fetched_at: "2026-01-01T00:00:00Z".to_string(),
+            }],
+            skipped_unmappable: 3,
+        };
+        let pretty = serde_json::to_string_pretty(&em).unwrap();
+        let restored: Emission = serde_json::from_str(&pretty).unwrap();
+        assert_eq!(
+            serde_json::to_value(&restored).unwrap(),
+            serde_json::to_value(&em).unwrap()
+        );
+    }
+
+    #[test]
+    fn emission_empty_round_trip() {
+        let em = Emission::empty();
+        let json_str = serde_json::to_string_pretty(&em).unwrap();
+        let restored: Emission = serde_json::from_str(&json_str).unwrap();
+        assert!(restored.records.is_empty());
+        assert!(restored.edges.is_empty());
+        assert_eq!(restored.skipped_unmappable, 0);
+    }
+
+    #[test]
     fn rfc3339_now_format() {
         let ts = rfc3339_now();
         assert!(ts.ends_with('Z'), "timestamp must end with Z: {ts}");

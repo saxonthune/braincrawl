@@ -106,6 +106,20 @@
       ],
       "required": false,
       "short": null
+    },
+    {
+      "defaults": [],
+      "global": true,
+      "help": "Emit the store-ready emission frame instead of the display envelope",
+      "kind": "flag",
+      "long": "emission",
+      "name": "emission",
+      "possibleValues": [
+        "true",
+        "false"
+      ],
+      "required": false,
+      "short": null
     }
   ],
   "hidden": false,
@@ -113,32 +127,446 @@
   "path": "braincrawl",
   "subcommands": [
     {
-      "about": "Dev round-trip surface for the local store",
+      "about": "Artifact bytes held against a work (Layer 1)",
       "args": [],
-      "hidden": true,
-      "name": "store",
-      "path": "braincrawl/store",
+      "hidden": false,
+      "name": "library",
+      "path": "braincrawl/library",
       "subcommands": [
         {
-          "about": "Check which of the given aliases (ns:value) are present in the store",
+          "about": "Store bytes from stdin or a file as an artifact of the given role",
           "args": [
             {
               "defaults": [],
               "global": false,
-              "help": null,
+              "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
               "kind": "positional",
               "long": null,
-              "name": "ids",
+              "name": "id",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Read bytes from this file instead of stdin",
+              "kind": "positional",
+              "long": null,
+              "name": "file",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Content mime type (default: sniff %PDF, else application/octet-stream)",
+              "kind": "option",
+              "long": "mime",
+              "name": "mime",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Optional source label recorded with the artifact",
+              "kind": "option",
+              "long": "source",
+              "name": "source",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Optional source URL recorded with the artifact",
+              "kind": "option",
+              "long": "source-url",
+              "name": "source_url",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "fulltext"
+              ],
+              "global": false,
+              "help": "Artifact role slug (e.g. fulltext, abstract, map)",
+              "kind": "option",
+              "long": "role",
+              "name": "role",
               "possibleValues": [],
               "required": false,
               "short": null
             }
           ],
           "hidden": false,
-          "name": "have",
-          "path": "braincrawl/store/have",
+          "name": "put",
+          "path": "braincrawl/library/put",
           "subcommands": []
         },
+        {
+          "about": "Read a stored artifact's bytes to stdout",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
+              "kind": "positional",
+              "long": null,
+              "name": "id",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Write bytes to this path instead of stdout",
+              "kind": "option",
+              "long": "output",
+              "name": "output",
+              "possibleValues": [],
+              "required": false,
+              "short": "o"
+            },
+            {
+              "defaults": [
+                "fulltext"
+              ],
+              "global": false,
+              "help": "Artifact role slug (e.g. fulltext, abstract, map)",
+              "kind": "option",
+              "long": "role",
+              "name": "role",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "get",
+          "path": "braincrawl/library/get",
+          "subcommands": []
+        },
+        {
+          "about": "Acquire a work's fulltext artifact from the open web into the store",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Work id in ns:value form (e.g. openalex:W2165758805 or doi:10.x/y)",
+              "kind": "positional",
+              "long": null,
+              "name": "id",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [
+                "auto"
+              ],
+              "global": false,
+              "help": "Where to resolve the artifact URL from (auto|openalex|unpaywall)",
+              "kind": "option",
+              "long": "from",
+              "name": "from",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Re-fetch even if a fulltext artifact already exists",
+              "kind": "flag",
+              "long": "force",
+              "name": "force",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Only accept a PDF artifact (reject HTML or other content types)",
+              "kind": "flag",
+              "long": "require-pdf",
+              "name": "require_pdf",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Emit bytes to stdout instead of storing",
+              "kind": "flag",
+              "long": "stdout",
+              "name": "stdout",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Write bytes to this path instead of storing",
+              "kind": "option",
+              "long": "output",
+              "name": "output",
+              "possibleValues": [],
+              "required": false,
+              "short": "o"
+            }
+          ],
+          "hidden": false,
+          "name": "fetch",
+          "path": "braincrawl/library/fetch",
+          "subcommands": []
+        },
+        {
+          "about": "Extract text from a work's stored fulltext PDF artifact",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
+              "kind": "positional",
+              "long": null,
+              "name": "id",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [
+                "text"
+              ],
+              "global": false,
+              "help": "Artifact role slug to store the extracted text at",
+              "kind": "option",
+              "long": "role",
+              "name": "role",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Re-extract even if the role already holds an artifact",
+              "kind": "flag",
+              "long": "force",
+              "name": "force",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Emit text to stdout instead of storing",
+              "kind": "flag",
+              "long": "stdout",
+              "name": "stdout",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "extract-text",
+          "path": "braincrawl/library/extract-text",
+          "subcommands": []
+        },
+        {
+          "about": "Partition a work's stored fulltext into a citation-carrying chunks artifact",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Work id in ns:value form (stored fulltext → writes the chunks artifact)",
+              "kind": "positional",
+              "long": null,
+              "name": "id",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "External PDF file — PIPE-ONLY: emits JSON to stdout, never stored",
+              "kind": "option",
+              "long": "file",
+              "name": "file",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "chunks"
+              ],
+              "global": false,
+              "help": "Output artifact role slug",
+              "kind": "option",
+              "long": "role",
+              "name": "role",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "512"
+              ],
+              "global": false,
+              "help": null,
+              "kind": "option",
+              "long": "max-tokens",
+              "name": "max_tokens",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "64"
+              ],
+              "global": false,
+              "help": null,
+              "kind": "option",
+              "long": "overlap",
+              "name": "overlap",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Stream JSON to stdout instead of storing",
+              "kind": "flag",
+              "long": "stdout",
+              "name": "stdout",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Chunk faithful pages and skip image-only ones instead of refusing",
+              "kind": "flag",
+              "long": "allow-partial",
+              "name": "allow_partial",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Re-chunk even if a chunks artifact already exists",
+              "kind": "flag",
+              "long": "force",
+              "name": "force",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "chunk",
+          "path": "braincrawl/library/chunk",
+          "subcommands": []
+        },
+        {
+          "about": "List every artifact a work holds — role, version, size, mime, provenance",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
+              "kind": "positional",
+              "long": null,
+              "name": "id",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Restrict to a single artifact role",
+              "kind": "option",
+              "long": "role",
+              "name": "role",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Include superseded versions, not just the current one per role",
+              "kind": "flag",
+              "long": "all-versions",
+              "name": "all_versions",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "list",
+          "path": "braincrawl/library/list",
+          "subcommands": []
+        }
+      ]
+    },
+    {
+      "about": "Work metadata, aliases, and citation edges (Layer 2)",
+      "args": [],
+      "hidden": false,
+      "name": "catalog",
+      "path": "braincrawl/catalog",
+      "subcommands": [
         {
           "about": "Retrieve a work by alias (ns:value)",
           "args": [
@@ -156,7 +584,416 @@
           ],
           "hidden": false,
           "name": "get",
-          "path": "braincrawl/store/get",
+          "path": "braincrawl/catalog/get",
+          "subcommands": []
+        },
+        {
+          "about": "Check which of the given aliases (ns:value) are present in the store",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": null,
+              "kind": "positional",
+              "long": null,
+              "name": "ids",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "have",
+          "path": "braincrawl/catalog/have",
+          "subcommands": []
+        },
+        {
+          "about": "Bounded neighborhood traversal from one or more seed ids",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Seed ids in ns:value form (e.g. openalex:W2031938753 doi:10.x/y)",
+              "kind": "positional",
+              "long": null,
+              "name": "seeds",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "forward"
+              ],
+              "global": false,
+              "help": "Traversal direction: forward (src→dst) or backward (dst→src)",
+              "kind": "option",
+              "long": "dir",
+              "name": "dir",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "1"
+              ],
+              "global": false,
+              "help": "Max BFS depth from the seeds",
+              "kind": "option",
+              "long": "depth",
+              "name": "depth",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [
+                "200"
+              ],
+              "global": false,
+              "help": "Max nodes in the returned subgraph",
+              "kind": "option",
+              "long": "max-nodes",
+              "name": "max_nodes",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "neighborhood",
+          "path": "braincrawl/catalog/neighborhood",
+          "subcommands": []
+        },
+        {
+          "about": "Show aggregate statistics about the metadata network",
+          "args": [],
+          "hidden": false,
+          "name": "stats",
+          "path": "braincrawl/catalog/stats",
+          "subcommands": []
+        },
+        {
+          "about": "Write works and edges from an emission frame (stdin or a file) to the catalog",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Read the emission from this file instead of stdin",
+              "kind": "positional",
+              "long": null,
+              "name": "file",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "put",
+          "path": "braincrawl/catalog/put",
+          "subcommands": []
+        }
+      ]
+    },
+    {
+      "about": "Research Documents — the consolidated store (Layer 3)",
+      "args": [],
+      "hidden": false,
+      "name": "collection",
+      "path": "braincrawl/collection",
+      "subcommands": [
+        {
+          "about": "Create a new L3 doc in the store; prints its absolute path to stdout",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug (kebab-case) — the primary key and filename stem",
+              "kind": "positional",
+              "long": null,
+              "name": "doc",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Human title for the H1 heading (defaults to the doc slug)",
+              "kind": "option",
+              "long": "title",
+              "name": "title",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Overwrite if a doc with this slug already exists",
+              "kind": "flag",
+              "long": "force",
+              "name": "force",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "new",
+          "path": "braincrawl/collection/new",
+          "subcommands": []
+        },
+        {
+          "about": "Print the absolute path of an existing L3 doc to stdout",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug",
+              "kind": "positional",
+              "long": null,
+              "name": "doc",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "path",
+          "path": "braincrawl/collection/path",
+          "subcommands": []
+        },
+        {
+          "about": "List all L3 docs in the store",
+          "args": [],
+          "hidden": false,
+          "name": "list",
+          "path": "braincrawl/collection/list",
+          "subcommands": []
+        },
+        {
+          "about": "Lint a doc (or --all) against the required frontmatter; advisory, never fails",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug (omit with --all)",
+              "kind": "positional",
+              "long": null,
+              "name": "doc",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Check every doc in the store",
+              "kind": "flag",
+              "long": "all",
+              "name": "all",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "check",
+          "path": "braincrawl/collection/check",
+          "subcommands": []
+        },
+        {
+          "about": "Regenerate INDEX.md from every doc's frontmatter",
+          "args": [],
+          "hidden": false,
+          "name": "index",
+          "path": "braincrawl/collection/index",
+          "subcommands": []
+        },
+        {
+          "about": "Adopt an existing markdown file into the store, normalizing its frontmatter",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Path to the existing .md / .l3.md file",
+              "kind": "positional",
+              "long": null,
+              "name": "file",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug override (default: existing `doc`/`domain` frontmatter, else filename stem)",
+              "kind": "option",
+              "long": "doc",
+              "name": "doc",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Remove the source file after a successful import",
+              "kind": "flag",
+              "long": "mv",
+              "name": "mv",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "import",
+          "path": "braincrawl/collection/import",
+          "subcommands": []
+        },
+        {
+          "about": "Delete a doc from the store and reindex",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug",
+              "kind": "positional",
+              "long": null,
+              "name": "doc",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "rm",
+          "path": "braincrawl/collection/rm",
+          "subcommands": []
+        },
+        {
+          "about": "Assign `^r-…` anchors for every `##` heading that lacks one",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Report what would be assigned; write nothing",
+              "kind": "flag",
+              "long": "dry-run",
+              "name": "dry_run",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "assign-ids",
+          "path": "braincrawl/collection/assign-ids",
+          "subcommands": []
+        },
+        {
+          "about": "List every node with a `reading` property and its catalog work, grouped by role",
+          "args": [],
+          "hidden": false,
+          "name": "reading-list",
+          "path": "braincrawl/collection/reading-list",
+          "subcommands": []
+        },
+        {
+          "about": "Push local doc(s) to the worker's consolidated L3 store",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug (omit to push every push-candidate doc)",
+              "kind": "positional",
+              "long": null,
+              "name": "doc",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Print the plan without transferring or touching sync state",
+              "kind": "flag",
+              "long": "dry-run",
+              "name": "dry_run",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Bypass the worker's warning bounce (400) on push",
+              "kind": "flag",
+              "long": "force",
+              "name": "force",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "push",
+          "path": "braincrawl/collection/push",
+          "subcommands": []
+        },
+        {
+          "about": "Pull doc(s) from the worker's consolidated L3 store into the local repo",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Doc slug (omit to pull every pull-candidate doc)",
+              "kind": "positional",
+              "long": null,
+              "name": "doc",
+              "possibleValues": [],
+              "required": false,
+              "short": null
+            },
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Print the plan without transferring or touching sync state",
+              "kind": "flag",
+              "long": "dry-run",
+              "name": "dry_run",
+              "possibleValues": [
+                "true",
+                "false"
+              ],
+              "required": false,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "pull",
+          "path": "braincrawl/collection/pull",
           "subcommands": []
         }
       ]
@@ -482,326 +1319,186 @@
       ]
     },
     {
-      "about": "Acquire a work's fulltext artifact from the open web into the store",
-      "args": [
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Work id in ns:value form (e.g. openalex:W2165758805 or doi:10.x/y)",
-          "kind": "positional",
-          "long": null,
-          "name": "id",
-          "possibleValues": [],
-          "required": true,
-          "short": null
-        },
-        {
-          "defaults": [
-            "auto"
-          ],
-          "global": false,
-          "help": "Where to resolve the artifact URL from (auto|openalex|unpaywall)",
-          "kind": "option",
-          "long": "from",
-          "name": "from",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Re-fetch even if a fulltext payload already exists",
-          "kind": "flag",
-          "long": "force",
-          "name": "force",
-          "possibleValues": [
-            "true",
-            "false"
-          ],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Only accept a PDF artifact (reject HTML or other content types)",
-          "kind": "flag",
-          "long": "require-pdf",
-          "name": "require_pdf",
-          "possibleValues": [
-            "true",
-            "false"
-          ],
-          "required": false,
-          "short": null
-        }
-      ],
-      "hidden": false,
-      "name": "fetch-content",
-      "path": "braincrawl/fetch-content",
-      "subcommands": []
-    },
-    {
-      "about": "Extract text from a work's stored fulltext PDF payload",
-      "args": [
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
-          "kind": "positional",
-          "long": null,
-          "name": "id",
-          "possibleValues": [],
-          "required": true,
-          "short": null
-        }
-      ],
-      "hidden": false,
-      "name": "extract-text",
-      "path": "braincrawl/extract-text",
-      "subcommands": []
-    },
-    {
-      "about": "Resolve and download a work's fulltext artifact to stdout (no store write)",
-      "args": [
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
-          "kind": "positional",
-          "long": null,
-          "name": "id",
-          "possibleValues": [],
-          "required": true,
-          "short": null
-        },
-        {
-          "defaults": [
-            "auto"
-          ],
-          "global": false,
-          "help": "Where to resolve the artifact URL from (auto|openalex|unpaywall)",
-          "kind": "option",
-          "long": "from",
-          "name": "from",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Only accept a PDF artifact (reject HTML or other content types)",
-          "kind": "flag",
-          "long": "require-pdf",
-          "name": "require_pdf",
-          "possibleValues": [
-            "true",
-            "false"
-          ],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Write bytes to this path instead of stdout",
-          "kind": "option",
-          "long": "output",
-          "name": "output",
-          "possibleValues": [],
-          "required": false,
-          "short": "o"
-        }
-      ],
-      "hidden": false,
-      "name": "fetch-pdf",
-      "path": "braincrawl/fetch-pdf",
-      "subcommands": []
-    },
-    {
-      "about": "Store fulltext bytes from stdin or a file as a work's fulltext payload",
-      "args": [
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
-          "kind": "positional",
-          "long": null,
-          "name": "id",
-          "possibleValues": [],
-          "required": true,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Read bytes from this file instead of stdin",
-          "kind": "positional",
-          "long": null,
-          "name": "file",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Content mime type (default: sniff %PDF, else application/octet-stream)",
-          "kind": "option",
-          "long": "mime",
-          "name": "mime",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [
-            "open"
-          ],
-          "global": false,
-          "help": "Rights value: open | link_only | restricted",
-          "kind": "option",
-          "long": "rights",
-          "name": "rights",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Optional source label recorded with the payload",
-          "kind": "option",
-          "long": "source",
-          "name": "source",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Optional source URL recorded with the payload",
-          "kind": "option",
-          "long": "source-url",
-          "name": "source_url",
-          "possibleValues": [],
-          "required": false,
-          "short": null
-        }
-      ],
-      "hidden": false,
-      "name": "push-pdf",
-      "path": "braincrawl/push-pdf",
-      "subcommands": []
-    },
-    {
-      "about": "Read a work's stored fulltext payload bytes to stdout",
-      "args": [
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Work id in ns:value form (e.g. openalex:W2304167012)",
-          "kind": "positional",
-          "long": null,
-          "name": "id",
-          "possibleValues": [],
-          "required": true,
-          "short": null
-        },
-        {
-          "defaults": [],
-          "global": false,
-          "help": "Write bytes to this path instead of stdout",
-          "kind": "option",
-          "long": "output",
-          "name": "output",
-          "possibleValues": [],
-          "required": false,
-          "short": "o"
-        }
-      ],
-      "hidden": false,
-      "name": "get-pdf",
-      "path": "braincrawl/get-pdf",
-      "subcommands": []
-    },
-    {
-      "about": "Query the braincrawl neutral graph (store-only, no provider)",
+      "about": "Query the arXiv preprint API",
       "args": [],
       "hidden": false,
-      "name": "graph",
-      "path": "braincrawl/graph",
+      "name": "arxiv",
+      "path": "braincrawl/arxiv",
       "subcommands": [
         {
-          "about": "Bounded neighborhood traversal from one or more seed ids",
+          "about": "Fetch a single arXiv work by ID (e.g. arxiv:2301.07041 or 2301.07041)",
           "args": [
             {
               "defaults": [],
               "global": false,
-              "help": "Seed ids in ns:value form (e.g. openalex:W2031938753 doi:10.x/y)",
+              "help": "arXiv ID (arxiv:…, bare numeric, old-style hep-th/…, or full URL)",
               "kind": "positional",
               "long": null,
-              "name": "seeds",
+              "name": "id",
               "possibleValues": [],
-              "required": false,
-              "short": null
-            },
-            {
-              "defaults": [
-                "forward"
-              ],
-              "global": false,
-              "help": "Traversal direction: forward (src→dst) or backward (dst→src)",
-              "kind": "option",
-              "long": "dir",
-              "name": "dir",
-              "possibleValues": [],
-              "required": false,
-              "short": null
-            },
-            {
-              "defaults": [
-                "1"
-              ],
-              "global": false,
-              "help": "Max BFS depth from the seeds",
-              "kind": "option",
-              "long": "depth",
-              "name": "depth",
-              "possibleValues": [],
-              "required": false,
-              "short": null
-            },
-            {
-              "defaults": [
-                "200"
-              ],
-              "global": false,
-              "help": "Max nodes in the returned subgraph",
-              "kind": "option",
-              "long": "max-nodes",
-              "name": "max_nodes",
-              "possibleValues": [],
-              "required": false,
+              "required": true,
               "short": null
             }
           ],
           "hidden": false,
-          "name": "neighborhood",
-          "path": "braincrawl/graph/neighborhood",
+          "name": "get",
+          "path": "braincrawl/arxiv/get",
+          "subcommands": []
+        },
+        {
+          "about": "Search arXiv by query string",
+          "args": [
+            {
+              "defaults": [],
+              "global": false,
+              "help": "Search query; use field operators (ti:/au:/cat:) or plain text (wrapped as all:…)",
+              "kind": "positional",
+              "long": null,
+              "name": "query",
+              "possibleValues": [],
+              "required": true,
+              "short": null
+            }
+          ],
+          "hidden": false,
+          "name": "search",
+          "path": "braincrawl/arxiv/search",
           "subcommands": []
         }
       ]
     },
     {
-      "about": "Show aggregate statistics about the metadata network",
+      "about": "Print the Web UI URL for the configured server",
       "args": [],
       "hidden": false,
-      "name": "stats",
-      "path": "braincrawl/stats",
+      "name": "web",
+      "path": "braincrawl/web",
+      "subcommands": []
+    },
+    {
+      "about": "Replay the local SQLite + blob corpus into a remote store over its HTTP API",
+      "args": [
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Path to the local SQLite database (default: $HOME/.local/share/braincrawl/braincrawl.db)",
+          "kind": "option",
+          "long": "db",
+          "name": "db",
+          "possibleValues": [],
+          "required": false,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Path to the local blob root directory (default: $HOME/.local/share/braincrawl/blobs)",
+          "kind": "option",
+          "long": "blobs",
+          "name": "blobs",
+          "possibleValues": [],
+          "required": false,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Print the plan counts without pushing any work, edge, or artifact",
+          "kind": "flag",
+          "long": "dry-run",
+          "name": "dry_run",
+          "possibleValues": [
+            "true",
+            "false"
+          ],
+          "required": false,
+          "short": null
+        }
+      ],
+      "hidden": false,
+      "name": "migrate-store",
+      "path": "braincrawl/migrate-store",
+      "subcommands": []
+    },
+    {
+      "about": "Rename a work file to its canonical bibliographic filename",
+      "args": [
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Path to the file to rename (extension is preserved)",
+          "kind": "positional",
+          "long": null,
+          "name": "file",
+          "possibleValues": [],
+          "required": true,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "First author's surname (may contain spaces/particles, e.g. \"Van De Mieroop\")",
+          "kind": "option",
+          "long": "author",
+          "name": "author",
+          "possibleValues": [],
+          "required": true,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "The work has more than one author (renders the EtAl marker)",
+          "kind": "flag",
+          "long": "et-al",
+          "name": "et_al",
+          "possibleValues": [
+            "true",
+            "false"
+          ],
+          "required": false,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Publication year",
+          "kind": "option",
+          "long": "year",
+          "name": "year",
+          "possibleValues": [],
+          "required": true,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Work title (slugified for the filename)",
+          "kind": "option",
+          "long": "title",
+          "name": "title",
+          "possibleValues": [],
+          "required": true,
+          "short": null
+        },
+        {
+          "defaults": [],
+          "global": false,
+          "help": "Print the proposed new path; do not rename",
+          "kind": "flag",
+          "long": "dry-run",
+          "name": "dry_run",
+          "possibleValues": [
+            "true",
+            "false"
+          ],
+          "required": false,
+          "short": null
+        }
+      ],
+      "hidden": false,
+      "name": "rename",
+      "path": "braincrawl/rename",
       "subcommands": []
     }
   ]

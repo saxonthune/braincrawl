@@ -14,6 +14,7 @@ pub fn run_all(base_url: &str, token: Option<&str>) -> Result<(), String> {
     put_and_get_work(&client, base_url, token)?;
     have(&client, base_url, token)?;
     content_roundtrip(&client, base_url, token)?;
+    artifact_listing(&client, base_url, token)?;
     large_content(&client, base_url, token)?;
     neighborhood(&client, base_url, token)?;
     Ok(())
@@ -563,6 +564,142 @@ fn content_roundtrip(client: &Client, base: &str, token: Option<&str>) -> Result
         .map_err(|e| format!("content_roundtrip: GET content body read failed: {e}"))?;
     if body != "hello braincrawl" {
         return Err(format!("content_roundtrip: body mismatch: expected 'hello braincrawl', got {body:?}"));
+    }
+
+    Ok(())
+}
+
+fn artifact_listing(client: &Client, base: &str, token: Option<&str>) -> Result<(), String> {
+    auth(
+        client.put(format!("{base}/works"))
+            .json(&serde_json::json!({
+                "source": "test",
+                "kind": "Work",
+                "aliases": [{"namespace": "doi", "value": "10.3/listing"}],
+                "attrs": {}
+            })),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: PUT work failed: {e}"))?;
+
+    let res = auth(
+        client.put(format!(
+            "{base}/works/doi:10.3/listing/content/abstract?mime=text/plain&fetched_at=2024-01-01T00:00:00Z"
+        ))
+        .body("first abstract"),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: PUT abstract v1 failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("artifact_listing: PUT abstract v1 expected 200, got {}", res.status()));
+    }
+
+    let res = auth(
+        client.put(format!(
+            "{base}/works/doi:10.3/listing/content/abstract?mime=text/plain&fetched_at=2024-01-02T00:00:00Z"
+        ))
+        .body("second abstract"),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: PUT abstract v2 failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("artifact_listing: PUT abstract v2 expected 200, got {}", res.status()));
+    }
+
+    let res = auth(
+        client.put(format!(
+            "{base}/works/doi:10.3/listing/content/fulltext?mime=application/pdf&fetched_at=2024-01-03T00:00:00Z"
+        ))
+        .body("full text body"),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: PUT fulltext failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("artifact_listing: PUT fulltext expected 200, got {}", res.status()));
+    }
+
+    // Default listing: one descriptor per role, current version only.
+    let res = auth(
+        client.get(format!("{base}/works/doi:10.3/listing/artifacts")),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: GET artifacts failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("artifact_listing: GET artifacts expected 200, got {}", res.status()));
+    }
+    let body: Value = res.json()
+        .map_err(|e| format!("artifact_listing: GET artifacts body parse failed: {e}"))?;
+    let artifacts = body["artifacts"].as_array()
+        .ok_or_else(|| "artifact_listing: expected artifacts array".to_string())?;
+    if artifacts.len() != 2 {
+        return Err(format!("artifact_listing: expected 2 descriptors by default, got {}", artifacts.len()));
+    }
+    for a in artifacts {
+        if a["is_current"] != true {
+            return Err(format!("artifact_listing: expected is_current=true by default, got {a:?}"));
+        }
+    }
+    let abstract_desc = artifacts.iter().find(|a| a["role"] == "abstract")
+        .ok_or_else(|| "artifact_listing: no abstract descriptor in default listing".to_string())?;
+    if abstract_desc["version"] != 2 {
+        return Err(format!("artifact_listing: expected current abstract version 2, got {:?}", abstract_desc["version"]));
+    }
+    if abstract_desc["byte_size"] != "second abstract".len() {
+        return Err(format!("artifact_listing: abstract byte_size mismatch: {:?}", abstract_desc["byte_size"]));
+    }
+    if abstract_desc["mime"] != "text/plain" {
+        return Err(format!("artifact_listing: abstract mime mismatch: {:?}", abstract_desc["mime"]));
+    }
+    let fulltext_desc = artifacts.iter().find(|a| a["role"] == "fulltext")
+        .ok_or_else(|| "artifact_listing: no fulltext descriptor in default listing".to_string())?;
+    if fulltext_desc["mime"] != "application/pdf" {
+        return Err(format!("artifact_listing: fulltext mime mismatch: {:?}", fulltext_desc["mime"]));
+    }
+
+    // all_versions=true surfaces the superseded abstract version too.
+    let res = auth(
+        client.get(format!("{base}/works/doi:10.3/listing/artifacts?all_versions=true")),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: GET artifacts?all_versions=true failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("artifact_listing: GET artifacts?all_versions=true expected 200, got {}", res.status()));
+    }
+    let body: Value = res.json()
+        .map_err(|e| format!("artifact_listing: GET artifacts?all_versions=true body parse failed: {e}"))?;
+    let artifacts = body["artifacts"].as_array()
+        .ok_or_else(|| "artifact_listing: expected artifacts array".to_string())?;
+    if artifacts.len() != 3 {
+        return Err(format!("artifact_listing: expected 3 descriptors with all_versions=true, got {}", artifacts.len()));
+    }
+    let old_abstract = artifacts.iter().find(|a| a["role"] == "abstract" && a["version"] == 1)
+        .ok_or_else(|| "artifact_listing: expected superseded abstract v1 with all_versions=true".to_string())?;
+    if old_abstract["is_current"] != false {
+        return Err(format!("artifact_listing: expected superseded version is_current=false, got {old_abstract:?}"));
+    }
+
+    // role=<slug> restricts to that role.
+    let res = auth(
+        client.get(format!("{base}/works/doi:10.3/listing/artifacts?role=fulltext")),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("artifact_listing: GET artifacts?role=fulltext failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("artifact_listing: GET artifacts?role=fulltext expected 200, got {}", res.status()));
+    }
+    let body: Value = res.json()
+        .map_err(|e| format!("artifact_listing: GET artifacts?role=fulltext body parse failed: {e}"))?;
+    let artifacts = body["artifacts"].as_array()
+        .ok_or_else(|| "artifact_listing: expected artifacts array".to_string())?;
+    if artifacts.len() != 1 || artifacts[0]["role"] != "fulltext" {
+        return Err(format!("artifact_listing: role filter did not restrict correctly: {artifacts:?}"));
     }
 
     Ok(())

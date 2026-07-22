@@ -92,6 +92,7 @@ mod tests {
             full: false,
             skip_push: true,
             include_abstract: false,
+            emission: false,
         }
     }
 

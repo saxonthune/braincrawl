@@ -58,6 +58,34 @@ fn is_no_rows(e: &rusqlite::Error) -> bool {
     matches!(e, rusqlite::Error::QueryReturnedNoRows)
 }
 
+/// Map a row in `SELECT_CURRENT`/`LIST_*` column order to an `Artifact`.
+fn row_to_artifact(row: &rusqlite::Row) -> rusqlite::Result<Artifact> {
+    let canonical_id: String = row.get(0)?;
+    let role: String = row.get(1)?;
+    let version: i64 = row.get(2)?;
+    let r2_key: String = row.get(3)?;
+    let content_hash: String = row.get(4)?;
+    let byte_size: i64 = row.get(5)?;
+    let mime: String = row.get(6)?;
+    let source: Option<String> = row.get(7)?;
+    let source_url: Option<String> = row.get(8)?;
+    let fetched_at: String = row.get(9)?;
+    let is_current: i32 = row.get(10)?;
+    Ok(Artifact {
+        canonical_id: CanonicalId(canonical_id),
+        role: parse_artifact_role(&role).unwrap_or(ArtifactRole::Abstract),
+        version: version as u32,
+        r2_key,
+        content_hash,
+        byte_size: byte_size as u64,
+        mime,
+        source,
+        source_url,
+        fetched_at,
+        is_current: is_current != 0,
+    })
+}
+
 // ─── migrations ───────────────────────────────────────────────────────────────
 
 fn apply_migrations(conn: &Connection) -> Result<(), DomainError> {
@@ -124,37 +152,9 @@ impl ArtifactStore for SqliteStore {
         conn.query_row(
             braincrawl_sql::artifact::SELECT_CURRENT,
             params![id.0, ks],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, i64>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                    row.get::<_, String>(9)?,
-                    row.get::<_, i32>(10)?,
-                ))
-            },
+            row_to_artifact,
         )
-        .map(|(cid, ks2, ver, r2k, ch, bs, mime, src, su, fa, ic)| {
-            Some(Artifact {
-                canonical_id: CanonicalId(cid),
-                role: parse_artifact_role(&ks2).unwrap_or(ArtifactRole::Abstract),
-                version: ver as u32,
-                r2_key: r2k,
-                content_hash: ch,
-                byte_size: bs as u64,
-                mime,
-                source: src,
-                source_url: su,
-                fetched_at: fa,
-                is_current: ic != 0,
-            })
-        })
+        .map(Some)
         .or_else(|e| if is_no_rows(&e) { Ok(None) } else { Err(be(e)) })
     }
 
@@ -199,6 +199,47 @@ impl ArtifactStore for SqliteStore {
         )
         .map_err(be)?;
         Ok(())
+    }
+
+    async fn list_artifacts(
+        &self,
+        id: &CanonicalId,
+        role: Option<ArtifactRole>,
+        all_versions: bool,
+    ) -> Result<Vec<Artifact>, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let rows: Vec<Artifact> = match &role {
+            Some(r) => {
+                let ks = artifact_role_str(r);
+                let sql = if all_versions {
+                    braincrawl_sql::artifact::LIST_ALL_VERSIONS_BY_ROLE
+                } else {
+                    braincrawl_sql::artifact::LIST_CURRENT_BY_ROLE
+                };
+                let mut stmt = conn.prepare(sql).map_err(be)?;
+                let mapped = stmt
+                    .query_map(params![id.0, ks], row_to_artifact)
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+            None => {
+                let sql = if all_versions {
+                    braincrawl_sql::artifact::LIST_ALL_VERSIONS
+                } else {
+                    braincrawl_sql::artifact::LIST_CURRENT
+                };
+                let mut stmt = conn.prepare(sql).map_err(be)?;
+                let mapped = stmt
+                    .query_map(params![id.0], row_to_artifact)
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+        };
+        Ok(rows)
     }
 }
 

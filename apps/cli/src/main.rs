@@ -1,5 +1,5 @@
 use braincrawl_cli::arxiv::ArxivProvider;
-use braincrawl_cli::cli::{ArxivCmd, ChunkArgs, Cli, CrossrefCmd, GraphCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd, StoreCmd};
+use braincrawl_cli::cli::{ArxivCmd, CatalogCmd, ChunkArgs, Cli, CrossrefCmd, LibraryCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd};
 use std::io::Write as IoWrite;
 use braincrawl_cli::chunk;
 use braincrawl_cli::pdf_text;
@@ -32,11 +32,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::resolve();
 
     match cli.namespace {
-        Namespace::Store(store) => {
+        Namespace::Catalog(catalog) => {
             let client = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());
-            match store.cmd {
-                StoreCmd::Have { ids } => {
+            match catalog.cmd {
+                CatalogCmd::Have { ids } => {
                     let present = client.have(&ids)?;
                     let count = present.len() as u64;
                     let results = present
@@ -45,7 +45,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         .collect();
                     let envelope = Envelope {
                         query: QueryMeta {
-                            entity: Some("store:have".to_string()),
+                            entity: Some("catalog:have".to_string()),
                             resolved_filter: None,
                             url: None,
                         },
@@ -57,13 +57,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     render(&envelope, &opts);
                 }
-                StoreCmd::Get { id } => {
+                CatalogCmd::Get { id } => {
                     let result = client.get_work(&id)?;
                     let results = result.map(|v| vec![v]).unwrap_or_default();
                     let count = results.len() as u64;
                     let envelope = Envelope {
                         query: QueryMeta {
-                            entity: Some("store:get".to_string()),
+                            entity: Some("catalog:get".to_string()),
                             resolved_filter: Some(id),
                             url: None,
                         },
@@ -75,26 +75,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     render(&envelope, &opts);
                 }
-            }
-        }
-        Namespace::Graph(graph) => {
-            let client = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            match graph.cmd {
-                GraphCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
+                CatalogCmd::Neighborhood { seeds, dir, depth, max_nodes } => {
                     let value = client.neighborhood(&seeds, &dir, depth, max_nodes)?;
                     render_neighborhood(&value, &opts);
                 }
+                CatalogCmd::Stats => {
+                    let value = client.stats()?;
+                    render_stats(&value, &opts);
+                }
+                CatalogCmd::Put { file } => {
+                    let bytes: Vec<u8> = if let Some(path) = &file {
+                        std::fs::read(path)?
+                    } else {
+                        use std::io::Read as _;
+                        let mut buf = Vec::new();
+                        std::io::stdin().lock().read_to_end(&mut buf)?;
+                        buf
+                    };
+                    if bytes.is_empty() {
+                        return Err("no input bytes (provide a file arg or pipe bytes on stdin)".into());
+                    }
+                    let source = file.as_deref().unwrap_or("stdin");
+                    let emission: Emission = serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("failed to parse emission from {source}: {e}"))?;
+                    let summary = push_emission(&client, &emission);
+                    report_push_summary(&summary);
+                    if !summary.errors.is_empty() {
+                        std::process::exit(1);
+                    }
+                }
             }
         }
-        Namespace::Stats => {
-            let client = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            let value = client.stats()?;
-            render_stats(&value, &opts);
-        }
-        Namespace::L3(l3) => {
-            braincrawl_cli::l3::dispatch(l3.cmd, &config, &opts)?;
+        Namespace::Collection(collection) => {
+            braincrawl_cli::l3::dispatch(collection.cmd, &config, &opts)?;
         }
         Namespace::Openalex(oa) => {
             let provider = OpenAlexProvider::new(OpenAlexClient::new(config.openalex_api_key));
@@ -231,112 +244,184 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Namespace::ExtractText(args) => {
+        Namespace::Library(library) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());
-            use braincrawl_cli::store_client::ContentOutcome;
-            match store.get_content(&args.id, "fulltext")? {
-                ContentOutcome::Bytes { bytes, mime } => {
-                    if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
-                        return Err(format!(
-                            "fulltext artifact for {} is not a PDF (mime={})",
-                            args.id, mime
-                        )
-                        .into());
+            match library.cmd {
+                LibraryCmd::ExtractText(args) => {
+                    use braincrawl_cli::store_client::ContentOutcome;
+                    match store.get_content(&args.id, "fulltext")? {
+                        ContentOutcome::Bytes { bytes, mime } => {
+                            if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
+                                return Err(format!(
+                                    "fulltext artifact for {} is not a PDF (mime={})",
+                                    args.id, mime
+                                )
+                                .into());
+                            }
+                            let text = pdf_text::extract_text(&bytes)?;
+                            if args.stdout {
+                                print!("{text}");
+                                eprintln!("extracted: {} chars", text.len());
+                            } else {
+                                if !args.force {
+                                    if let Ok(ContentOutcome::Bytes { .. }) =
+                                        store.get_content(&args.id, &args.role)
+                                    {
+                                        eprintln!(
+                                            "already-present: {} artifact already in store (use --force to re-extract)",
+                                            args.role
+                                        );
+                                        return Ok(());
+                                    }
+                                }
+                                let text_len = text.len();
+                                store.put_content(
+                                    &args.id,
+                                    &args.role,
+                                    text.into_bytes(),
+                                    "text/plain",
+                                    Some("extract-text"),
+                                    None,
+                                )?;
+                                eprintln!("extracted: {} chars, stored at role {}", text_len, args.role);
+                            }
+                        }
+                        ContentOutcome::Absent => {
+                            return Err(format!(
+                                "no fulltext artifact in store for {}; run library fetch first",
+                                args.id
+                            )
+                            .into());
+                        }
+                        ContentOutcome::Pending => {
+                            return Err(format!(
+                                "fulltext for {} is still being fetched",
+                                args.id
+                            )
+                            .into());
+                        }
                     }
-                    let text = pdf_text::extract_text(&bytes)?;
-                    print!("{text}");
-                    eprintln!("extracted: {} chars", text.len());
                 }
-                ContentOutcome::Absent => {
-                    return Err(format!(
-                        "no fulltext artifact in store for {}; run fetch-content first",
-                        args.id
-                    )
-                    .into());
+                LibraryCmd::Fetch(fc) => {
+                    let source = match fc.from.as_str() {
+                        "openalex" => fetch_content::Source::Openalex,
+                        "unpaywall" => fetch_content::Source::Unpaywall,
+                        _ => fetch_content::Source::Auto,
+                    };
+                    if fc.stdout || fc.output.is_some() {
+                        let (bytes, mime, url) = fetch_content::fetch_artifact_bytes(
+                            &store,
+                            config.unpaywall_email.as_deref(),
+                            &fc.id,
+                            source,
+                            fc.require_pdf,
+                        )?;
+                        if let Some(path) = &fc.output {
+                            std::fs::write(path, &bytes)?;
+                        } else {
+                            std::io::stdout().lock().write_all(&bytes)?;
+                        }
+                        eprintln!("fetched: {} bytes, mime={}, url={}", bytes.len(), mime, url);
+                    } else {
+                        match fetch_content::fetch_content(
+                            &store,
+                            config.unpaywall_email.as_deref(),
+                            &fc.id,
+                            source,
+                            fc.require_pdf,
+                            fc.force,
+                        )? {
+                            fetch_content::Outcome::Stored { bytes_len, mime } => {
+                                println!("stored: {} bytes, mime={}", bytes_len, mime);
+                            }
+                            fetch_content::Outcome::AlreadyPresent => {
+                                println!("already-present: fulltext artifact already in store (use --force to re-fetch)");
+                            }
+                            fetch_content::Outcome::NoOaFound { reason } => {
+                                return Err(format!("no-oa-found: {}", reason).into());
+                            }
+                        }
+                    }
                 }
-                ContentOutcome::Pending => {
-                    return Err(format!(
-                        "fulltext for {} is still being fetched",
-                        args.id
-                    )
-                    .into());
+                LibraryCmd::Put(args) => {
+                    let bytes: Vec<u8> = if let Some(path) = &args.file {
+                        std::fs::read(path)?
+                    } else {
+                        use std::io::Read as _;
+                        let mut buf = Vec::new();
+                        std::io::stdin().lock().read_to_end(&mut buf)?;
+                        buf
+                    };
+                    if bytes.is_empty() {
+                        return Err("no input bytes (provide a file arg or pipe bytes on stdin)".into());
+                    }
+                    let mime = args.mime.as_deref().unwrap_or_else(|| fetch_content::sniff_mime(&bytes));
+                    store.put_content(
+                        &args.id,
+                        &args.role,
+                        bytes.clone(),
+                        mime,
+                        args.source.as_deref(),
+                        args.source_url.as_deref(),
+                    )?;
+                    eprintln!("pushed: {} bytes, mime={}", bytes.len(), mime);
+                }
+                LibraryCmd::Get(args) => {
+                    use braincrawl_cli::store_client::ContentOutcome;
+                    match store.get_content(&args.id, &args.role)? {
+                        ContentOutcome::Bytes { bytes, mime } => {
+                            if let Some(path) = &args.output {
+                                std::fs::write(path, &bytes)?;
+                            } else {
+                                std::io::stdout().lock().write_all(&bytes)?;
+                            }
+                            eprintln!("read: {} bytes, mime={}", bytes.len(), mime);
+                        }
+                        ContentOutcome::Absent => {
+                            return Err(format!(
+                                "no artifact with role '{}' in store for {}",
+                                args.role, args.id
+                            )
+                            .into());
+                        }
+                        ContentOutcome::Pending => {
+                            return Err(format!(
+                                "artifact with role '{}' for {} is still being fetched",
+                                args.role, args.id
+                            )
+                            .into());
+                        }
+                    }
+                }
+                LibraryCmd::Chunk(args) => {
+                    run_chunk(&config, &args)?;
+                }
+                LibraryCmd::List(args) => {
+                    let mut results =
+                        store.list_artifacts(&args.id, args.role.as_deref(), args.all_versions)?;
+                    for artifact in &mut results {
+                        if let Some(obj) = artifact.as_object_mut() {
+                            obj.remove("r2_key");
+                            obj.remove("content_hash");
+                        }
+                    }
+                    let count = results.len() as u64;
+                    let envelope = Envelope {
+                        query: QueryMeta {
+                            entity: Some("library:list".to_string()),
+                            resolved_filter: Some(args.id),
+                            url: None,
+                        },
+                        count,
+                        returned: results.len(),
+                        truncated: false,
+                        next_cursor: None,
+                        results,
+                    };
+                    render(&envelope, &opts);
                 }
             }
-        }
-        Namespace::FetchContent(fc) => {
-            let store = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            let source = match fc.from.as_str() {
-                "openalex" => fetch_content::Source::Openalex,
-                "unpaywall" => fetch_content::Source::Unpaywall,
-                _ => fetch_content::Source::Auto,
-            };
-            match fetch_content::fetch_content(
-                &store,
-                config.unpaywall_email.as_deref(),
-                &fc.id,
-                source,
-                fc.require_pdf,
-                fc.force,
-            )? {
-                fetch_content::Outcome::Stored { bytes_len, mime } => {
-                    println!("stored: {} bytes, mime={}", bytes_len, mime);
-                }
-                fetch_content::Outcome::AlreadyPresent => {
-                    println!("already-present: fulltext artifact already in store (use --force to re-fetch)");
-                }
-                fetch_content::Outcome::NoOaFound { reason } => {
-                    return Err(format!("no-oa-found: {}", reason).into());
-                }
-            }
-        }
-        Namespace::FetchPdf(args) => {
-            let store = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            let source = match args.from.as_str() {
-                "openalex" => fetch_content::Source::Openalex,
-                "unpaywall" => fetch_content::Source::Unpaywall,
-                _ => fetch_content::Source::Auto,
-            };
-            let (bytes, mime, url) = fetch_content::fetch_artifact_bytes(
-                &store,
-                config.unpaywall_email.as_deref(),
-                &args.id,
-                source,
-                args.require_pdf,
-            )?;
-            if let Some(path) = &args.output {
-                std::fs::write(path, &bytes)?;
-            } else {
-                std::io::stdout().lock().write_all(&bytes)?;
-            }
-            eprintln!("fetched: {} bytes, mime={}, url={}", bytes.len(), mime, url);
-        }
-        Namespace::Push(args) => {
-            let store = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            let bytes: Vec<u8> = if let Some(path) = &args.file {
-                std::fs::read(path)?
-            } else {
-                use std::io::Read as _;
-                let mut buf = Vec::new();
-                std::io::stdin().lock().read_to_end(&mut buf)?;
-                buf
-            };
-            if bytes.is_empty() {
-                return Err("no input bytes (provide a file arg or pipe bytes on stdin)".into());
-            }
-            let mime = args.mime.as_deref().unwrap_or_else(|| fetch_content::sniff_mime(&bytes));
-            store.put_content(
-                &args.id,
-                &args.role,
-                bytes.clone(),
-                mime,
-                args.source.as_deref(),
-                args.source_url.as_deref(),
-            )?;
-            eprintln!("pushed: {} bytes, mime={}", bytes.len(), mime);
         }
         Namespace::Arxiv(arxiv) => {
             let provider = ArxivProvider::new();
@@ -350,9 +435,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 },
             };
             run_provider(&provider, cmd, &store, &opts)?;
-        }
-        Namespace::Chunk(args) => {
-            run_chunk(&config, &args)?;
         }
         Namespace::Web => {
             braincrawl_cli::web::print_url(&config);
@@ -369,35 +451,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Namespace::Rename(args) => {
             braincrawl_cli::rename::run(args, &opts)?;
-        }
-        Namespace::Get(args) => {
-            let store = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            use braincrawl_cli::store_client::ContentOutcome;
-            match store.get_content(&args.id, &args.role)? {
-                ContentOutcome::Bytes { bytes, mime } => {
-                    if let Some(path) = &args.output {
-                        std::fs::write(path, &bytes)?;
-                    } else {
-                        std::io::stdout().lock().write_all(&bytes)?;
-                    }
-                    eprintln!("read: {} bytes, mime={}", bytes.len(), mime);
-                }
-                ContentOutcome::Absent => {
-                    return Err(format!(
-                        "no artifact with role '{}' in store for {}",
-                        args.role, args.id
-                    )
-                    .into());
-                }
-                ContentOutcome::Pending => {
-                    return Err(format!(
-                        "artifact with role '{}' for {} is still being fetched",
-                        args.role, args.id
-                    )
-                    .into());
-                }
-            }
         }
     }
 
@@ -596,7 +649,11 @@ fn run_provider(
     opts: &OutputOpts,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (envelope, emission) = p.dispatch(cmd, opts)?;
-    render(&envelope, opts);
+    if opts.emission {
+        println!("{}", serde_json::to_string_pretty(&emission)?);
+    } else {
+        render(&envelope, opts);
+    }
     if !opts.skip_push {
         let summary = push_emission(store, &emission);
         report_push_summary(&summary);

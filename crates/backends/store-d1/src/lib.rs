@@ -77,6 +77,9 @@ impl ArtifactStore for D1Store {
     async fn record(&self, _descriptor: &Artifact) -> Result<(), DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
+    async fn list_artifacts(&self, _id: &CanonicalId, _role: Option<ArtifactRole>, _all_versions: bool) -> Result<Vec<Artifact>, DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
 }
 
 #[cfg(not(feature = "cloudflare"))]
@@ -243,6 +246,64 @@ impl ArtifactStore for D1Store {
         )?);
         self.db.batch(stmts).await.map_err(be)?;
         Ok(())
+    }
+
+    async fn list_artifacts(
+        &self,
+        id: &CanonicalId,
+        role: Option<ArtifactRole>,
+        all_versions: bool,
+    ) -> Result<Vec<Artifact>, DomainError> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            canonical_id: String,
+            role: String,
+            version: i64,
+            r2_key: String,
+            content_hash: String,
+            byte_size: i64,
+            mime: String,
+            source: Option<String>,
+            source_url: Option<String>,
+            fetched_at: String,
+            is_current: i32,
+        }
+        let stmt = match &role {
+            Some(r) => {
+                let sql = if all_versions {
+                    braincrawl_sql::artifact::LIST_ALL_VERSIONS_BY_ROLE
+                } else {
+                    braincrawl_sql::artifact::LIST_CURRENT_BY_ROLE
+                };
+                prep(&self.db, sql, &[s(&id.0), s(artifact_role_str(r))])?
+            }
+            None => {
+                let sql = if all_versions {
+                    braincrawl_sql::artifact::LIST_ALL_VERSIONS
+                } else {
+                    braincrawl_sql::artifact::LIST_CURRENT
+                };
+                prep(&self.db, sql, &[s(&id.0)])?
+            }
+        };
+        let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
+        rows.into_iter()
+            .map(|r| {
+                Ok(Artifact {
+                    canonical_id: CanonicalId(r.canonical_id),
+                    role: parse_artifact_role(&r.role)?,
+                    version: r.version as u32,
+                    r2_key: r.r2_key,
+                    content_hash: r.content_hash,
+                    byte_size: r.byte_size as u64,
+                    mime: r.mime,
+                    source: r.source,
+                    source_url: r.source_url,
+                    fetched_at: r.fetched_at,
+                    is_current: r.is_current != 0,
+                })
+            })
+            .collect()
     }
 }
 

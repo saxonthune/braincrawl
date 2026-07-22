@@ -313,3 +313,143 @@ async fn test_content_roundtrip() {
         .unwrap();
     assert!(matches!(absent, ContentOutcome::Absent));
 }
+
+// ── 8. list_artifacts ─────────────────────────────────────────────────────────
+
+use braincrawl_core::types::ArtifactRole;
+
+#[tokio::test]
+async fn test_list_artifacts_versions_and_current_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = make_store(dir.path());
+    s.put_work(work("s", vec![alias("doi", "10.1/w")])).await.unwrap();
+
+    for body in [b"v1".to_vec(), b"v2".to_vec()] {
+        s.put_content(
+            alias("doi", "10.1/w"),
+            ArtifactRole::Abstract,
+            body,
+            "text/plain".to_string(),
+            None,
+            None,
+            "2024-01-01T00:00:00Z".to_string(),
+        )
+        .await
+        .unwrap();
+    }
+
+    let current = s
+        .list_artifacts(alias("doi", "10.1/w"), None, false)
+        .await
+        .unwrap();
+    assert_eq!(current.len(), 1, "default returns only the current version");
+    assert!(current[0].is_current);
+
+    let all = s
+        .list_artifacts(alias("doi", "10.1/w"), None, true)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 2, "all_versions returns every version");
+    assert_eq!(all.iter().filter(|a| a.is_current).count(), 1, "exactly one is_current");
+}
+
+#[tokio::test]
+async fn test_list_artifacts_role_filter_and_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = make_store(dir.path());
+    s.put_work(work("s", vec![alias("doi", "10.1/w")])).await.unwrap();
+
+    let empty = s
+        .list_artifacts(alias("doi", "10.1/w"), None, false)
+        .await
+        .unwrap();
+    assert!(empty.is_empty(), "known work with no artifacts returns empty vector");
+
+    s.put_content(
+        alias("doi", "10.1/w"),
+        ArtifactRole::Abstract,
+        b"a".to_vec(),
+        "text/plain".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+    )
+    .await
+    .unwrap();
+    s.put_content(
+        alias("doi", "10.1/w"),
+        ArtifactRole::Other("fulltext".to_string()),
+        b"f".to_vec(),
+        "text/plain".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+    )
+    .await
+    .unwrap();
+
+    let list = s
+        .list_artifacts(alias("doi", "10.1/w"), Some(ArtifactRole::Abstract), false)
+        .await
+        .unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].role.as_str(), "abstract");
+}
+
+#[tokio::test]
+async fn test_list_artifacts_unknown_alias_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = make_store(dir.path());
+    let result = s.list_artifacts(alias("doi", "10.1/nothing"), None, false).await;
+    assert!(result.is_err(), "unknown alias must error, not return an empty list");
+}
+
+#[tokio::test]
+async fn test_list_artifacts_ordering() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = make_store(dir.path());
+    s.put_work(work("s", vec![alias("doi", "10.1/w")])).await.unwrap();
+
+    s.put_content(
+        alias("doi", "10.1/w"),
+        ArtifactRole::Other("fulltext".to_string()),
+        b"f".to_vec(),
+        "text/plain".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+    )
+    .await
+    .unwrap();
+    for body in [b"c1".to_vec(), b"c2".to_vec()] {
+        s.put_content(
+            alias("doi", "10.1/w"),
+            ArtifactRole::Other("chunks".to_string()),
+            body,
+            "text/plain".to_string(),
+            None,
+            None,
+            "2024-01-01T00:00:00Z".to_string(),
+        )
+        .await
+        .unwrap();
+    }
+
+    let list = s
+        .list_artifacts(alias("doi", "10.1/w"), None, true)
+        .await
+        .unwrap();
+    let ordering: Vec<(String, u32)> = list
+        .iter()
+        .map(|a| (a.role.as_str().to_string(), a.version))
+        .collect();
+    assert_eq!(
+        ordering,
+        vec![
+            ("chunks".to_string(), 2),
+            ("chunks".to_string(), 1),
+            ("fulltext".to_string(), 1),
+        ],
+        "role ascending, then version descending"
+    );
+}

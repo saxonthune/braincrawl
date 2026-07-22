@@ -36,8 +36,8 @@ use braincrawl_coord_local::{LocalCoordinator, SystemClock, UuidGen};
 use braincrawl_core::{
     traits::{IdResolver, JobEnqueuer},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec, ArtifactRole,
-        WorkRecord,
+        Alias, Artifact, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec,
+        ArtifactRole, WorkRecord,
     },
     usecases::Store,
 };
@@ -203,6 +203,24 @@ fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
     ArtifactRole::parse(s)
 }
 
+/// `Artifact` has no `Serialize` impl in `crates/core`, so the HTTP surface
+/// projects its fields into JSON here.
+fn artifact_json(a: &Artifact) -> serde_json::Value {
+    serde_json::json!({
+        "canonical_id": a.canonical_id.0,
+        "role": a.role.as_str(),
+        "version": a.version,
+        "r2_key": a.r2_key,
+        "content_hash": a.content_hash,
+        "byte_size": a.byte_size,
+        "mime": a.mime,
+        "source": a.source,
+        "source_url": a.source_url,
+        "fetched_at": a.fetched_at,
+        "is_current": a.is_current,
+    })
+}
+
 fn domain_status(e: &DomainError) -> StatusCode {
     match e {
         DomainError::NotFound => StatusCode::NOT_FOUND,
@@ -294,6 +312,34 @@ async fn handler_works_get(
         return match result {
             Ok((edges, cursor)) => {
                 Json(serde_json::json!({ "edges": edges, "cursor": cursor })).into_response()
+            }
+            Err(e) => (domain_status(&e), e.to_string()).into_response(),
+        };
+    }
+
+    // /works/*id/artifacts
+    if let Some(id_str) = path.strip_suffix("/artifacts") {
+        let a = match parse_alias(id_str) {
+            Some(a) => a,
+            None => return (StatusCode::BAD_REQUEST, "invalid id").into_response(),
+        };
+        let role = match params.get("role").map(|s| parse_artifact_role(s)) {
+            Some(Some(k)) => Some(k),
+            Some(None) => return (StatusCode::BAD_REQUEST, "invalid role").into_response(),
+            None => None,
+        };
+        let all_versions = params
+            .get("all_versions")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+        let result = run_blocking(move || async move {
+            store.list_artifacts(a, role, all_versions).await
+        })
+        .await;
+        return match result {
+            Ok(artifacts) => {
+                let artifacts: Vec<_> = artifacts.iter().map(artifact_json).collect();
+                Json(serde_json::json!({ "artifacts": artifacts })).into_response()
             }
             Err(e) => (domain_status(&e), e.to_string()).into_response(),
         };

@@ -248,6 +248,19 @@ where
         }
     }
 
+    /// Every artifact descriptor held for a work, newest role/version first.
+    /// Resolves `id` to its live canonical id the same way `put_content` does, so an
+    /// unknown alias fails the same way `put_content` would, not silently as an empty list.
+    pub async fn list_artifacts(
+        &self,
+        id: Alias,
+        role: Option<ArtifactRole>,
+        all_versions: bool,
+    ) -> Result<Vec<Artifact>, DomainError> {
+        let canonical = self.resolve_alias_to_live(&id).await?;
+        self.artifacts.list_artifacts(&canonical, role, all_versions).await
+    }
+
     /// Resolve src/dst aliases (creating stub nodes for unknowns), write edges.
     /// Returns count of edges written.
     ///

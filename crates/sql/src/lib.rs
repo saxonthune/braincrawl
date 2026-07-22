@@ -318,6 +318,42 @@ pub mod artifact {
         UPDATE artifacts SET is_current = 0 \
         WHERE canonical_id = ? AND role = ? AND is_current = 1";
 
+    /// Every current artifact for a canonical id, all roles.
+    /// Params: (canonical_id)
+    pub const LIST_CURRENT: &str = "\
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
+               mime, source, source_url, fetched_at, is_current \
+        FROM artifacts \
+        WHERE canonical_id = ? AND is_current = 1 \
+        ORDER BY role, version DESC";
+
+    /// Every artifact for a canonical id regardless of `is_current`.
+    /// Params: (canonical_id)
+    pub const LIST_ALL_VERSIONS: &str = "\
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
+               mime, source, source_url, fetched_at, is_current \
+        FROM artifacts \
+        WHERE canonical_id = ? \
+        ORDER BY role, version DESC";
+
+    /// As [`LIST_CURRENT`], restricted to one role.
+    /// Params: (canonical_id, role)
+    pub const LIST_CURRENT_BY_ROLE: &str = "\
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
+               mime, source, source_url, fetched_at, is_current \
+        FROM artifacts \
+        WHERE canonical_id = ? AND role = ? AND is_current = 1 \
+        ORDER BY role, version DESC";
+
+    /// As [`LIST_ALL_VERSIONS`], restricted to one role.
+    /// Params: (canonical_id, role)
+    pub const LIST_ALL_VERSIONS_BY_ROLE: &str = "\
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
+               mime, source, source_url, fetched_at, is_current \
+        FROM artifacts \
+        WHERE canonical_id = ? AND role = ? \
+        ORDER BY role, version DESC";
+
     /// Insert a new artifact row.
     /// Params: (canonical_id, role, version, r2_key, content_hash, byte_size,
     ///          mime, source, source_url, fetched_at, is_current)

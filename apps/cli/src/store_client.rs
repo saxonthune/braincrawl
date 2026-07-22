@@ -252,6 +252,33 @@ impl StoreClient {
         }
     }
 
+    /// GET /works/{alias}/artifacts — every artifact descriptor a work holds.
+    pub fn list_artifacts(
+        &self,
+        alias: &str,
+        role: Option<&str>,
+        all_versions: bool,
+    ) -> Result<Vec<serde_json::Value>> {
+        let url = format!("{}/works/{}/artifacts", self.base_url, alias);
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(role) = role {
+            params.push(("role", role.to_string()));
+        }
+        if all_versions {
+            params.push(("all_versions", "true".to_string()));
+        }
+        let resp = self
+            .apply_auth(self.http.get(&url).query(&params))
+            .send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), body });
+        }
+        let body: serde_json::Value = resp.json()?;
+        Ok(body["artifacts"].as_array().cloned().unwrap_or_default())
+    }
+
     /// GET /api/l3/docs — every doc currently in the consolidated L3 store.
     pub fn l3_list(&self) -> Result<Vec<L3RemoteDoc>> {
         let url = format!("{}/api/l3/docs", self.base_url);

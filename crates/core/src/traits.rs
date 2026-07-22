@@ -22,6 +22,16 @@ pub trait ArtifactStore {
     ) -> Result<Option<Artifact>, DomainError>;
     async fn next_version(&self, id: &CanonicalId, kind: ArtifactRole) -> Result<u32, DomainError>;
     async fn record(&self, descriptor: &Artifact) -> Result<(), DomainError>;
+
+    /// Every artifact descriptor held for a work, newest role/version first.
+    /// `role` restricts to a single role; `all_versions` includes superseded
+    /// versions rather than only the current one per role.
+    async fn list_artifacts(
+        &self,
+        id: &CanonicalId,
+        role: Option<ArtifactRole>,
+        all_versions: bool,
+    ) -> Result<Vec<Artifact>, DomainError>;
 }
 
 /// The queryable graph facts.

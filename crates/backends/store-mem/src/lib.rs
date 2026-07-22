@@ -172,6 +172,38 @@ impl ArtifactStore for MemStore {
         rows.push(descriptor.clone());
         Ok(())
     }
+
+    async fn list_artifacts(
+        &self,
+        id: &CanonicalId,
+        role: Option<ArtifactRole>,
+        all_versions: bool,
+    ) -> Result<Vec<Artifact>, DomainError> {
+        let inner = self.inner.borrow();
+        let mut out: Vec<Artifact> = inner
+            .artifacts
+            .iter()
+            .filter(|((cid, role_str), _)| {
+                *cid == id.0
+                    && role
+                        .as_ref()
+                        .map(|r| MemStoreInner::role_str(r) == role_str)
+                        .unwrap_or(true)
+            })
+            .flat_map(|(_, rows)| {
+                rows.iter()
+                    .filter(|d| all_versions || d.is_current)
+                    .cloned()
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.role
+                .as_str()
+                .cmp(b.role.as_str())
+                .then(b.version.cmp(&a.version))
+        });
+        Ok(out)
+    }
 }
 
 // ---------------------------------------------------------------------------

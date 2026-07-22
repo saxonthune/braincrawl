@@ -24,6 +24,7 @@ fn opts() -> OutputOpts {
         full: false,
         skip_push: false,
         include_abstract: false,
+        emission: false,
     }
 }
 

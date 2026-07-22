@@ -35,13 +35,20 @@ pub struct GlobalArgs {
     /// Include reconstructed abstract text (bulky; off by default)
     #[arg(long = "abstract", global = true)]
     pub include_abstract: bool,
+    /// Emit the store-ready emission frame instead of the display envelope
+    #[arg(long, global = true, conflicts_with = "text")]
+    pub emission: bool,
 }
 
 /// Extension point for provider namespaces; future phases add variants here.
 #[derive(Subcommand)]
 pub enum Namespace {
-    #[command(hide = true, about = "Dev round-trip surface for the local store")]
-    Store(StoreArgs),
+    #[command(about = "Artifact bytes held against a work (Layer 1)")]
+    Library(LibraryArgs),
+    #[command(about = "Work metadata, aliases, and citation edges (Layer 2)")]
+    Catalog(CatalogArgs),
+    #[command(about = "Research Documents — the consolidated store (Layer 3)")]
+    Collection(CollectionArgs),
     #[command(about = "Query the OpenAlex scholarly-data API")]
     Openalex(OpenalexArgs),
     #[command(about = "Query the Semantic Scholar graph API")]
@@ -50,26 +57,8 @@ pub enum Namespace {
     Crossref(CrossrefArgs),
     #[command(about = "Backfill backward references from the OpenCitations COCI index")]
     Opencitations(OpencitationsArgs),
-    #[command(name = "fetch-content", about = "Acquire a work's fulltext artifact from the open web into the store")]
-    FetchContent(FetchContentArgs),
-    #[command(name = "extract-text", about = "Extract text from a work's stored fulltext PDF artifact")]
-    ExtractText(ExtractTextArgs),
-    #[command(name = "fetch-pdf", about = "Resolve and download a work's fulltext artifact to stdout (no store write)")]
-    FetchPdf(FetchPdfArgs),
-    #[command(name = "push", about = "Store bytes from stdin or a file as an artifact of the given role")]
-    Push(PushArgs),
-    #[command(name = "get", about = "Read a stored artifact's bytes to stdout")]
-    Get(GetArgs),
-    #[command(about = "Query the braincrawl neutral graph (store-only, no provider)")]
-    Graph(GraphArgs),
-    #[command(about = "Show aggregate statistics about the metadata network")]
-    Stats,
-    #[command(about = "Manage the consolidated L3 document store (local files, no provider)")]
-    L3(L3Args),
     #[command(about = "Query the arXiv preprint API")]
     Arxiv(ArxivArgs),
-    #[command(about = "Partition a work's stored fulltext into a citation-carrying chunks artifact")]
-    Chunk(ChunkArgs),
     #[command(about = "Print the Web UI URL for the configured server")]
     Web,
     #[command(name = "migrate-store", about = "Replay the local SQLite + blob corpus into a remote store over its HTTP API")]
@@ -138,7 +127,7 @@ pub struct ChunkArgs {
 }
 
 #[derive(Args)]
-pub struct L3Args {
+pub struct CollectionArgs {
     #[command(subcommand)]
     pub cmd: L3Cmd,
 }
@@ -220,6 +209,28 @@ pub enum L3Cmd {
 }
 
 #[derive(Args)]
+pub struct LibraryArgs {
+    #[command(subcommand)]
+    pub cmd: LibraryCmd,
+}
+
+#[derive(Subcommand)]
+pub enum LibraryCmd {
+    #[command(name = "put", about = "Store bytes from stdin or a file as an artifact of the given role")]
+    Put(PushArgs),
+    #[command(name = "get", about = "Read a stored artifact's bytes to stdout")]
+    Get(GetArgs),
+    #[command(name = "fetch", about = "Acquire a work's fulltext artifact from the open web into the store")]
+    Fetch(FetchContentArgs),
+    #[command(name = "extract-text", about = "Extract text from a work's stored fulltext PDF artifact")]
+    ExtractText(ExtractTextArgs),
+    #[command(name = "chunk", about = "Partition a work's stored fulltext into a citation-carrying chunks artifact")]
+    Chunk(ChunkArgs),
+    #[command(name = "list", about = "List every artifact a work holds — role, version, size, mime, provenance")]
+    List(LibraryListArgs),
+}
+
+#[derive(Args)]
 pub struct FetchContentArgs {
     /// Work id in ns:value form (e.g. openalex:W2165758805 or doi:10.x/y)
     pub id: String,
@@ -232,27 +243,27 @@ pub struct FetchContentArgs {
     /// Only accept a PDF artifact (reject HTML or other content types)
     #[arg(long = "require-pdf")]
     pub require_pdf: bool,
+    /// Emit bytes to stdout instead of storing
+    #[arg(long)]
+    pub stdout: bool,
+    /// Write bytes to this path instead of storing
+    #[arg(long, short = 'o')]
+    pub output: Option<String>,
 }
 
 #[derive(Args)]
 pub struct ExtractTextArgs {
     /// Work id in ns:value form (e.g. openalex:W2304167012)
     pub id: String,
-}
-
-#[derive(Args)]
-pub struct FetchPdfArgs {
-    /// Work id in ns:value form (e.g. openalex:W2304167012)
-    pub id: String,
-    /// Where to resolve the artifact URL from (auto|openalex|unpaywall)
-    #[arg(long, default_value = "auto")]
-    pub from: String,
-    /// Only accept a PDF artifact (reject HTML or other content types)
-    #[arg(long = "require-pdf")]
-    pub require_pdf: bool,
-    /// Write bytes to this path instead of stdout
-    #[arg(long, short = 'o')]
-    pub output: Option<String>,
+    /// Artifact role slug to store the extracted text at
+    #[arg(long, default_value = "text")]
+    pub role: String,
+    /// Re-extract even if the role already holds an artifact
+    #[arg(long)]
+    pub force: bool,
+    /// Emit text to stdout instead of storing
+    #[arg(long)]
+    pub stdout: bool,
 }
 
 #[derive(Args)]
@@ -288,13 +299,33 @@ pub struct GetArgs {
 }
 
 #[derive(Args)]
-pub struct GraphArgs {
+pub struct LibraryListArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Restrict to a single artifact role
+    #[arg(long)]
+    pub role: Option<String>,
+    /// Include superseded versions, not just the current one per role
+    #[arg(long = "all-versions")]
+    pub all_versions: bool,
+}
+
+#[derive(Args)]
+pub struct CatalogArgs {
     #[command(subcommand)]
-    pub cmd: GraphCmd,
+    pub cmd: CatalogCmd,
 }
 
 #[derive(Subcommand)]
-pub enum GraphCmd {
+pub enum CatalogCmd {
+    /// Retrieve a work by alias (ns:value)
+    Get {
+        id: String,
+    },
+    /// Check which of the given aliases (ns:value) are present in the store
+    Have {
+        ids: Vec<String>,
+    },
     /// Bounded neighborhood traversal from one or more seed ids
     Neighborhood {
         /// Seed ids in ns:value form (e.g. openalex:W2031938753 doi:10.x/y)
@@ -308,6 +339,13 @@ pub enum GraphCmd {
         /// Max nodes in the returned subgraph
         #[arg(long = "max-nodes", default_value_t = 200)]
         max_nodes: u32,
+    },
+    /// Show aggregate statistics about the metadata network
+    Stats,
+    /// Write works and edges from an emission frame (stdin or a file) to the catalog
+    Put {
+        /// Read the emission from this file instead of stdin
+        file: Option<String>,
     },
 }
 
@@ -422,24 +460,6 @@ pub enum OpencitationsCmd {
 }
 
 #[derive(Args)]
-pub struct StoreArgs {
-    #[command(subcommand)]
-    pub cmd: StoreCmd,
-}
-
-#[derive(Subcommand)]
-pub enum StoreCmd {
-    /// Check which of the given aliases (ns:value) are present in the store
-    Have {
-        ids: Vec<String>,
-    },
-    /// Retrieve a work by alias (ns:value)
-    Get {
-        id: String,
-    },
-}
-
-#[derive(Args)]
 pub struct ArxivArgs {
     #[command(subcommand)]
     pub cmd: ArxivCmd,
@@ -469,6 +489,7 @@ pub struct OutputOpts {
     pub full: bool,
     pub skip_push: bool,
     pub include_abstract: bool,
+    pub emission: bool,
 }
 
 impl From<GlobalArgs> for OutputOpts {
@@ -482,6 +503,7 @@ impl From<GlobalArgs> for OutputOpts {
             full: g.full,
             skip_push: g.skip_push,
             include_abstract: g.include_abstract,
+            emission: g.emission,
         }
     }
 }

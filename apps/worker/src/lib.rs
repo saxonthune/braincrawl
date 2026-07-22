@@ -13,6 +13,7 @@
 //! - `GET /stats`
 //! - `GET /works/*id`                   → get_work
 //! - `GET /works/*id/edges`             → get_edges
+//! - `GET /works/*id/artifacts`         → list_artifacts
 //! - `GET /works/*id/content/{kind}`    → get_content
 //! - `PUT /works/*id/content/{kind}`    → put_content
 //!
@@ -59,8 +60,8 @@ use braincrawl_blob_r2::R2BlobStore;
 use braincrawl_core::{
     traits::{Clock, Coordinator, IdGen, LockGuard},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, ArtifactRole,
-        WorkRecord,
+        Alias, Artifact, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput,
+        ArtifactRole, WorkRecord,
     },
     usecases::Store,
 };
@@ -221,6 +222,24 @@ fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
 }
 
 
+/// `Artifact` has no `Serialize` impl in `crates/core`, so the HTTP surface
+/// projects its fields into JSON here. Must match `apps/server`'s shape exactly.
+fn artifact_json(a: &Artifact) -> serde_json::Value {
+    serde_json::json!({
+        "canonical_id": a.canonical_id.0,
+        "role": a.role.as_str(),
+        "version": a.version,
+        "r2_key": a.r2_key,
+        "content_hash": a.content_hash,
+        "byte_size": a.byte_size,
+        "mime": a.mime,
+        "source": a.source,
+        "source_url": a.source_url,
+        "fetched_at": a.fetched_at,
+        "is_current": a.is_current,
+    })
+}
+
 fn domain_status(e: &DomainError) -> u16 {
     match e {
         DomainError::NotFound => 404,
@@ -357,6 +376,34 @@ async fn handle_get_edges(
     match store.get_edges(a, dir, cursor, limit).await {
         Ok((edges, cursor)) => {
             Response::from_json(&serde_json::json!({ "edges": edges, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_list_artifacts(
+    id_str: &str,
+    url: &Url,
+    store: &WorkerStore,
+) -> worker::Result<Response> {
+    let a = match parse_alias(id_str) {
+        Some(a) => a,
+        None => return bad_request("expected namespace:value"),
+    };
+    let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let role = match params.get("role").map(|s| parse_artifact_role(s)) {
+        Some(Some(k)) => Some(k),
+        Some(None) => return bad_request("invalid role"),
+        None => None,
+    };
+    let all_versions = params
+        .get("all_versions")
+        .map(|s| s == "true")
+        .unwrap_or(false);
+    match store.list_artifacts(a, role, all_versions).await {
+        Ok(artifacts) => {
+            let artifacts: Vec<_> = artifacts.iter().map(artifact_json).collect();
+            Response::from_json(&serde_json::json!({ "artifacts": artifacts }))
         }
         Err(e) => err_response(&e),
     }
@@ -559,6 +606,10 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
                 // GET /works/*id/edges
                 if let Some(id_str) = rest.strip_suffix("/edges") {
                     return handle_get_edges(id_str, &url, &store).await;
+                }
+                // GET /works/*id/artifacts
+                if let Some(id_str) = rest.strip_suffix("/artifacts") {
+                    return handle_list_artifacts(id_str, &url, &store).await;
                 }
                 // GET /works/*id/content/{kind}
                 if let Some(pos) = rest.rfind("/content/") {
