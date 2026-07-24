@@ -4,8 +4,8 @@ use thiserror::Error;
 pub enum ClientError {
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
-    #[error("server returned {status}: {body}")]
-    Server { status: u16, body: String },
+    #[error("server returned {status} from {url}: {body}")]
+    Server { status: u16, url: String, body: String },
 }
 
 pub type Result<T> = std::result::Result<T, ClientError>;
@@ -95,7 +95,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         let json: serde_json::Value = resp.json()?;
         Ok(json["id"].as_str().unwrap_or("").to_string())
@@ -108,7 +108,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         let json: serde_json::Value = resp.json()?;
         Ok(json["count"].as_u64().unwrap_or(0))
@@ -123,7 +123,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(resp.json()?)
     }
@@ -147,7 +147,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(resp.json()?)
     }
@@ -159,7 +159,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(resp.json()?)
     }
@@ -175,7 +175,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(Some(resp.json()?))
     }
@@ -217,7 +217,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(())
     }
@@ -247,7 +247,7 @@ impl StoreClient {
             404 => Ok(ContentOutcome::Absent),
             _ => {
                 let body = resp.text().unwrap_or_default();
-                Err(ClientError::Server { status, body })
+                Err(ClientError::Server { status, url: url.clone(), body })
             }
         }
     }
@@ -273,7 +273,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         let body: serde_json::Value = resp.json()?;
         Ok(body["artifacts"].as_array().cloned().unwrap_or_default())
@@ -286,7 +286,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(resp.json()?)
     }
@@ -301,7 +301,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(Some(resp.text()?))
     }
@@ -335,7 +335,11 @@ impl StoreClient {
             }
             _ => {
                 let body = resp.text().unwrap_or_default();
-                Err(L3PutError::Client(ClientError::Server { status: status.as_u16(), body }))
+                Err(L3PutError::Client(ClientError::Server {
+                    status: status.as_u16(),
+                    url: url.clone(),
+                    body,
+                }))
             }
         }
     }
@@ -347,7 +351,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(resp.json()?)
     }
@@ -362,7 +366,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(Some(resp.text()?))
     }
@@ -374,7 +378,7 @@ impl StoreClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
-            return Err(ClientError::Server { status: status.as_u16(), body });
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         Ok(())
     }

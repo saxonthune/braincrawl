@@ -375,3 +375,127 @@ async fn test_neighborhood_endpoint() {
 
     handle.abort();
 }
+
+#[tokio::test]
+async fn test_work_get_carries_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.3/artifacted"}],
+            "attrs": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    client
+        .put(format!(
+            "{base}/works/doi:10.3/artifacted/content/fulltext?mime=text/plain&fetched_at=2024-01-01T00:00:00Z"
+        ))
+        .body("full text body")
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/artifacted"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let work_body: serde_json::Value = res.json().await.unwrap();
+    let artifacts = work_body["artifacts"].as_array().unwrap();
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0]["role"], "fulltext");
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/artifacted/artifacts"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let artifacts_body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(artifacts_body["artifacts"], work_body["artifacts"]);
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_work_get_no_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.3/bare"}],
+            "attrs": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/bare"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let artifacts = body["artifacts"].as_array().unwrap();
+    assert!(artifacts.is_empty());
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_work_get_404_names_alias() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    let res = client
+        .get(format!("{base}/works/doi:10.99/does-not-exist"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+    let body = res.text().await.unwrap();
+    assert!(
+        body.contains("doi:10.99/does-not-exist"),
+        "404 body should name the alias: {body}"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_health_reports_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    let res = client.get(format!("{base}/health")).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["status"], "ok");
+    assert!(
+        body["version"].as_str().is_some_and(|v| !v.is_empty()),
+        "version should be a non-empty string"
+    );
+
+    handle.abort();
+}

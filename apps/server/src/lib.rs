@@ -376,10 +376,29 @@ async fn handler_works_get(
         Some(a) => a,
         None => return (StatusCode::BAD_REQUEST, "expected namespace:value").into_response(),
     };
-    let result = run_blocking(move || async move { store.get_work(a).await }).await;
+    let result = run_blocking(move || async move {
+        let view = store.get_work(a.clone()).await?;
+        match view {
+            Some(view) => {
+                let artifacts = store.list_artifacts(a, None, false).await?;
+                Ok(Some((view, artifacts)))
+            }
+            None => Ok(None),
+        }
+    })
+    .await;
     match result {
-        Ok(Some(view)) => Json(view).into_response(),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Ok(Some((view, artifacts))) => {
+            let mut body = serde_json::to_value(view).expect("WorkView serializes");
+            let artifacts: Vec<_> = artifacts.iter().map(artifact_json).collect();
+            body["artifacts"] = serde_json::Value::Array(artifacts);
+            Json(body).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            format!("no work with alias '{}'", path),
+        )
+            .into_response(),
         Err(e) => (domain_status(&e), e.to_string()).into_response(),
     }
 }
@@ -443,7 +462,11 @@ async fn handler_stats(State(store): State<Arc<LocalStore>>) -> impl IntoRespons
 /// Sits outside the auth gate so consumers can check the shared server is up
 /// without a token. Returns 200 with a small JSON body.
 async fn handler_health() -> impl IntoResponse {
-    Json(serde_json::json!({"status": "ok", "service": "braincrawl"}))
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "braincrawl",
+        "version": env!("BRAINCRAWL_BUILD"),
+    }))
 }
 
 /// POST /graph/neighborhood
