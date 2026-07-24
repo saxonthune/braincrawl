@@ -10,7 +10,7 @@ set -uo pipefail
 # renderer splits on it. Schemas (tab-separated):
 #
 #   task     <slug> <phase> <overall> <bucket> <commits> <worktree> <branch> <age> <notes>
-#   chain    <name> <status> <done_n> <total> <current> <phases_csv> <worktree> <branch> <progress>
+#   chain    <name> <status> <done_n> <total> <current> <phases_csv> <worktree> <branch> <progress> <age>
 #   epic     <name> <total> <done_n> <running_n> <failed_n> <members_csv>
 #   stale    <slug> <worktree>
 #   archived <slug> <overall> <commits> <age> <notes>
@@ -208,8 +208,11 @@ emit_chains() {
       current="after ${waiting_for}"
     fi
 
-    printf 'chain\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$name" "$status" "$done_n" "$total" "$current" "$phases" "$worktree" "$branch" "$progress"
+    local cage logf="${TODO}/.running/chain-${name}.log"
+    if [[ -f "$logf" ]]; then cage="$(age_of "$logf")"; else cage="$(age_of "$run")"; fi
+
+    printf 'chain\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$name" "$status" "$done_n" "$total" "$current" "$phases" "$worktree" "$branch" "$progress" "$cage"
   done
 
   # Completed chains come from the trunk definition (run-record already gone).
@@ -220,8 +223,10 @@ emit_chains() {
     phases="$(parse_result_field "$def" phases)"
     total="$(echo "$phases" | tr ',' '\n' | grep -c . || echo 0)"
     local cprogress; cprogress="$(chain_progress "$SM_CHAIN_COMPLETE" "$total" "$total")"
-    printf 'chain\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$name" "complete" "$total" "$total" "$NONE" "$phases" "$NONE" "$NONE" "$cprogress"
+    # finalize-chain.sh writes this definition at completion, so its mtime is
+    # the chain's finish time.
+    printf 'chain\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$name" "complete" "$total" "$total" "$NONE" "$phases" "$NONE" "$NONE" "$cprogress" "$(age_of "$def")"
   done
 }
 

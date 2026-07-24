@@ -114,6 +114,10 @@ worker-test:
 luminous-cli:
     cargo run -p braincrawl-cli --example luminous_cli_grammar
 
+# Regenerate the Atlas Data File from the CLI grammar signal (refreshes the signal first)
+luminous-atlas: luminous-cli
+    python3 .luminous/atlas/gen-atlasdata.py
+
 # ── Web UI (web/ — its own Vite+ workspace; vp runs from inside it) ──────────
 
 # Dev server for the Web UI

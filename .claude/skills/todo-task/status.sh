@@ -48,7 +48,7 @@ for rec in "${RECORDS[@]}"; do
         pending)  PENDING+=("${slug}") ;;
         draft)    DRAFTS+=("${slug}") ;;
       esac ;;
-    chain) IFS=$'\t' read -r _ name cstatus done_n total current phases worktree branch progress <<< "$rec"
+    chain) IFS=$'\t' read -r _ name cstatus done_n total current phases worktree branch progress _cage <<< "$rec"
            CHAINS+=("${name}|${cstatus}|${done_n}|${total}|${current}|${phases}|${worktree}|${branch}|${progress}") ;;
     epic)  IFS=$'\t' read -r _ name total done_n running_n failed_n members <<< "$rec"
            EPICS+=("${name}|${total}|${done_n}|${running_n}|${failed_n}|${members}") ;;

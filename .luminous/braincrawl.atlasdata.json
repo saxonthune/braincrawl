@@ -1,0 +1,343 @@
+{
+  "v": 1,
+  "of": "braincrawl.atlas.json",
+  "generatedAt": "2026-07-22T20:17:09+00:00",
+  "entries": {
+    "cli.braincrawl": {
+      "text": "`braincrawl [options]`\n\nbraincrawl research graph CLI\n\n```yaml\noptions:\n  --json: global \u2014 Output as JSON (default)\n  --text: global \u2014 Output as compact text (one result per line)\n  --limit <LIMIT>: global \u2014 Maximum number of results to return\n  --all: global \u2014 Return all results, ignoring limit\n  --fields <FIELDS>: global \u2014 Comma-separated list of fields to include in output\n  --full: global \u2014 Return full record (all fields)\n  --skip-push: global \u2014 Do not push results to the local store\n  --abstract: global \u2014 Include reconstructed abstract text (bulky; off by default)\n  --emission: global \u2014 Emit the store-ready emission frame instead of the display envelope\n```\n\nsubcommands: arxiv, catalog, collection, crossref, library, migrate-store, openalex, opencitations, rename, semanticscholar, web",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.arxiv": {
+      "text": "`braincrawl arxiv`\n\nQuery the arXiv preprint API\n\nsubcommands: get, search",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.arxiv.get": {
+      "text": "`braincrawl arxiv get <id>`\n\nFetch a single arXiv work by ID (e.g. arxiv:2301.07041 or 2301.07041)\n\n```yaml\npositionals:\n  id: required \u2014 arXiv ID (arxiv:\u2026, bare numeric, old-style hep-th/\u2026, or full URL)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.arxiv.search": {
+      "text": "`braincrawl arxiv search <query>`\n\nSearch arXiv by query string\n\n```yaml\npositionals:\n  query: required \u2014 Search query; use field operators (ti:/au:/cat:) or plain text (wrapped as all:\u2026)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.catalog": {
+      "text": "`braincrawl catalog`\n\nWork metadata, aliases, and citation edges (Layer 2)\n\nsubcommands: get, have, neighborhood, put, stats",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.catalog.get": {
+      "text": "`braincrawl catalog get <id>`\n\nRetrieve a work by alias (ns:value)\n\n```yaml\npositionals:\n  id: required\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.catalog.have": {
+      "text": "`braincrawl catalog have [ids]`\n\nCheck which of the given aliases (ns:value) are present in the store\n\n```yaml\npositionals:\n  ids:\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.catalog.neighborhood": {
+      "text": "`braincrawl catalog neighborhood [seeds] [options]`\n\nBounded neighborhood traversal from one or more seed ids\n\n```yaml\npositionals:\n  seeds: Seed ids in ns:value form (e.g. openalex:W2031938753 doi:10.x/y)\noptions:\n  --dir <DIR>: default forward \u2014 Traversal direction: forward (src\u2192dst) or backward (dst\u2192src)\n  --depth <DEPTH>: default 1 \u2014 Max BFS depth from the seeds\n  --max-nodes <MAX_NODES>: default 200 \u2014 Max nodes in the returned subgraph\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.catalog.put": {
+      "text": "`braincrawl catalog put [file]`\n\nWrite works and edges from an emission frame (stdin or a file) to the catalog\n\n```yaml\npositionals:\n  file: Read the emission from this file instead of stdin\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.catalog.stats": {
+      "text": "`braincrawl catalog stats`\n\nShow aggregate statistics about the metadata network",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection": {
+      "text": "`braincrawl collection`\n\nResearch Documents \u2014 the consolidated store (Layer 3)\n\nsubcommands: assign-ids, check, import, index, list, new, path, pull, push, reading-list, rm",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.assign-ids": {
+      "text": "`braincrawl collection assign-ids [options]`\n\nAssign `^r-\u2026` anchors for every `##` heading that lacks one\n\n```yaml\noptions:\n  --dry-run: Report what would be assigned; write nothing\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.check": {
+      "text": "`braincrawl collection check [doc] [options]`\n\nLint a doc (or --all) against the required frontmatter; advisory, never fails\n\n```yaml\npositionals:\n  doc: Doc slug (omit with --all)\noptions:\n  --all: Check every doc in the store\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.import": {
+      "text": "`braincrawl collection import <file> [options]`\n\nAdopt an existing markdown file into the store, normalizing its frontmatter\n\n```yaml\npositionals:\n  file: required \u2014 Path to the existing .md / .l3.md file\noptions:\n  --doc <DOC>: Doc slug override (default: existing `doc`/`domain` frontmatter, else filename stem)\n  --mv: Remove the source file after a successful import\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.index": {
+      "text": "`braincrawl collection index`\n\nRegenerate INDEX.md from every doc's frontmatter",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.list": {
+      "text": "`braincrawl collection list`\n\nList all L3 docs in the store",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.new": {
+      "text": "`braincrawl collection new <doc> [options]`\n\nCreate a new L3 doc in the store; prints its absolute path to stdout\n\n```yaml\npositionals:\n  doc: required \u2014 Doc slug (kebab-case) \u2014 the primary key and filename stem\noptions:\n  --title <TITLE>: Human title for the H1 heading (defaults to the doc slug)\n  --force: Overwrite if a doc with this slug already exists\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.path": {
+      "text": "`braincrawl collection path <doc>`\n\nPrint the absolute path of an existing L3 doc to stdout\n\n```yaml\npositionals:\n  doc: required \u2014 Doc slug\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.pull": {
+      "text": "`braincrawl collection pull [doc] [options]`\n\nPull doc(s) from the worker's consolidated L3 store into the local repo\n\n```yaml\npositionals:\n  doc: Doc slug (omit to pull every pull-candidate doc)\noptions:\n  --dry-run: Print the plan without transferring or touching sync state\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.push": {
+      "text": "`braincrawl collection push [doc] [options]`\n\nPush local doc(s) to the worker's consolidated L3 store\n\n```yaml\npositionals:\n  doc: Doc slug (omit to push every push-candidate doc)\noptions:\n  --dry-run: Print the plan without transferring or touching sync state\n  --force: Bypass the worker's warning bounce (400) on push\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.reading-list": {
+      "text": "`braincrawl collection reading-list`\n\nList every node with a `reading` property and its catalog work, grouped by role",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.collection.rm": {
+      "text": "`braincrawl collection rm <doc>`\n\nDelete a doc from the store and reindex\n\n```yaml\npositionals:\n  doc: required \u2014 Doc slug\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.crossref": {
+      "text": "`braincrawl crossref`\n\nBackfill backward references from Crossref's deposited reference list\n\nsubcommands: refs",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.crossref.refs": {
+      "text": "`braincrawl crossref refs <id>`\n\nList works the given work references (via Crossref deposited reference list)\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (resolved to its DOI)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library": {
+      "text": "`braincrawl library`\n\nArtifact bytes held against a work (Layer 1)\n\nsubcommands: chunk, extract-text, fetch, get, list, put",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library.chunk": {
+      "text": "`braincrawl library chunk [id] [options]`\n\nPartition a work's stored fulltext into a citation-carrying chunks artifact\n\n```yaml\npositionals:\n  id: Work id in ns:value form (stored fulltext \u2192 writes the chunks artifact)\noptions:\n  --file <FILE>: External PDF file \u2014 PIPE-ONLY: emits JSON to stdout, never stored\n  --role <ROLE>: default chunks \u2014 Output artifact role slug\n  --max-tokens <MAX_TOKENS>: default 512\n  --overlap <OVERLAP>: default 64\n  --stdout: Stream JSON to stdout instead of storing\n  --allow-partial: Chunk faithful pages and skip image-only ones instead of refusing\n  --force: Re-chunk even if a chunks artifact already exists\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library.extract-text": {
+      "text": "`braincrawl library extract-text <id> [options]`\n\nExtract text from a work's stored fulltext PDF artifact\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (e.g. openalex:W2304167012)\noptions:\n  --role <ROLE>: default text \u2014 Artifact role slug to store the extracted text at\n  --force: Re-extract even if the role already holds an artifact\n  --stdout: Emit text to stdout instead of storing\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library.fetch": {
+      "text": "`braincrawl library fetch <id> [options]`\n\nAcquire a work's fulltext artifact from the open web into the store\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (e.g. openalex:W2165758805 or doi:10.x/y)\noptions:\n  --from <FROM>: default auto \u2014 Where to resolve the artifact URL from (auto|openalex|unpaywall)\n  --force: Re-fetch even if a fulltext artifact already exists\n  --require-pdf: Only accept a PDF artifact (reject HTML or other content types)\n  --stdout: Emit bytes to stdout instead of storing\n  -o, --output <OUTPUT>: Write bytes to this path instead of storing\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library.get": {
+      "text": "`braincrawl library get <id> [options]`\n\nRead a stored artifact's bytes to stdout\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (e.g. openalex:W2304167012)\noptions:\n  -o, --output <OUTPUT>: Write bytes to this path instead of stdout\n  --role <ROLE>: default fulltext \u2014 Artifact role slug (e.g. fulltext, abstract, map)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library.list": {
+      "text": "`braincrawl library list <id> [options]`\n\nList every artifact a work holds \u2014 role, version, size, mime, provenance\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (e.g. openalex:W2304167012)\noptions:\n  --role <ROLE>: Restrict to a single artifact role\n  --all-versions: Include superseded versions, not just the current one per role\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.library.put": {
+      "text": "`braincrawl library put <id> [file] [options]`\n\nStore bytes from stdin or a file as an artifact of the given role\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (e.g. openalex:W2304167012)\n  file: Read bytes from this file instead of stdin\noptions:\n  --mime <MIME>: Content mime type (default: sniff %PDF, else application/octet-stream)\n  --source <SOURCE>: Optional source label recorded with the artifact\n  --source-url <SOURCE_URL>: Optional source URL recorded with the artifact\n  --role <ROLE>: default fulltext \u2014 Artifact role slug (e.g. fulltext, abstract, map)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.migrate-store": {
+      "text": "`braincrawl migrate-store [options]`\n\nReplay the local SQLite + blob corpus into a remote store over its HTTP API\n\n```yaml\noptions:\n  --db <DB>: Path to the local SQLite database (default: $HOME/.local/share/braincrawl/braincrawl.db)\n  --blobs <BLOBS>: Path to the local blob root directory (default: $HOME/.local/share/braincrawl/blobs)\n  --dry-run: Print the plan counts without pushing any work, edge, or artifact\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex": {
+      "text": "`braincrawl openalex`\n\nQuery the OpenAlex scholarly-data API\n\nsubcommands: autocomplete, cited-by, find, get, refs, search",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex.autocomplete": {
+      "text": "`braincrawl openalex autocomplete <entity> <q>`\n\nAutocomplete entity names by prefix\n\n```yaml\npositionals:\n  entity: required \u2014 Entity type (works, authors, sources, institutions, topics, publishers, funders)\n  q: required \u2014 Prefix query string\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex.cited-by": {
+      "text": "`braincrawl openalex cited-by <id>`\n\nList works that cite the given work\n\n```yaml\npositionals:\n  id: required \u2014 OpenAlex work ID (W\u2026) or external ID (doi:\u2026)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex.find": {
+      "text": "`braincrawl openalex find <entity> [filters]`\n\nFilter an entity collection by key:value expressions\n\n```yaml\npositionals:\n  entity: required \u2014 Entity type (works, authors, sources, institutions, topics, keywords, publishers, funders)\n  filters: Filter expressions in `key:value` form (e.g. `publication_year:2020` `is_oa:true`)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex.get": {
+      "text": "`braincrawl openalex get <id>`\n\nFetch a single entity by ID (entity type inferred from ID prefix)\n\n```yaml\npositionals:\n  id: required \u2014 OpenAlex ID (W\u2026/A\u2026/S\u2026/I\u2026/T\u2026/P\u2026/F\u2026/C\u2026) or external ID (doi:\u2026/orcid:\u2026/issn:\u2026/ror:\u2026)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex.refs": {
+      "text": "`braincrawl openalex refs <id>`\n\nList works referenced by the given work\n\n```yaml\npositionals:\n  id: required \u2014 OpenAlex work ID (W\u2026) or external ID (doi:\u2026)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.openalex.search": {
+      "text": "`braincrawl openalex search <entity> <query>`\n\nFull-text search over an entity collection\n\n```yaml\npositionals:\n  entity: required \u2014 Entity type (works, authors, sources, institutions, topics, keywords, publishers, funders)\n  query: required \u2014 Search query string\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.opencitations": {
+      "text": "`braincrawl opencitations`\n\nBackfill backward references from the OpenCitations COCI index\n\nsubcommands: refs",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.opencitations.refs": {
+      "text": "`braincrawl opencitations refs <id>`\n\nList works the given work references (via OpenCitations COCI index)\n\n```yaml\npositionals:\n  id: required \u2014 Work id in ns:value form (resolved to its DOI)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.rename": {
+      "text": "`braincrawl rename <file> [options]`\n\nRename a work file to its canonical bibliographic filename\n\n```yaml\npositionals:\n  file: required \u2014 Path to the file to rename (extension is preserved)\noptions:\n  --author <AUTHOR>: required \u2014 First author's surname (may contain spaces/particles, e.g. \"Van De Mieroop\")\n  --et-al: The work has more than one author (renders the EtAl marker)\n  --year <YEAR>: required \u2014 Publication year\n  --title <TITLE>: required \u2014 Work title (slugified for the filename)\n  --dry-run: Print the proposed new path; do not rename\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.semanticscholar": {
+      "text": "`braincrawl semanticscholar`\n\nQuery the Semantic Scholar graph API\n\nsubcommands: cited-by, get, refs, search",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.semanticscholar.cited-by": {
+      "text": "`braincrawl semanticscholar cited-by <id>`\n\nList papers that cite the given paper\n\n```yaml\npositionals:\n  id: required \u2014 Paper ID (doi:\u2026/arxiv:\u2026/corpusid:\u2026/s2:\u2026/40-char hex)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.semanticscholar.get": {
+      "text": "`braincrawl semanticscholar get <id>`\n\nFetch a single paper or author by ID (entity type inferred from ID prefix)\n\n```yaml\npositionals:\n  id: required \u2014 Semantic Scholar ID (doi:\u2026/arxiv:\u2026/corpusid:\u2026/s2:\u2026/s2author:\u2026/40-char hex)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.semanticscholar.refs": {
+      "text": "`braincrawl semanticscholar refs <id>`\n\nList papers referenced by the given paper\n\n```yaml\npositionals:\n  id: required \u2014 Paper ID (doi:\u2026/arxiv:\u2026/corpusid:\u2026/s2:\u2026/40-char hex)\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.semanticscholar.search": {
+      "text": "`braincrawl semanticscholar search <entity> <query>`\n\nFull-text search over papers or authors\n\n```yaml\npositionals:\n  entity: required \u2014 Entity type (papers, authors)\n  query: required \u2014 Search query string\n```",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    },
+    "cli.braincrawl.web": {
+      "text": "`braincrawl web`\n\nPrint the Web UI URL for the configured server",
+      "source": {
+        "path": "apps/cli/src/cli.rs",
+        "rev": "ee56589"
+      }
+    }
+  }
+}

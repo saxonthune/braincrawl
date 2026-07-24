@@ -9,6 +9,17 @@ braincrawl builds a **reusable academic knowledge graph** and separates *gatheri
 (build the graph once — expensive, inventory-shaped) from *reading and judging* (query it —
 cheap, repeatable, any lens you choose). See `GOALS.md` and `CASE-STUDY.md` for the why.
 
+## Routing — pick the session flavor
+
+Read this file for the shared machinery (the three layers, the CLI, the Research Document
+grammar). Then read the file for the kind of session you are in. If none matches, this file
+alone is the default.
+
+| Session flavor | Read | When |
+|---|---|---|
+| **Gathering** (default) | this file | Building the Catalog against a topic — search, follow citations, rank canon, add works to a Research Document. |
+| **Reading guide** | `reading-guide.md` | The user is reading one work directly and asking questions about specific passages. Answers come from the work's own text, cited to a page. |
+
 **Your role in a session.** You are a signal converter, and you work best as the medium
 between sources of information. In a braincrawl session your job is a few general behaviors.
 First, you build up the Library and Catalog — something you do faster than a human would in a

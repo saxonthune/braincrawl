@@ -1,9 +1,19 @@
-# .luminous/ — derived structure canvases
+# .luminous/ — structure canvases
 
-Generated [Luminous](https://luminous) canvas models of braincrawl's structure.
-Everything here is **derived from the code**, never hand-maintained — re-run the
-pipeline after a change and diff the result. The point is to *see the outlines*
-the code defines, at altitudes the source itself doesn't show at a glance.
+[Luminous](https://luminous) canvas models of braincrawl's structure. The point is
+to *see the outlines* the code defines, at altitudes the source itself doesn't
+show at a glance.
+
+Two kinds of file live here, and the difference matters:
+
+- **Derived canvases** — `cli-grammar.*`, `braincrawl.dataflow.json`. Generated
+  from the code, never hand-maintained; re-run the pipeline after a change and
+  diff the result.
+- **The Atlas** — `braincrawl.atlas.json` is *authored*. It is a human's map of
+  the system: which components exist, how they nest, what points at what. Only
+  its Node contents are generated, through the Data File
+  `braincrawl.atlasdata.json` written by the scripts in `atlas/`. No script adds,
+  removes, or moves a Node.
 
 ## cli-grammar
 
@@ -59,6 +69,16 @@ source (`.rhidoc/` docs or a `cli.rs`→handler join): which handler implements 
 command, web-vs-store semantics, push-by-default behavior. Arg-group mutual
 exclusion (e.g. `--json` vs `--text`) is also not yet modeled; it's a natural next
 enrichment as a `cli.excludes` edge.
+
+## Atlas
+
+`braincrawl.atlas.json` plus its Data File `braincrawl.atlasdata.json`. See
+[`atlas/README.md`](atlas/README.md) for how the Data File is generated and how a
+Node binds to a key.
+
+```bash
+just luminous-atlas
+```
 
 ## Roadmap
 
