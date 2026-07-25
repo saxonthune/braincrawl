@@ -458,6 +458,11 @@ where
         self.meta.stats().await
     }
 
+    /// Names of migrations applied in the underlying database.
+    pub async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
+        self.meta.applied_migrations().await
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------

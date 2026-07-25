@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "braincrawl", version, about = "braincrawl research graph CLI")]
+#[command(name = "braincrawl", version = env!("BRAINCRAWL_BUILD"), about = "braincrawl research graph CLI")]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,
@@ -61,6 +61,8 @@ pub enum Namespace {
     Arxiv(ArxivArgs),
     #[command(about = "Print the Web UI URL for the configured server")]
     Web,
+    #[command(about = "Report drift across the CLI, server, config, and store")]
+    Doctor,
     #[command(name = "migrate-store", about = "Replay the local SQLite + blob corpus into a remote store over its HTTP API")]
     MigrateStore(MigrateStoreArgs),
     #[command(about = "Rename a work file to its canonical bibliographic filename")]

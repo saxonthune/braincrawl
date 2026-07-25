@@ -33,9 +33,13 @@ just systemd-status       # active + {"service":"braincrawl","status":"ok"}
 
 `systemd-install-cli` skips the Web UI entirely, so it needs neither the Vite+
 toolchain nor pnpm. To serve the browser UI at `/web` as well, use `just systemd-install`
-instead — it builds `web/` first. After pulling changes, run `just upgrade-cli` (or
-`just upgrade` for the Web UI build) to refresh both the CLI on your PATH and the
-running server.
+instead — it builds `web/` first. After pulling changes, run `just upgrade` to refresh
+both the CLI on your PATH and the running server (it rebuilds the Web UI too, if the
+installed service serves one).
+
+If something looks wrong — a stale error, a command that used to work — run
+`braincrawl doctor` first. It reports drift across the CLI binary, the server, the
+config, and the store in one pass, with a remedy for anything it finds.
 
 Then write `~/.config/braincrawl/config.toml`:
 

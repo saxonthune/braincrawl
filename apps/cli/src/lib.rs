@@ -2,6 +2,7 @@ pub mod arxiv;
 pub mod chunk;
 pub mod cli;
 pub mod config;
+pub mod doctor;
 pub mod fetch_content;
 pub mod l3;
 pub mod migrate;

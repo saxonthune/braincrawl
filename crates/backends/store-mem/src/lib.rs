@@ -613,4 +613,8 @@ impl MetadataStore for MemStore {
             total_bytes: library_bytes,
         })
     }
+
+    async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
+        Ok(Vec::new())
+    }
 }

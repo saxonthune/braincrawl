@@ -66,6 +66,46 @@ impl Config {
         self.server_url = url;
         self
     }
+
+    /// Where each config field's effective value came from — env, the config
+    /// file, or the default — and whether it's set at all. Never carries the
+    /// value itself, so it's safe to print for secrets like `auth_token`.
+    pub fn sources() -> Vec<FieldSource> {
+        let file = load_config_file();
+        vec![
+            field_source("server_url", "BRAINCRAWL_SERVER_URL", file.server_url.as_deref(), true),
+            field_source("auth_token", "BRAINCRAWL_AUTH_TOKEN", file.auth_token.as_deref(), false),
+            field_source("openalex_api_key", "BRAINCRAWL_OPENALEX_API_KEY", file.openalex_api_key.as_deref(), false),
+            field_source(
+                "semanticscholar_api_key",
+                "BRAINCRAWL_SEMANTICSCHOLAR_API_KEY",
+                file.semanticscholar_api_key.as_deref(),
+                false,
+            ),
+            field_source("unpaywall_email", "BRAINCRAWL_UNPAYWALL_EMAIL", file.unpaywall_email.as_deref(), false),
+            field_source("crossref_mailto", "BRAINCRAWL_CROSSREF_MAILTO", file.crossref_mailto.as_deref(), false),
+            field_source("l3_repo", "BRAINCRAWL_L3_REPO", file.l3_repo.as_deref(), false),
+        ]
+    }
+}
+
+/// Where one config field's effective value came from.
+pub struct FieldSource {
+    pub name: &'static str,
+    pub source: &'static str,
+    pub set: bool,
+}
+
+/// `has_default` marks fields (just `server_url`) that fall back to a real
+/// default rather than staying unset when neither env nor file provide one.
+fn field_source(name: &'static str, env_var: &str, file_value: Option<&str>, has_default: bool) -> FieldSource {
+    if std::env::var(env_var).is_ok() {
+        FieldSource { name, source: "env", set: true }
+    } else if file_value.is_some() {
+        FieldSource { name, source: "file", set: true }
+    } else {
+        FieldSource { name, source: "default", set: has_default }
+    }
 }
 
 fn load_config_file() -> ConfigFile {

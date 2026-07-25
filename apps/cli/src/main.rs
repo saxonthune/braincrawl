@@ -439,6 +439,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Namespace::Web => {
             braincrawl_cli::web::print_url(&config);
         }
+        Namespace::Doctor => {
+            let checks = braincrawl_cli::doctor::run(&config);
+            braincrawl_cli::doctor::render(&checks, &opts);
+            if braincrawl_cli::doctor::any_failed(&checks) {
+                std::process::exit(1);
+            }
+        }
         Namespace::MigrateStore(args) => {
             let store = StoreClient::new(&config.server_url)
                 .with_token(config.auth_token.clone());

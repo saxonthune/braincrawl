@@ -105,6 +105,10 @@ pub trait MetadataStore {
 
     /// Aggregate counts over the whole network (works, nodes, edges, sources).
     async fn stats(&self) -> Result<GraphStats, DomainError>;
+
+    /// Names of migrations applied in this database, for drift detection against
+    /// the set compiled into the running binary.
+    async fn applied_migrations(&self) -> Result<Vec<String>, DomainError>;
 }
 
 /// KV projection cache for id resolution.

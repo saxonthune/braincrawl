@@ -457,15 +457,33 @@ async fn handler_stats(State(store): State<Arc<LocalStore>>) -> impl IntoRespons
     }
 }
 
+/// State for the unauthenticated `/health` route: the store (to read applied
+/// migrations) and the configured L3 root, both needed outside the auth gate.
+#[derive(Clone)]
+struct HealthState {
+    store: Arc<LocalStore>,
+    l3_root: Option<PathBuf>,
+}
+
 /// GET /health — unauthenticated liveness probe.
 ///
 /// Sits outside the auth gate so consumers can check the shared server is up
 /// without a token. Returns 200 with a small JSON body.
-async fn handler_health() -> impl IntoResponse {
+async fn handler_health(State(state): State<HealthState>) -> impl IntoResponse {
+    let store = state.store.clone();
+    let applied = run_blocking(move || async move { store.applied_migrations().await })
+        .await
+        .unwrap_or_default();
+    let compiled: Vec<&str> = braincrawl_sql::migrations().iter().map(|(name, _)| *name).collect();
+    let l3_root = state.l3_root.as_ref().map(|p| p.display().to_string());
+
     Json(serde_json::json!({
         "status": "ok",
         "service": "braincrawl",
         "version": env!("BRAINCRAWL_BUILD"),
+        "migrations_applied": applied,
+        "migrations_compiled": compiled,
+        "l3_root": l3_root,
     }))
 }
 
@@ -530,6 +548,10 @@ pub fn make_app(
         spawn_l3_watcher(root.clone(), changes_tx.clone());
     }
 
+    let health = Router::new()
+        .route("/health", get(handler_health))
+        .with_state(HealthState { store: store.clone(), l3_root: l3_root.clone() });
+
     let authed = Router::new()
         // Exact static routes first so they win over wildcards.
         .route("/works/have", post(handler_have))
@@ -562,7 +584,7 @@ pub fn make_app(
 
     // `/health` is merged outside the auth layer: an unauthenticated liveness
     // probe so consumers can detect the shared server without a token.
-    Router::new().route("/health", get(handler_health)).merge(authed)
+    health.merge(authed)
 }
 
 /// Serve the built web UI (`web/dist`) from the root — API routes keep their

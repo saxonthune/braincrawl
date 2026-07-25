@@ -731,6 +731,19 @@ impl MetadataStore for SqliteStore {
             total_bytes: library_bytes + catalog_bytes,
         })
     }
+
+    async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT name FROM _migrations ORDER BY name")
+            .map_err(be)?;
+        let rows: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(be)?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(rows)
+    }
 }
 
 // ─── JobEnqueuer ──────────────────────────────────────────────────────────────

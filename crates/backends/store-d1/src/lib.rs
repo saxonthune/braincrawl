@@ -115,6 +115,9 @@ impl MetadataStore for D1Store {
     async fn present_aliases(&self, _aliases: &[Alias]) -> Result<Vec<Alias>, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
+    async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
+        Ok(Vec::new())
+    }
     async fn stats(&self) -> Result<GraphStats, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
@@ -738,5 +741,9 @@ impl MetadataStore for D1Store {
             catalog_bytes: 0,
             total_bytes: library_bytes,
         })
+    }
+
+    async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
+        Ok(Vec::new())
     }
 }

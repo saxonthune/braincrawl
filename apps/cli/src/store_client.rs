@@ -152,6 +152,18 @@ impl StoreClient {
         Ok(resp.json()?)
     }
 
+    /// GET /health — unauthenticated liveness probe; returns the raw JSON body.
+    pub fn health(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/health", self.base_url);
+        let resp = self.http.get(&url).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
+        }
+        Ok(resp.json()?)
+    }
+
     /// GET /stats — returns aggregate network statistics as JSON.
     pub fn stats(&self) -> Result<serde_json::Value> {
         let url = format!("{}/stats", self.base_url);

@@ -7,17 +7,22 @@
 default:
     @just --list
 
-# Two things other agents depend on go stale independently — the `braincrawl` CLI
-# on your PATH (refreshed by `install`) and the *running* shared server, which keeps
-# executing its old binary until `restart` rebuilds and relaunches it.
-#
-# One-stop: refresh the PATH CLI + rebuild & restart the server. Run after pulling/changes.
-upgrade: install restart
-
-# The same one-stop, without the Web UI. Pair with `systemd-install-cli`.
-#
-# One-stop for CLI-only installs: refresh the PATH CLI + rebuild & restart the server
-upgrade-cli: install restart-cli
+# The one converging update: shows drift with `braincrawl doctor`, rebuilds and
+# reinstalls the CLI + server, rebuilds the Web UI only if the installed systemd unit
+# serves one, restarts the server, then shows `braincrawl doctor` again so the operator
+# sees the result. Idempotent — always safe to rerun.
+upgrade:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    braincrawl doctor || true
+    cargo build --release --bin braincrawl-server --bin braincrawl
+    cargo install --path apps/cli --force
+    unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/braincrawl-server.service"
+    if [ -f "$unit" ] && grep -q BRAINCRAWL_WEB_ROOT "$unit"; then
+        just web-build
+    fi
+    systemctl --user restart braincrawl-server
+    braincrawl doctor || true
 
 # Start the shared server (systemd user service)
 systemd-start:
@@ -27,7 +32,7 @@ systemd-start:
 systemd-stop:
     systemctl --user stop braincrawl-server
 
-# Bounce the service (does NOT rebuild — use `just restart` to pick up code changes)
+# Bounce the service (does NOT rebuild — use `just upgrade` to pick up code changes)
 systemd-restart:
     systemctl --user restart braincrawl-server
 
@@ -39,20 +44,6 @@ systemd-status:
 # Tail the server log (journald)
 systemd-logs:
     journalctl --user -u braincrawl-server -f
-
-# NB: this only refreshes the running server. To update the `braincrawl` CLI on
-# your PATH after CLI changes, run `just install` (the service never touches it).
-#
-# Rebuild the release binaries + web UI, then bounce the service (picks up code changes)
-restart: build-release web-build
-    systemctl --user restart braincrawl-server
-
-# The CLI-only counterpart to `restart` — pair it with `systemd-install-cli`, which
-# leaves web/dist unused.
-#
-# Rebuild the binaries (no web UI), then bounce the service
-restart-cli: build-release
-    systemctl --user restart braincrawl-server
 
 # Build the server + CLI binaries (debug)
 build:
@@ -190,16 +181,6 @@ web-eval:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{justfile_directory()}}/web && vp test golden
-
-# Bring the local dev stack current with the working tree: rebuild the server
-# binary + web dist the systemd user service serves, restart it. The production
-# deploy is deliberately a separate command (deploy-worker).
-update-local: web-build
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cargo build --release -p braincrawl-server --manifest-path {{justfile_directory()}}/Cargo.toml
-    systemctl --user restart braincrawl-server
-    systemctl --user is-active braincrawl-server
 
 # Build the web app + deploy the worker (assets + API) as one unit. Requires
 # apps/worker/wrangler.toml (mirror the [assets] block from wrangler.toml.example
