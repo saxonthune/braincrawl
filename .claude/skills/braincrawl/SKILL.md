@@ -7,7 +7,8 @@ description: "Drive the braincrawl research graph — run the local server, gath
 
 braincrawl builds a **reusable academic knowledge graph** and separates *gathering works*
 (build the graph once — expensive, inventory-shaped) from *reading and judging* (query it —
-cheap, repeatable, any lens you choose). See `GOALS.md` and `CASE-STUDY.md` for the why.
+cheap, repeatable, any lens you choose). For the why, see `.rhidoc/01-product/02-mental-model.md`
+(the agent's role) and `.rhidoc/01-product/01-glossary.md` (the three layers, named).
 
 ## Routing — pick the session flavor
 

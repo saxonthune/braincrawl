@@ -10,10 +10,10 @@ deps: [doc02.01.01]
 One markdown file per item under the consolidated store. A worked example is
 `.claude/skills/braincrawl/l3-example.l3.md`; the rules:
 
-- **Frontmatter** — two required fields (`l3 check` warns if missing): `doc:`, a kebab-case
+- **Frontmatter** — two required fields (`collection check` warns if missing): `doc:`, a kebab-case
   slug that is the filename stem and primary key; and `updated:`, a date the CLI stamps.
 - **Body** — only research nodes, no loose prose and no H1. A `## ` heading opens a node with
-  an opaque-prose title; `l3 assign-ids` appends its `^r-…` anchor — never write one by hand.
+  an opaque-prose title; `collection assign-ids` appends its `^r-…` anchor — never write one by hand.
 - **Property line** — `- key: value`, the value optionally one YAML flow map
   (`{role: core, why: '…'}`); quote any value holding a comma. `- tags: #a #b` is special —
   each `#`-token is a node label, not a property.

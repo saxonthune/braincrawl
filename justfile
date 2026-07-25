@@ -14,6 +14,11 @@ default:
 # One-stop: refresh the PATH CLI + rebuild & restart the server. Run after pulling/changes.
 upgrade: install restart
 
+# The same one-stop, without the Web UI. Pair with `systemd-install-cli`.
+#
+# One-stop for CLI-only installs: refresh the PATH CLI + rebuild & restart the server
+upgrade-cli: install restart-cli
+
 # Start the shared server (systemd user service)
 systemd-start:
     systemctl --user start braincrawl-server
@@ -42,6 +47,13 @@ systemd-logs:
 restart: build-release web-build
     systemctl --user restart braincrawl-server
 
+# The CLI-only counterpart to `restart` — pair it with `systemd-install-cli`, which
+# leaves web/dist unused.
+#
+# Rebuild the binaries (no web UI), then bounce the service
+restart-cli: build-release
+    systemctl --user restart braincrawl-server
+
 # Build the server + CLI binaries (debug)
 build:
     cargo build --bin braincrawl-server --bin braincrawl
@@ -54,12 +66,29 @@ build-release:
 # ExecStart to THIS repo's release binary. Enables lingering so it starts at boot.
 # Idempotent — re-run after editing the template. Undo: `just systemd-uninstall`.
 systemd-install: build-release web-build
+    @just _systemd-unit serve-web
+
+# Same service, no Web UI. Skips the web build entirely, so it needs neither the Vite+
+# toolchain nor pnpm. Switch to the full install later with `just systemd-install`.
+#
+# Install + start the service without the Web UI (for CLI/Claude Code users)
+systemd-install-cli: build-release
+    @just _systemd-unit no-web
+
+# Write the unit and (re)start the service. `web` is `serve-web` or `no-web` — it decides
+# whether BRAINCRAWL_WEB_ROOT is wired to web/dist or dropped (unset disables /web).
+_systemd-unit web:
     #!/usr/bin/env bash
     set -euo pipefail
     unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     mkdir -p "$unit_dir"
+    if [ "{{web}}" = "serve-web" ]; then
+        web_edit=(-e "s#@WEBROOT@#{{justfile_directory()}}/web/dist#" -e "s#@WEBUI@ ##")
+    else
+        web_edit=(-e "/@WEBUI@/d" -e "/BRAINCRAWL_WEB_ROOT/d")
+    fi
     sed -e "s#@EXEC@#{{justfile_directory()}}/target/release/braincrawl-server#" \
-        -e "s#@WEBROOT@#{{justfile_directory()}}/web/dist#" \
+        "${web_edit[@]}" \
         scripts/braincrawl-server.service > "$unit_dir/braincrawl-server.service"
     env_file="${XDG_CONFIG_HOME:-$HOME/.config}/braincrawl/server.env"
     if [ ! -f "$env_file" ]; then
@@ -86,6 +115,18 @@ systemd-uninstall:
 # `just watch` rebuilds on save instead; `just install` is also how you undo it.)
 install:
     cargo install --path apps/cli --force
+
+# A symlink, not a copy, so the skill a session reads is always this checkout's —
+# `git pull` is then the only update step.
+#
+# Install the braincrawl skill for Claude Code into ~/.claude/skills
+skill-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dest="$HOME/.claude/skills"
+    mkdir -p "$dest"
+    ln -sfn "{{justfile_directory()}}/.claude/skills/braincrawl" "$dest/braincrawl"
+    echo "linked $dest/braincrawl -> {{justfile_directory()}}/.claude/skills/braincrawl"
 
 # Auto-rebuild the CLI on every source save (needs `watchexec`). Points the PATH
 # `braincrawl` at target/release via symlink, so all shells/sessions run the freshly
