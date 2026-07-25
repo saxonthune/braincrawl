@@ -79,10 +79,10 @@ aliases can still split across rows — keep one reference form per work.
 
 A single L3 doc routinely carries the whole answer — its Questions frontier, Findings, and
 domain edges are the distilled result of an earlier gathering pass. Only after reading the
-relevant docs and finding a genuine gap (a question the held docs don't reach) do you climb
-to provider pulls (§3). State the gap explicitly before pulling. How deeply you read (§4)
-makes this concrete: step 0 is "the L3 docs you already wrote," and you climb only as far as
-the question forces you. Don't pull when the answer is already on disk.
+relevant docs and finding a genuine gap (a question the held docs don't reach) do you turn
+to provider pulls (§3). State the gap explicitly before pulling: name the docs you read and
+the part of the question they left open. §4 lists the other reads available once you have.
+Don't pull when the answer is already on disk.
 
 ## 1. Use the one shared server (don't start your own)
 
@@ -158,7 +158,7 @@ hold a lookup result (in a file, a variable, another tool) before deciding to la
 
 This is the inventory phase. Do not verify or kill anything here — just gather.
 **Precondition: you reach this section only after §0 — the existing L3 docs don't cover the
-question, and you've named the gap.** If they do cover it, stop — you're done at step 0.
+question, and you've named the gap.** If they do cover it, stop — the docs were the answer.
 
 ```bash
 # First search — find heavily cited works (you don't know the starting work entering a new field)
@@ -197,44 +197,46 @@ Other useful verbs: `openalex get <id>` (single entity; id can be `W…/A…/S�
 <query>`, `openalex autocomplete <entity> <prefix>`. Entities: works, authors, sources,
 institutions, topics, keywords, publishers, funders.
 
-## 4. Read by progressive disclosure (cheap first)
+## 4. Read by progressive disclosure
 
-Reading and judging has a cost gradient. **Always answer a question at
-the cheapest step that suffices, and only go deeper when the angle isn't covered.** Don't
-fetch fulltext for a paper whose title already disqualifies it; don't fetch 40 abstracts when
-the in-degree ranking already names the three that matter.
+The reads below differ in how much they cost and how much they tell you.
+**Answer from what the store already holds, and before each further read, say what you
+consulted and what it left open.** Don't fetch fulltext for a paper whose title already
+disqualifies it; don't fetch 40 abstracts when the in-degree ranking already names the three
+that matter. Go straight to the read the question needs: these are options, and any one of
+them can be the first and only one a question requires.
 
-From cheapest to dearest:
+- **Your L3 Research Collection** — the docs you already wrote (`collection list` → Read the
+  match). Cheapest by far and usually enough: a doc's Findings + domain edges are a prior
+  gathering phase already distilled. Exhaust this before any provider call (§0).
+- **Catalog** — titles, authors, in-degree, citation edges. `catalog neighborhood`,
+  `openalex search/find`, `cited-by`/`refs`. Often a title + who-cites-whom is enough to
+  place a work or rule it out. Store-local (no provider call) once gathered.
+- **Abstracts** — `--abstract` (pair with `--fields title,publication_year,abstract` to
+  skip the JSON dump). The workhorse read: usually answers "what does this argue, and does
+  it bear on my question?" **Coverage is uneven** — old/closed works may have *no* abstract
+  (e.g. Jacobsen & Adams 1958), and some publishers (De Gruyter) return a boilerplate
+  placeholder, not real content. When OpenAlex is blank, bridge it by fetching the source
+  yourself (WebFetch / the open-access PDF) and reading the abstract in-context.
+- **AI-condensed summary** — get a work's fulltext into the store and distill it to the
+  claim you need. Acquire from the open web with `library fetch`, or ingest a local file
+  with `library put` (e.g. a user-provided PDF), then `library extract-text` to store the
+  extracted text at role `text` and `library get --role text` to read it back and condense
+  it in-context. When the source isn't reachable that way, bridge with WebFetch. Run
+  `library list <id>` first if you are not sure which roles a work already holds — it
+  returns role, version, size, mime, and provenance for every stored artifact, so you are
+  not guessing a role name.
+- **Full text** — read the whole work. The dearest read; reserve for the load-bearing few
+  a finding actually hangs on. The Library holds fulltext "on demand" — same `library fetch`/
+  `library put` + `library extract-text` + `library get --role text` path as the condensed
+  summary; just read more of the extracted text.
 
-0. **Your L3 Research Collection** — the docs you already wrote (`collection list` → Read the match).
-   Cheapest by far and usually enough: a doc's Findings + domain edges are a prior gathering
-   phase already distilled. Exhaust this step before any provider call (§0).
-1. **Catalog** — titles, authors, in-degree, citation edges. `catalog neighborhood`,
-   `openalex search/find`, `cited-by`/`refs`. Often a title + who-cites-whom is enough to
-   place a work or rule it out. This step is store-local (no provider call) once gathered.
-2. **Abstracts** — `--abstract` (pair with `--fields title,publication_year,abstract` to
-   skip the JSON dump). The workhorse step: usually answers "what does this argue, and does
-   it bear on my question?" **Coverage is uneven** — old/closed works may have *no* abstract
-   (e.g. Jacobsen & Adams 1958), and some publishers (De Gruyter) return a boilerplate
-   placeholder, not real content. When OpenAlex is blank, bridge it by fetching the source
-   yourself (WebFetch / the open-access PDF) and reading the abstract in-context.
-3. **AI-condensed summary** — get a work's fulltext into the store and distill it to the
-   claim you need. Acquire from the open web with `library fetch`, or ingest a local file
-   with `library put` (e.g. a user-provided PDF), then `library extract-text` to store the
-   extracted text at role `text` and `library get --role text` to read it back and condense
-   it in-context. When the source isn't reachable that way, bridge with WebFetch. Run
-   `library list <id>` first if you are not sure which roles a work already holds — it
-   returns role, version, size, mime, and provenance for every stored artifact, so you are
-   not guessing a role name.
-4. **Full text** — read the whole work. The dearest step; reserve for the load-bearing few
-   a finding actually hangs on. The Library holds fulltext "on demand" — same `library fetch`/
-   `library put` + `library extract-text` + `library get --role text` path as step 3; just read
-   more of the extracted text.
-
-Worked loop: a temple-formation question returned *nothing* on the held graph (step 1
-miss) → ran `openalex search "origins of the temple economy…"` → one `--abstract`
-read of that work (step 2) carried the full Gelb/Diakonoff vs Deimel answer. Steps
-3–4 never needed. That is the target shape: climb only as far as the question forces you.
+Worked loop: a temple-formation question found *nothing* in the held docs or the catalog →
+ran `openalex search "origins of the temple economy…"` → one `--abstract` read of that work
+carried the full Gelb/Diakonoff vs Deimel answer. The question was answered there, so no
+fulltext was acquired and nothing was condensed. Saying what the catalog had missed is what
+made the search worth running; saying what the abstract had settled is what made the rest
+unnecessary.
 
 **Verify the CLI surface before assuming a capability is missing.** This doc names verbs by
 way of example, not as an exhaustive or current inventory — the binary evolves. Run
