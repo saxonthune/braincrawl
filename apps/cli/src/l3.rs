@@ -8,7 +8,7 @@
 //!
 //! The contract is deliberately split in two:
 //!   * **Frontmatter** (required): a small set of keys the tooling reads to file,
-//!     find, and index a doc *without parsing its body* — `doc`, `updated`.
+//!     find, and index a doc *without parsing its body* — `doc`.
 //!     `REQUIRED_FRONTMATTER` is the single place that grows over time.
 //!   * **Body** (free): everything below the frontmatter, written in one shared
 //!     node grammar (see `doc02.01.04` in `.rhidoc/`) that every doc follows.
@@ -27,7 +27,7 @@ use crate::store_client::{L3PutError, StoreClient};
 
 /// Frontmatter keys the tooling requires. Extend this as the contract firms up;
 /// `check` warns (never fails) on any missing key.
-pub const REQUIRED_FRONTMATTER: &[&str] = &["doc", "updated"];
+pub const REQUIRED_FRONTMATTER: &[&str] = &["doc"];
 
 const FILE_SUFFIX: &str = ".l3.md";
 
@@ -37,8 +37,6 @@ type DynErr = Box<dyn std::error::Error>;
 /// (title, links, ids) comes from the parsed graph, not from this struct.
 struct DocumentMetadata {
     doc: String,
-    /// Declared date from frontmatter `updated:` (set at create/import; can drift).
-    updated: String,
     /// Real filesystem last-modified date (always reflects the latest edit locally).
     modified: String,
     path: PathBuf,
@@ -107,7 +105,7 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
     let (graph, _warnings) = l3::parse(root);
     if opts.text && !opts.json {
         for d in &docs {
-            println!("{}\t{}\t{}\t{}", d.doc, d.modified, d.updated, d.path.display());
+            println!("{}\t{}\t{}", d.doc, d.modified, d.path.display());
         }
         eprintln!("{} doc(s) in {}", docs.len(), root.display());
         return Ok(());
@@ -119,7 +117,6 @@ fn cmd_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
                 "id": d.doc,
                 "doc": d.doc,
                 "modified": d.modified,
-                "updated": d.updated,
                 "title": doc_title(&graph, d),
                 "path": d.path.display().to_string(),
             })
@@ -211,9 +208,7 @@ fn cmd_import(
     } else {
         format!("---\n{}\n---\n{body}", renamed_fm.join("\n"))
     };
-    let with_doc = l3::upsert_frontmatter_key(&renamed, "doc", &doc);
-    let updated = fm_get(&split_frontmatter(&with_doc).0, "updated").unwrap_or_else(today);
-    let rebuilt = l3::upsert_frontmatter_key(&with_doc, "updated", &updated);
+    let rebuilt = l3::upsert_frontmatter_key(&renamed, "doc", &doc);
 
     let dst = doc_path(root, &doc);
     if dst.exists() {
@@ -754,7 +749,6 @@ fn read_meta(path: &Path) -> Result<DocumentMetadata, DynErr> {
         .unwrap_or_default();
     Ok(DocumentMetadata {
         doc: fm_get(&fm, "doc").unwrap_or(stem),
-        updated: fm_get(&fm, "updated").unwrap_or_else(|| "—".to_string()),
         modified: modified_date(path),
         path: path.to_path_buf(),
     })
@@ -792,7 +786,7 @@ fn modified_date(path: &Path) -> String {
 /// Regenerate `INDEX.md` — a deterministic manifest harvested from the docs themselves.
 ///
 /// Three sections, each derived from the parsed research graph (no RAG, no embeddings):
-///   1. **Documents** — the frontmatter table (doc · modified · updated · title).
+///   1. **Documents** — the frontmatter table (doc · modified · title).
 ///   2. **Cross-references** — the doc→doc link graph: any node link whose endpoints span
 ///      two docs, plus doc-level forward references, with back-references computed so
 ///      "what refers to this doc" is a lookup, not a grep.
@@ -851,11 +845,11 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
     ));
 
     out.push_str("## Documents\n\n");
-    out.push_str("| doc | modified | updated | title |\n|---|---|---|---|\n");
+    out.push_str("| doc | modified | title |\n|---|---|---|\n");
     for d in &docs {
         out.push_str(&format!(
-            "| [{}]({}{}) | {} | {} | {} |\n",
-            d.doc, d.doc, FILE_SUFFIX, d.modified, d.updated, doc_title(&graph, d).replace('|', "\\|")
+            "| [{}]({}{}) | {} | {} |\n",
+            d.doc, d.doc, FILE_SUFFIX, d.modified, doc_title(&graph, d).replace('|', "\\|")
         ));
     }
 
@@ -934,7 +928,7 @@ fn lint(path: &Path, content: &str) -> Vec<String> {
 // ── scaffolding ───────────────────────────────────────────────────────────────
 
 fn scaffold(doc: &str, title: &str) -> String {
-    let header = format!("---\ndoc: {doc}\nupdated: {}\n---\n\n# L3 — {title}\n\n", today());
+    let header = format!("---\ndoc: {doc}\n---\n\n# L3 — {title}\n\n");
     format!("{header}{NODE_BODY}")
 }
 
@@ -1056,16 +1050,6 @@ fn stem_slug(path: &Path) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string()
-}
-
-/// Today's UTC date as `YYYY-MM-DD`, dependency-free.
-fn today() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (y, m, d) = civil_from_days((secs / 86_400) as i64);
-    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Convert days-since-Unix-epoch to (year, month, day). Howard Hinnant's algorithm.

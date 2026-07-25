@@ -115,8 +115,7 @@ pub async fn handle_put_doc(
     let other_docs: Vec<(String, String)> =
         existing_docs.into_iter().filter(|(s, _)| s != slug).collect();
 
-    let today = crate::today_utc_date();
-    match l3::normalize_doc(slug, &body, &other_docs, &today, force) {
+    match l3::normalize_doc(slug, &body, &other_docs, force) {
         l3::NormalizeOutcome::BlockingWarnings(blocking_warnings) => {
             let warnings: Vec<_> = blocking_warnings
                 .iter()

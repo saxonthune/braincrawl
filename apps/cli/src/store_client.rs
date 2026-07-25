@@ -199,6 +199,7 @@ impl StoreClient {
 
     /// Same as `put_content`, but with a caller-supplied `fetched_at` instead of "now" —
     /// used by migration replay to preserve the original provenance timestamp.
+    #[allow(clippy::too_many_arguments)]
     pub fn put_content_with_fetched_at(
         &self,
         alias: &str,

@@ -120,13 +120,6 @@ fn is_leap(year: u32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
-/// Today's date (UTC) as `yyyy-mm-dd`, for stamping L3 docs' `updated:` key.
-pub(crate) fn today_utc_date() -> String {
-    let ms = js_sys::Date::now() as u64;
-    let (y, mo, d) = days_to_ymd(ms / 1000 / 86400);
-    format!("{y:04}-{mo:02}-{d:02}")
-}
-
 // ── WasmIdGen ────────────────────────────────────────────────────────────────
 
 pub struct WasmIdGen;

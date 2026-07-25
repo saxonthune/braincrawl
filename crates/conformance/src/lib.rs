@@ -98,9 +98,6 @@ pub fn check_l3_docs(base_url: &str, token: &str) -> Result<(), String> {
     if !normalized.contains(" ^r-") {
         return Err(format!("check_l3_docs: expected an assigned ` ^r-` anchor in PUT response, got: {normalized}"));
     }
-    if !normalized.lines().any(|l| l.starts_with("updated:")) {
-        return Err(format!("check_l3_docs: expected an `updated:` frontmatter line in PUT response, got: {normalized}"));
-    }
 
     let res = auth(client.get(format!("{base_url}/api/l3/docs/{slug}")), token)
         .send()

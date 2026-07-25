@@ -4,7 +4,7 @@
 //! `.todo-tasks/tasks/server-l3-parity.md`.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use axum::{
     body::Bytes,
@@ -80,15 +80,6 @@ fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
 
 fn is_leap(year: u32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-}
-
-fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).expect("clock before epoch").as_secs()
-}
-
-fn today_utc_date() -> String {
-    let (y, mo, d) = days_to_ymd(now_secs() / 86400);
-    format!("{y:04}-{mo:02}-{d:02}")
 }
 
 /// Every `*.l3.md` file under `root`, recursively, skipping `_`-prefixed entries
@@ -230,8 +221,7 @@ pub async fn handler_l3_doc_put(
             .filter_map(|(path, slug)| std::fs::read_to_string(&path).ok().map(|c| (slug, c)))
             .collect();
 
-        let today = today_utc_date();
-        match l3::normalize_doc(&slug, &body, &other_docs, &today, force) {
+        match l3::normalize_doc(&slug, &body, &other_docs, force) {
             l3::NormalizeOutcome::BlockingWarnings(blocking_warnings) => {
                 let warnings: Vec<_> = blocking_warnings
                     .iter()

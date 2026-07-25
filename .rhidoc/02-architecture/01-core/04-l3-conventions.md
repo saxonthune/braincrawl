@@ -1,6 +1,6 @@
 ---
 title: L3 Conventions
-summary: An L3 Research Document is markdown with two required frontmatter fields (doc, updated) and a body of research nodes — headings carrying property and link lines. Node anchors are store-global; reference ids, never copy metadata. A worked example ships with the braincrawl skill.
+summary: An L3 Research Document is markdown with one required frontmatter field (doc) and a body of research nodes — headings carrying property and link lines. Node anchors are store-global; reference ids, never copy metadata. A worked example ships with the braincrawl skill.
 tags: [architecture, core, l3, research-collection, conventions, node-grammar]
 deps: [doc02.01.01]
 ---
@@ -10,8 +10,8 @@ deps: [doc02.01.01]
 One markdown file per item under the consolidated store. A worked example is
 `.claude/skills/braincrawl/l3-example.l3.md`; the rules:
 
-- **Frontmatter** — two required fields (`collection check` warns if missing): `doc:`, a kebab-case
-  slug that is the filename stem and primary key; and `updated:`, a date the CLI stamps.
+- **Frontmatter** — one required field (`collection check` warns if missing): `doc:`, a kebab-case
+  slug that is the filename stem and primary key.
 - **Body** — only research nodes, no loose prose and no H1. A `## ` heading opens a node with
   an opaque-prose title; `collection assign-ids` appends its `^r-…` anchor — never write one by hand.
 - **Property line** — `- key: value`, the value optionally one YAML flow map
