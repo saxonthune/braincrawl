@@ -71,6 +71,11 @@ fn row_to_artifact(row: &rusqlite::Row) -> rusqlite::Result<Artifact> {
     let source_url: Option<String> = row.get(8)?;
     let fetched_at: String = row.get(9)?;
     let is_current: i32 = row.get(10)?;
+    let derived_from_role: Option<String> = row.get(11)?;
+    let derived_from_version: Option<i64> = row.get(12)?;
+    let derived_from = derived_from_role.and_then(|r| {
+        derived_from_version.map(|v| (parse_artifact_role(&r).unwrap_or(ArtifactRole::Abstract), v as u32))
+    });
     Ok(Artifact {
         canonical_id: CanonicalId(canonical_id),
         role: parse_artifact_role(&role).unwrap_or(ArtifactRole::Abstract),
@@ -83,6 +88,7 @@ fn row_to_artifact(row: &rusqlite::Row) -> rusqlite::Result<Artifact> {
         source_url,
         fetched_at,
         is_current: is_current != 0,
+        derived_from,
     })
 }
 
@@ -181,6 +187,11 @@ impl ArtifactStore for SqliteStore {
             )
             .map_err(be)?;
         }
+        let (derived_from_role, derived_from_version): (Option<String>, Option<i64>) =
+            match &d.derived_from {
+                Some((role, version)) => (Some(role.as_str().to_string()), Some(*version as i64)),
+                None => (None, None),
+            };
         conn.execute(
             braincrawl_sql::artifact::INSERT,
             params![
@@ -195,6 +206,8 @@ impl ArtifactStore for SqliteStore {
                 d.source_url,
                 d.fetched_at,
                 if d.is_current { 1i32 } else { 0 },
+                derived_from_role,
+                derived_from_version,
             ],
         )
         .map_err(be)?;

@@ -60,6 +60,17 @@ fn be(e: impl std::fmt::Display) -> DomainError {
     DomainError::Backend(e.to_string())
 }
 
+/// Reassemble `derived_from` from its two nullable D1 columns.
+fn row_derived_from(
+    role: Option<String>,
+    version: Option<i64>,
+) -> Result<Option<(ArtifactRole, u32)>, DomainError> {
+    match (role, version) {
+        (Some(r), Some(v)) => Ok(Some((parse_artifact_role(&r)?, v as u32))),
+        _ => Ok(None),
+    }
+}
+
 // ── stub (no `cloudflare` feature) ───────────────────────────────────────────
 
 #[cfg(not(feature = "cloudflare"))]
@@ -184,6 +195,8 @@ impl ArtifactStore for D1Store {
             source_url: Option<String>,
             fetched_at: String,
             is_current: i32,
+            derived_from_role: Option<String>,
+            derived_from_version: Option<i64>,
         }
         let stmt = prep(
             &self.db,
@@ -205,6 +218,7 @@ impl ArtifactStore for D1Store {
                 source_url: r.source_url,
                 fetched_at: r.fetched_at,
                 is_current: r.is_current != 0,
+                derived_from: row_derived_from(r.derived_from_role, r.derived_from_version)?,
             })),
         }
     }
@@ -230,6 +244,8 @@ impl ArtifactStore for D1Store {
                 &[s(&d.canonical_id.0), s(artifact_role_str(&d.role))],
             )?);
         }
+        let derived_from_role = d.derived_from.as_ref().map(|(r, _)| r.as_str().to_string());
+        let derived_from_version = d.derived_from.as_ref().map(|(_, v)| *v as i64);
         stmts.push(prep(
             &self.db,
             braincrawl_sql::artifact::INSERT,
@@ -245,6 +261,11 @@ impl ArtifactStore for D1Store {
                 opt_s(d.source_url.as_deref()),
                 s(&d.fetched_at),
                 bool_int(d.is_current),
+                opt_s(derived_from_role.as_deref()),
+                match derived_from_version {
+                    Some(v) => n(v),
+                    None => JsValue::null(),
+                },
             ],
         )?);
         self.db.batch(stmts).await.map_err(be)?;
@@ -270,6 +291,8 @@ impl ArtifactStore for D1Store {
             source_url: Option<String>,
             fetched_at: String,
             is_current: i32,
+            derived_from_role: Option<String>,
+            derived_from_version: Option<i64>,
         }
         let stmt = match &role {
             Some(r) => {
@@ -292,6 +315,7 @@ impl ArtifactStore for D1Store {
         let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
         rows.into_iter()
             .map(|r| {
+                let derived_from = row_derived_from(r.derived_from_role, r.derived_from_version)?;
                 Ok(Artifact {
                     canonical_id: CanonicalId(r.canonical_id),
                     role: parse_artifact_role(&r.role)?,
@@ -304,6 +328,7 @@ impl ArtifactStore for D1Store {
                     source_url: r.source_url,
                     fetched_at: r.fetched_at,
                     is_current: r.is_current != 0,
+                    derived_from,
                 })
             })
             .collect()

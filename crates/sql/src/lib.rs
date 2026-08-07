@@ -31,6 +31,8 @@ pub const MIGRATION_0004: &str =
     include_str!("../../../migrations/0004_rename_payloads_to_artifacts.sql");
 pub const MIGRATION_0005: &str =
     include_str!("../../../migrations/0005_drop_artifact_rights.sql");
+pub const MIGRATION_0006: &str =
+    include_str!("../../../migrations/0006_artifact_derived_from.sql");
 
 /// Ordered `(name, sql)` pairs for startup application by backends.
 pub fn migrations() -> &'static [(&'static str, &'static str)] {
@@ -40,6 +42,7 @@ pub fn migrations() -> &'static [(&'static str, &'static str)] {
         ("0003_jobs", MIGRATION_0003),
         ("0004_rename_payloads_to_artifacts", MIGRATION_0004),
         ("0005_drop_artifact_rights", MIGRATION_0005),
+        ("0006_artifact_derived_from", MIGRATION_0006),
     ]
 }
 
@@ -300,7 +303,8 @@ pub mod artifact {
     /// Params: (canonical_id, role)
     pub const SELECT_CURRENT: &str = "\
         SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
-               mime, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
         FROM artifacts \
         WHERE canonical_id = ? AND role = ? AND is_current = 1";
 
@@ -322,7 +326,8 @@ pub mod artifact {
     /// Params: (canonical_id)
     pub const LIST_CURRENT: &str = "\
         SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
-               mime, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
         FROM artifacts \
         WHERE canonical_id = ? AND is_current = 1 \
         ORDER BY role, version DESC";
@@ -331,7 +336,8 @@ pub mod artifact {
     /// Params: (canonical_id)
     pub const LIST_ALL_VERSIONS: &str = "\
         SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
-               mime, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
         FROM artifacts \
         WHERE canonical_id = ? \
         ORDER BY role, version DESC";
@@ -340,7 +346,8 @@ pub mod artifact {
     /// Params: (canonical_id, role)
     pub const LIST_CURRENT_BY_ROLE: &str = "\
         SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
-               mime, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
         FROM artifacts \
         WHERE canonical_id = ? AND role = ? AND is_current = 1 \
         ORDER BY role, version DESC";
@@ -349,19 +356,22 @@ pub mod artifact {
     /// Params: (canonical_id, role)
     pub const LIST_ALL_VERSIONS_BY_ROLE: &str = "\
         SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
-               mime, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
         FROM artifacts \
         WHERE canonical_id = ? AND role = ? \
         ORDER BY role, version DESC";
 
     /// Insert a new artifact row.
     /// Params: (canonical_id, role, version, r2_key, content_hash, byte_size,
-    ///          mime, source, source_url, fetched_at, is_current)
+    ///          mime, source, source_url, fetched_at, is_current,
+    ///          derived_from_role, derived_from_version)
     pub const INSERT: &str = "\
         INSERT INTO artifacts \
           (canonical_id, role, version, r2_key, content_hash, byte_size, \
-           mime, source, source_url, fetched_at, is_current) \
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+           mime, source, source_url, fetched_at, is_current, \
+           derived_from_role, derived_from_version) \
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     // ── merge ──────────────────────────────────────────────────────────────
 
@@ -381,9 +391,11 @@ pub mod artifact {
     pub const MERGE_REPOINT: &str = "\
         INSERT INTO artifacts \
           (canonical_id, role, version, r2_key, content_hash, byte_size, \
-           mime, source, source_url, fetched_at, is_current) \
+           mime, source, source_url, fetched_at, is_current, \
+           derived_from_role, derived_from_version) \
         SELECT ?, role, version, r2_key, content_hash, byte_size, \
-               mime, source, source_url, fetched_at, is_current \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
         FROM artifacts WHERE canonical_id = ? \
         ON CONFLICT(canonical_id, role, version) DO NOTHING";
 

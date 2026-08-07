@@ -103,6 +103,7 @@ impl FulltextHandler {
                 Some(source.to_string()),
                 Some(url.to_string()),
                 now,
+                None,
             )
             .await?;
 
