@@ -54,6 +54,14 @@ pub enum ContentOutcome {
     Absent,
 }
 
+/// What the store knows about a work's artifacts. `Held(vec![])` — a known work
+/// holding nothing — is a different answer from `UnknownWork`.
+#[derive(Debug)]
+pub enum ArtifactListing {
+    Held(Vec<serde_json::Value>),
+    UnknownWork,
+}
+
 /// Thin blocking HTTP client for the braincrawl metadata server.
 /// Records and edges are untyped JSON; this crate has no dependency on crates/core.
 pub struct StoreClient {
@@ -266,12 +274,17 @@ impl StoreClient {
     }
 
     /// GET /works/{alias}/artifacts — every artifact descriptor a work holds.
+    ///
+    /// A 200 with an empty list and a 404 are different answers: the first says the
+    /// work is in the Catalog and holds nothing, the second says the Catalog has
+    /// never heard of the alias. Callers must be able to tell them apart, so the
+    /// 404 becomes `ArtifactListing::UnknownWork` rather than a transport error.
     pub fn list_artifacts(
         &self,
         alias: &str,
         role: Option<&str>,
         all_versions: bool,
-    ) -> Result<Vec<serde_json::Value>> {
+    ) -> Result<ArtifactListing> {
         let url = format!("{}/works/{}/artifacts", self.base_url, alias);
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(role) = role {
@@ -284,12 +297,17 @@ impl StoreClient {
             .apply_auth(self.http.get(&url).query(&params))
             .send()?;
         let status = resp.status();
+        if status.as_u16() == 404 {
+            return Ok(ArtifactListing::UnknownWork);
+        }
         if !status.is_success() {
             let body = resp.text().unwrap_or_default();
             return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
         }
         let body: serde_json::Value = resp.json()?;
-        Ok(body["artifacts"].as_array().cloned().unwrap_or_default())
+        Ok(ArtifactListing::Held(
+            body["artifacts"].as_array().cloned().unwrap_or_default(),
+        ))
     }
 
     /// GET /api/l3/docs — every doc currently in the consolidated L3 store.

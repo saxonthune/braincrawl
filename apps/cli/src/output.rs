@@ -54,14 +54,19 @@ pub fn render(envelope: &Envelope, opts: &OutputOpts) {
 /// When `fields` is set, prints exactly those fields in order (no id prepended).
 /// When `fields` is empty, prints `id<TAB>display` where display is the first of
 /// title/display_name/name.
+///
+/// Store-shaped results (`WorkView`, artifact descriptors) carry neither `id` nor
+/// `title` at the top level — the id is `canonical_id` and the title lives under
+/// `attrs`. Without those fallbacks every such row renders as a bare `-`.
 fn render_text_line(r: &serde_json::Value, fields: &[String]) -> String {
     if fields.is_empty() {
-        let id = r.get("id").and_then(|v| v.as_str()).unwrap_or("-");
-        let display = r
-            .get("title")
-            .or_else(|| r.get("display_name"))
-            .or_else(|| r.get("name"))
+        let id = r
+            .get("id")
+            .or_else(|| r.get("canonical_id"))
             .and_then(|v| v.as_str())
+            .unwrap_or("-");
+        let display = pick_display(r)
+            .or_else(|| r.get("attrs").and_then(pick_display))
             .unwrap_or("");
         format!("{id}\t{}", sanitize_text_value(display))
     } else {
@@ -75,6 +80,14 @@ fn render_text_line(r: &serde_json::Value, fields: &[String]) -> String {
             .collect::<Vec<_>>()
             .join("\t")
     }
+}
+
+/// First human-readable label on an object, in title/display_name/name order.
+fn pick_display(v: &serde_json::Value) -> Option<&str> {
+    v.get("title")
+        .or_else(|| v.get("display_name"))
+        .or_else(|| v.get("name"))
+        .and_then(|v| v.as_str())
 }
 
 /// Flatten a field value to a single row: replace tab/newline/carriage-return

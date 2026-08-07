@@ -398,8 +398,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     run_chunk(&config, &args)?;
                 }
                 LibraryCmd::List(args) => {
-                    let mut results =
-                        store.list_artifacts(&args.id, args.role.as_deref(), args.all_versions)?;
+                    use braincrawl_cli::store_client::ArtifactListing;
+                    let mut results = match store.list_artifacts(
+                        &args.id,
+                        args.role.as_deref(),
+                        args.all_versions,
+                    )? {
+                        ArtifactListing::Held(results) => results,
+                        ArtifactListing::UnknownWork => {
+                            return Err(format!(
+                                "unknown work: nothing in the Catalog under '{}' \
+                                 (a work that is present but holds no artifacts \
+                                 lists zero results instead)",
+                                args.id
+                            )
+                            .into());
+                        }
+                    };
                     for artifact in &mut results {
                         if let Some(obj) = artifact.as_object_mut() {
                             obj.remove("r2_key");

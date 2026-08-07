@@ -459,6 +459,86 @@ async fn test_work_get_no_artifacts() {
     handle.abort();
 }
 
+/// "Known work holding nothing" and "never heard of this alias" must not look the
+/// same on the wire — a caller decides whether to ingest based on which it got.
+#[tokio::test]
+async fn test_list_artifacts_distinguishes_empty_from_unknown() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.3/known-but-bare"}],
+            "attrs": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/known-but-bare/artifacts"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "a known work holding nothing is not an error");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["artifacts"].as_array().unwrap().is_empty());
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/never-ingested/artifacts"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404, "an alias the Catalog does not hold is 404");
+
+    handle.abort();
+}
+
+/// Roles are open-ended slugs (`fulltext-ch01` and friends), so only a string that
+/// would break a blob-key path is invalid. The route must answer that with 400
+/// rather than fall through to the catch-all 404 — a 404 here reads as "no such
+/// work" and sends callers off to re-ingest something they already have.
+#[tokio::test]
+async fn test_list_artifacts_rejects_unparseable_role() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, handle) = start_server(dir.path()).await;
+
+    let client = reqwest::Client::new();
+
+    client
+        .put(format!("{base}/works"))
+        .json(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.3/roled"}],
+            "attrs": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/roled/artifacts?role=fulltext-ch01"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "an unused but well-formed role slug is not an error");
+
+    let res = client
+        .get(format!("{base}/works/doi:10.3/roled/artifacts?role=NOT.A.ROLE"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    handle.abort();
+}
+
 #[tokio::test]
 async fn test_work_get_404_names_alias() {
     let dir = tempfile::tempdir().unwrap();
