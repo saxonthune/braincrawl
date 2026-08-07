@@ -75,6 +75,9 @@ pub struct Artifact {
     pub source_url: Option<String>,
     pub fetched_at: String,
     pub is_current: bool,
+    /// The (role, version) this artifact was produced from; `None` for a root
+    /// artifact (a user-supplied upload or an original fetch — nothing derived it).
+    pub derived_from: Option<(ArtifactRole, u32)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -168,7 +168,7 @@ fn happy_path() {
     conn.execute(artifact::FLIP_CURRENT_OFF, params!["n1", "abstract"]).unwrap();
     conn.execute(
         artifact::INSERT,
-        params!["n1", "abstract", 1i64, "n1/abstract/v1", "sha256:abc", 100i64, "text/plain", Option::<String>::None, Option::<String>::None, ts, 1i64],
+        params!["n1", "abstract", 1i64, "n1/abstract/v1", "sha256:abc", 100i64, "text/plain", Option::<String>::None, Option::<String>::None, ts, 1i64, Option::<String>::None, Option::<i64>::None],
     )
     .unwrap();
 

@@ -214,11 +214,13 @@ impl StoreClient {
         source_url: Option<&str>,
     ) -> Result<()> {
         let fetched_at = rfc3339_now();
-        self.put_content_with_fetched_at(alias, kind, bytes, mime, source, source_url, &fetched_at)
+        self.put_content_with_fetched_at(alias, kind, bytes, mime, source, source_url, &fetched_at, None)
     }
 
-    /// Same as `put_content`, but with a caller-supplied `fetched_at` instead of "now" —
-    /// used by migration replay to preserve the original provenance timestamp.
+    /// Same as `put_content`, but with a caller-supplied `fetched_at` instead of "now"
+    /// (used by migration replay to preserve the original provenance timestamp) and an
+    /// optional `derived_from` — the (role, version) this artifact was read from, e.g.
+    /// `("fulltext", 1)` for a `chunks` artifact chunked out of `fulltext` v1.
     #[allow(clippy::too_many_arguments)]
     pub fn put_content_with_fetched_at(
         &self,
@@ -229,9 +231,20 @@ impl StoreClient {
         source: Option<&str>,
         source_url: Option<&str>,
         fetched_at: &str,
+        derived_from: Option<(&str, u32)>,
     ) -> Result<()> {
         let url = format!("{}/works/{}/content/{}", self.base_url, alias, kind);
-        let params = build_put_content_params(mime, source, source_url, fetched_at);
+        let version_str;
+        let params = match derived_from {
+            Some((role, version)) => {
+                version_str = version.to_string();
+                let mut params = build_put_content_params(mime, source, source_url, fetched_at);
+                params.push(("derived_from_role", role));
+                params.push(("derived_from_version", &version_str));
+                params
+            }
+            None => build_put_content_params(mime, source, source_url, fetched_at),
+        };
         let resp = self
             .apply_auth(self.http.put(&url).query(&params).body(bytes))
             .send()?;
@@ -433,7 +446,7 @@ pub(crate) fn build_put_content_params<'a>(
     params
 }
 
-fn rfc3339_now() -> String {
+pub fn rfc3339_now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

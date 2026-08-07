@@ -22,6 +22,20 @@ use braincrawl_cli::refs_backfill::opencitations::OpenCitationsClient;
 use braincrawl_cli::store_client::StoreClient;
 use clap::Parser;
 
+/// The version currently held for `role` on `id`, or `None` if the role holds
+/// nothing (or the work is unknown) — used to record an accurate `derived_from`.
+fn current_artifact_version(store: &StoreClient, id: &str, role: &str) -> Option<u32> {
+    use braincrawl_cli::store_client::ArtifactListing;
+    match store.list_artifacts(id, Some(role), false) {
+        Ok(ArtifactListing::Held(list)) => list
+            .iter()
+            .find(|a| a["role"] == role)
+            .and_then(|a| a["version"].as_u64())
+            .map(|v| v as u32),
+        _ => None,
+    }
+}
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("error: {e}");
@@ -279,13 +293,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 }
                                 let text_len = text.len();
-                                store.put_content(
+                                let derived_from = current_artifact_version(&store, &args.id, &args.from)
+                                    .map(|v| (args.from.as_str(), v));
+                                store.put_content_with_fetched_at(
                                     &args.id,
                                     &args.role,
                                     text.into_bytes(),
                                     "text/plain",
                                     Some("extract-text"),
                                     None,
+                                    &braincrawl_cli::store_client::rfc3339_now(),
+                                    derived_from,
                                 )?;
                                 eprintln!("extracted: {} chars, stored at role {}", text_len, args.role);
                             }
@@ -434,19 +452,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     let count = results.len() as u64;
-                    let envelope = Envelope {
-                        query: QueryMeta {
-                            entity: Some("library:list".to_string()),
-                            resolved_filter: Some(args.id),
-                            url: None,
-                        },
-                        count,
-                        returned: results.len(),
-                        truncated: false,
-                        next_cursor: None,
-                        results,
-                    };
-                    render(&envelope, &opts);
+                    if opts.text && !opts.json {
+                        print_artifact_tree(&results);
+                    } else {
+                        let ordered = artifact_tree_order(&results)
+                            .into_iter()
+                            .map(|(_depth, a, _dangling)| a.clone())
+                            .collect();
+                        let envelope = Envelope {
+                            query: QueryMeta {
+                                entity: Some("library:list".to_string()),
+                                resolved_filter: Some(args.id),
+                                url: None,
+                            },
+                            count,
+                            returned: results.len(),
+                            truncated: false,
+                            next_cursor: None,
+                            results: ordered,
+                        };
+                        render(&envelope, &opts);
+                    }
                 }
             }
         }
@@ -583,7 +609,23 @@ fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error
     }
 
     let json_bytes = serde_json::to_vec(&output)?;
-    store.put_content(id, &args.role, json_bytes, "application/json", Some("chunk"), None)?;
+    // `--file` reads an external PDF with nothing stored under `--from`, so there is
+    // no parent artifact to record; only the store-backed `id` path has one.
+    let derived_from = if args.file.is_some() {
+        None
+    } else {
+        current_artifact_version(&store, id, &args.from).map(|v| (args.from.as_str(), v))
+    };
+    store.put_content_with_fetched_at(
+        id,
+        &args.role,
+        json_bytes,
+        "application/json",
+        Some("chunk"),
+        None,
+        &braincrawl_cli::store_client::rfc3339_now(),
+        derived_from,
+    )?;
     eprintln!(
         "chunked: {} chunk(s), pages_faithful {}/{}",
         chunk_count, pages_faithful, pages_total
@@ -674,7 +716,17 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
     }
 
     let json_bytes = serde_json::to_vec(&pages_artifact)?;
-    store.put_content(&args.id, &args.role, json_bytes, "application/json", Some("paginate"), None)?;
+    let derived_from = current_artifact_version(store, &args.id, &args.from).map(|v| (args.from.as_str(), v));
+    store.put_content_with_fetched_at(
+        &args.id,
+        &args.role,
+        json_bytes,
+        "application/json",
+        Some("paginate"),
+        None,
+        &braincrawl_cli::store_client::rfc3339_now(),
+        derived_from,
+    )?;
     eprintln!("paginated: {} page(s), stored at role {}", page_count, args.role);
     Ok(())
 }
@@ -720,7 +772,18 @@ fn run_outline(store: &StoreClient, args: &OutlineArgs) -> Result<(), Box<dyn st
 
     let section_count = outline_doc.sections.len();
     let json_bytes = serde_json::to_vec(&outline_doc)?;
-    store.put_content(&args.id, &args.role, json_bytes, "application/json", Some("outline"), None)?;
+    let derived_from = current_artifact_version(store, &args.id, &outline_doc.source_role)
+        .map(|v| (outline_doc.source_role.as_str(), v));
+    store.put_content_with_fetched_at(
+        &args.id,
+        &args.role,
+        json_bytes,
+        "application/json",
+        Some("outline"),
+        None,
+        &braincrawl_cli::store_client::rfc3339_now(),
+        derived_from,
+    )?;
     eprintln!("outlined: {} section(s), stored at role {}", section_count, args.role);
     Ok(())
 }
@@ -855,6 +918,96 @@ fn render_stats(value: &serde_json::Value, opts: &OutputOpts) {
     let _ = writeln!(out, "  catalog:        {}", human_bytes(n("catalog_bytes")));
     let _ = writeln!(out, "  total:          {}", human_bytes(n("total_bytes")));
     print!("{out}");
+}
+
+/// Order artifacts into a tree: roots (no `derived_from`, or a `derived_from`
+/// that names a (role, version) absent from `artifacts`) first in role order,
+/// each immediately followed by its own children recursively, also in role
+/// order. `dangling` is `Some(parent_label)` when the entry's recorded parent
+/// was not found among `artifacts` — it is still shown at depth 0.
+fn artifact_tree_order(
+    artifacts: &[serde_json::Value],
+) -> Vec<(usize, &serde_json::Value, Option<String>)> {
+    let key = |a: &serde_json::Value| -> Option<(String, u64)> {
+        Some((a["role"].as_str()?.to_string(), a["version"].as_u64()?))
+    };
+    let present: std::collections::HashSet<(String, u64)> =
+        artifacts.iter().filter_map(key).collect();
+
+    let parent_key = |a: &serde_json::Value| -> Option<(String, u64)> {
+        let role = a["derived_from_role"].as_str()?;
+        let version = a["derived_from_version"].as_u64()?;
+        Some((role.to_string(), version))
+    };
+
+    let mut children: std::collections::HashMap<(String, u64), Vec<&serde_json::Value>> =
+        std::collections::HashMap::new();
+    let mut roots: Vec<(&serde_json::Value, Option<String>)> = Vec::new();
+
+    for a in artifacts {
+        match parent_key(a) {
+            Some(pk) if present.contains(&pk) => {
+                children.entry(pk).or_default().push(a);
+            }
+            Some((role, version)) => {
+                roots.push((a, Some(format!("{role} v{version}"))));
+            }
+            None => roots.push((a, None)),
+        }
+    }
+
+    let sort_key = |a: &&serde_json::Value| {
+        (
+            a["role"].as_str().unwrap_or("").to_string(),
+            std::cmp::Reverse(a["version"].as_u64().unwrap_or(0)),
+        )
+    };
+    roots.sort_by_key(|(a, _)| sort_key(a));
+    for siblings in children.values_mut() {
+        siblings.sort_by_key(sort_key);
+    }
+
+    let mut out = Vec::new();
+    for (root, dangling) in roots {
+        push_subtree(root, dangling, 0, &children, &mut out);
+    }
+    out
+}
+
+fn push_subtree<'a>(
+    node: &'a serde_json::Value,
+    dangling: Option<String>,
+    depth: usize,
+    children: &std::collections::HashMap<(String, u64), Vec<&'a serde_json::Value>>,
+    out: &mut Vec<(usize, &'a serde_json::Value, Option<String>)>,
+) {
+    out.push((depth, node, dangling));
+    if let (Some(role), Some(version)) = (node["role"].as_str(), node["version"].as_u64()) {
+        if let Some(kids) = children.get(&(role.to_string(), version)) {
+            for kid in kids {
+                push_subtree(kid, None, depth + 1, children, out);
+            }
+        }
+    }
+}
+
+/// `library list --text` — a tree instead of the flat one-line-per-result
+/// rendering the generic envelope printer gives (artifacts have no `id`/`title`
+/// for it to display anyway). A dangling parent (pointing at a role/version not
+/// present in this listing) is shown at the top level, annotated "unknown".
+fn print_artifact_tree(artifacts: &[serde_json::Value]) {
+    for (depth, a, dangling) in artifact_tree_order(artifacts) {
+        let role = a["role"].as_str().unwrap_or("?");
+        let version = a["version"].as_u64().unwrap_or(0);
+        let indent = "  ".repeat(depth);
+        let marker = if depth == 0 { "" } else { "└─ " };
+        match dangling {
+            Some(parent) => {
+                println!("{indent}{marker}{role} v{version}  (derived from {parent}, unknown)")
+            }
+            None => println!("{indent}{marker}{role} v{version}"),
+        }
+    }
 }
 
 /// Format a byte count as a human-readable size, e.g. `1.4 MiB (1462272 bytes)`.

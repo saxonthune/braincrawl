@@ -214,10 +214,31 @@ fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
     ArtifactRole::parse(s)
 }
 
+/// Parse the optional `derived_from_role` / `derived_from_version` query params.
+/// Both present → `Some((role, version))`; both absent → `None`. An invalid role
+/// or a non-numeric version is an `Err` naming the problem, for a 400 response.
+/// Must match `apps/server`'s shape exactly.
+fn parse_derived_from(
+    params: &std::collections::HashMap<String, String>,
+) -> Result<Option<(ArtifactRole, u32)>, &'static str> {
+    match (params.get("derived_from_role"), params.get("derived_from_version")) {
+        (None, None) => Ok(None),
+        (Some(role_str), Some(version_str)) => {
+            let role = parse_artifact_role(role_str).ok_or("invalid derived_from_role")?;
+            let version: u32 = version_str.parse().map_err(|_| "invalid derived_from_version")?;
+            Ok(Some((role, version)))
+        }
+        _ => Err("derived_from_role and derived_from_version must be given together"),
+    }
+}
 
 /// `Artifact` has no `Serialize` impl in `crates/core`, so the HTTP surface
 /// projects its fields into JSON here. Must match `apps/server`'s shape exactly.
 fn artifact_json(a: &Artifact) -> serde_json::Value {
+    let (derived_from_role, derived_from_version) = match &a.derived_from {
+        Some((role, version)) => (Some(role.as_str()), Some(*version)),
+        None => (None, None),
+    };
     serde_json::json!({
         "canonical_id": a.canonical_id.0,
         "role": a.role.as_str(),
@@ -230,6 +251,8 @@ fn artifact_json(a: &Artifact) -> serde_json::Value {
         "source_url": a.source_url,
         "fetched_at": a.fetched_at,
         "is_current": a.is_current,
+        "derived_from_role": derived_from_role,
+        "derived_from_version": derived_from_version,
     })
 }
 
@@ -453,9 +476,13 @@ async fn handle_put_content(
         .get("fetched_at")
         .cloned()
         .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+    let derived_from = match parse_derived_from(&params) {
+        Ok(d) => d,
+        Err(msg) => return bad_request(msg),
+    };
     let bytes = req.bytes().await?;
     match store
-        .put_content(a, kind, bytes, mime, source, source_url, fetched_at)
+        .put_content(a, kind, bytes, mime, source, source_url, fetched_at, derived_from)
         .await
     {
         Ok(_) => Response::empty(),
