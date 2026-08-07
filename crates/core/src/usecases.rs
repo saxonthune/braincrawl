@@ -190,6 +190,7 @@ where
         source: Option<String>,
         source_url: Option<String>,
         fetched_at: String,
+        derived_from: Option<(ArtifactRole, u32)>,
     ) -> Result<Artifact, DomainError> {
         let canonical = self.resolve_alias_to_live(&id).await?;
         let version = self.artifacts.next_version(&canonical, kind.clone()).await?;
@@ -212,6 +213,7 @@ where
             source_url,
             fetched_at,
             is_current: true,
+            derived_from,
         };
         self.artifacts.record(&descriptor).await?;
         Ok(descriptor)

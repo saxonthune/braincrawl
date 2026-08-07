@@ -437,6 +437,7 @@ pub fn run(opts: &MigrateOpts, client: &StoreClient) -> Result<MigrateReport, Mi
             art.source.as_deref(),
             art.source_url.as_deref(),
             &art.fetched_at,
+            None,
         ) {
             Ok(()) => report.artifacts_pushed += 1,
             Err(e) => {

@@ -110,6 +110,9 @@ pub struct ChunkArgs {
     /// External PDF file — PIPE-ONLY: emits JSON to stdout, never stored
     #[arg(long)]
     pub file: Option<String>,
+    /// Source artifact role to derive from
+    #[arg(long, default_value = "fulltext")]
+    pub from: String,
     /// Output artifact role slug
     #[arg(long, default_value = "chunks")]
     pub role: String,
@@ -228,8 +231,93 @@ pub enum LibraryCmd {
     ExtractText(ExtractTextArgs),
     #[command(name = "chunk", about = "Partition a work's stored fulltext into a citation-carrying chunks artifact")]
     Chunk(ChunkArgs),
+    #[command(name = "paginate", about = "Split a work's stored fulltext PDF into a per-page artifact with detected folios")]
+    Paginate(PaginateArgs),
+    #[command(name = "outline", about = "Store a hand-authored table of contents as an outline artifact")]
+    Outline(OutlineArgs),
+    #[command(name = "read", about = "Print page text for a printed range, PDF range, outline section, or quote search")]
+    Read(ReadArgs),
     #[command(name = "list", about = "List every artifact a work holds — role, version, size, mime, provenance")]
     List(LibraryListArgs),
+}
+
+#[derive(Args)]
+pub struct PaginateArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Source artifact role to derive from
+    #[arg(long, default_value = "fulltext")]
+    pub from: String,
+    /// Artifact role slug to store the pages artifact at
+    #[arg(long, default_value = "pages")]
+    pub role: String,
+    /// Re-paginate even if the role already holds an artifact
+    #[arg(long)]
+    pub force: bool,
+    /// Emit JSON to stdout instead of storing
+    #[arg(long)]
+    pub stdout: bool,
+}
+
+#[derive(Args)]
+pub struct OutlineArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Path to a JSON file holding `{"source_role": ..., "sections": [...]}`
+    #[arg(long = "from-file")]
+    pub from_file: String,
+    /// Artifact role slug to store the outline artifact at
+    #[arg(long, default_value = "outline")]
+    pub role: String,
+    /// Re-store even if the role already holds an artifact
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(Args)]
+pub struct ReadArgs {
+    /// Work id in ns:value form (e.g. openalex:W2304167012)
+    pub id: String,
+    /// Printed page range, e.g. 9-12 or 9
+    #[arg(
+        long,
+        conflicts_with_all = ["pdf", "section", "find"],
+        required_unless_present_any = ["pdf", "section", "find"]
+    )]
+    pub printed: Option<String>,
+    /// PDF page range, e.g. 16-19 or 16
+    #[arg(
+        long,
+        conflicts_with_all = ["printed", "section", "find"],
+        required_unless_present_any = ["printed", "section", "find"]
+    )]
+    pub pdf: Option<String>,
+    /// Outline section id, e.g. ch01
+    #[arg(
+        long,
+        conflicts_with_all = ["printed", "pdf", "find"],
+        required_unless_present_any = ["printed", "pdf", "find"]
+    )]
+    pub section: Option<String>,
+    /// Text to search for across page text
+    #[arg(
+        long,
+        conflicts_with_all = ["printed", "pdf", "section"],
+        required_unless_present_any = ["printed", "pdf", "section"]
+    )]
+    pub find: Option<String>,
+    /// With --section, take only the first N pages of it
+    #[arg(long, requires = "section", conflicts_with = "last")]
+    pub first: Option<usize>,
+    /// With --section, take only the last N pages of it
+    #[arg(long, requires = "section", conflicts_with = "first")]
+    pub last: Option<usize>,
+    /// Pages artifact role to read from
+    #[arg(long = "pages-role", default_value = "pages")]
+    pub pages_role: String,
+    /// Outline artifact role to read from
+    #[arg(long = "outline-role", default_value = "outline")]
+    pub outline_role: String,
 }
 
 #[derive(Args)]
@@ -257,6 +345,9 @@ pub struct FetchContentArgs {
 pub struct ExtractTextArgs {
     /// Work id in ns:value form (e.g. openalex:W2304167012)
     pub id: String,
+    /// Source artifact role to derive from
+    #[arg(long, default_value = "fulltext")]
+    pub from: String,
     /// Artifact role slug to store the extracted text at
     #[arg(long, default_value = "text")]
     pub role: String,

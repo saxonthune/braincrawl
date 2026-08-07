@@ -1,7 +1,10 @@
 use braincrawl_cli::arxiv::ArxivProvider;
-use braincrawl_cli::cli::{ArxivCmd, CatalogCmd, ChunkArgs, Cli, CrossrefCmd, LibraryCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutputOpts, SemanticscholarCmd};
+use braincrawl_cli::cli::{ArxivCmd, CatalogCmd, ChunkArgs, Cli, CrossrefCmd, LibraryCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutlineArgs, OutputOpts, PaginateArgs, ReadArgs, SemanticscholarCmd};
 use std::io::Write as IoWrite;
 use braincrawl_cli::chunk;
+use braincrawl_cli::locator::{self, Locator, PageRange};
+use braincrawl_cli::outline::{self, Outline};
+use braincrawl_cli::pages::{self, Pages};
 use braincrawl_cli::pdf_text;
 use std::fmt::Write as _;
 use braincrawl_cli::config::Config;
@@ -18,6 +21,20 @@ use braincrawl_cli::refs_backfill::mapping::{doi_edges, extract_doi_from_work};
 use braincrawl_cli::refs_backfill::opencitations::OpenCitationsClient;
 use braincrawl_cli::store_client::StoreClient;
 use clap::Parser;
+
+/// The version currently held for `role` on `id`, or `None` if the role holds
+/// nothing (or the work is unknown) — used to record an accurate `derived_from`.
+fn current_artifact_version(store: &StoreClient, id: &str, role: &str) -> Option<u32> {
+    use braincrawl_cli::store_client::ArtifactListing;
+    match store.list_artifacts(id, Some(role), false) {
+        Ok(ArtifactListing::Held(list)) => list
+            .iter()
+            .find(|a| a["role"] == role)
+            .and_then(|a| a["version"].as_u64())
+            .map(|v| v as u32),
+        _ => None,
+    }
+}
 
 fn main() {
     if let Err(e) = run() {
@@ -250,12 +267,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             match library.cmd {
                 LibraryCmd::ExtractText(args) => {
                     use braincrawl_cli::store_client::ContentOutcome;
-                    match store.get_content(&args.id, "fulltext")? {
+                    match store.get_content(&args.id, &args.from)? {
                         ContentOutcome::Bytes { bytes, mime } => {
                             if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
                                 return Err(format!(
-                                    "fulltext artifact for {} is not a PDF (mime={})",
-                                    args.id, mime
+                                    "{} artifact for {} is not a PDF (mime={})",
+                                    args.from, args.id, mime
                                 )
                                 .into());
                             }
@@ -276,28 +293,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 }
                                 let text_len = text.len();
-                                store.put_content(
+                                let derived_from = current_artifact_version(&store, &args.id, &args.from)
+                                    .map(|v| (args.from.as_str(), v));
+                                store.put_content_with_fetched_at(
                                     &args.id,
                                     &args.role,
                                     text.into_bytes(),
                                     "text/plain",
                                     Some("extract-text"),
                                     None,
+                                    &braincrawl_cli::store_client::rfc3339_now(),
+                                    derived_from,
                                 )?;
                                 eprintln!("extracted: {} chars, stored at role {}", text_len, args.role);
                             }
                         }
                         ContentOutcome::Absent => {
                             return Err(format!(
-                                "no fulltext artifact in store for {}; run library fetch first",
-                                args.id
+                                "no {} artifact in store for {}; run library fetch first",
+                                args.from, args.id
                             )
                             .into());
                         }
                         ContentOutcome::Pending => {
                             return Err(format!(
-                                "fulltext for {} is still being fetched",
-                                args.id
+                                "{} for {} is still being fetched",
+                                args.from, args.id
                             )
                             .into());
                         }
@@ -397,6 +418,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 LibraryCmd::Chunk(args) => {
                     run_chunk(&config, &args)?;
                 }
+                LibraryCmd::Paginate(args) => {
+                    run_paginate(&store, &args)?;
+                }
+                LibraryCmd::Outline(args) => {
+                    run_outline(&store, &args)?;
+                }
+                LibraryCmd::Read(args) => {
+                    run_read(&store, &args)?;
+                }
                 LibraryCmd::List(args) => {
                     use braincrawl_cli::store_client::ArtifactListing;
                     let mut results = match store.list_artifacts(
@@ -422,19 +452,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     let count = results.len() as u64;
-                    let envelope = Envelope {
-                        query: QueryMeta {
-                            entity: Some("library:list".to_string()),
-                            resolved_filter: Some(args.id),
-                            url: None,
-                        },
-                        count,
-                        returned: results.len(),
-                        truncated: false,
-                        next_cursor: None,
-                        results,
-                    };
-                    render(&envelope, &opts);
+                    if opts.text && !opts.json {
+                        print_artifact_tree(&results);
+                    } else {
+                        let ordered = artifact_tree_order(&results)
+                            .into_iter()
+                            .map(|(_depth, a, _dangling)| a.clone())
+                            .collect();
+                        let envelope = Envelope {
+                            query: QueryMeta {
+                                entity: Some("library:list".to_string()),
+                                resolved_filter: Some(args.id),
+                                url: None,
+                            },
+                            count,
+                            returned: results.len(),
+                            truncated: false,
+                            next_cursor: None,
+                            results: ordered,
+                        };
+                        render(&envelope, &opts);
+                    }
                 }
             }
         }
@@ -494,12 +532,12 @@ fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error
         std::fs::read(path)?
     } else {
         let id = args.id.as_ref().unwrap();
-        match store.get_content(id, "fulltext")? {
+        match store.get_content(id, &args.from)? {
             ContentOutcome::Bytes { bytes, mime } => {
                 if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
                     return Err(format!(
-                        "fulltext artifact for {} is not a PDF (mime={})",
-                        id, mime
+                        "{} artifact for {} is not a PDF (mime={})",
+                        args.from, id, mime
                     )
                     .into());
                 }
@@ -507,13 +545,13 @@ fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error
             }
             ContentOutcome::Absent => {
                 return Err(format!(
-                    "no fulltext artifact in store for {}; run fetch-content first",
-                    id
+                    "no {} artifact in store for {}; run fetch-content first",
+                    args.from, id
                 )
                 .into());
             }
             ContentOutcome::Pending => {
-                return Err(format!("fulltext for {} is still being fetched", id).into());
+                return Err(format!("{} for {} is still being fetched", args.from, id).into());
             }
         }
     };
@@ -571,11 +609,244 @@ fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error
     }
 
     let json_bytes = serde_json::to_vec(&output)?;
-    store.put_content(id, &args.role, json_bytes, "application/json", Some("chunk"), None)?;
+    // `--file` reads an external PDF with nothing stored under `--from`, so there is
+    // no parent artifact to record; only the store-backed `id` path has one.
+    let derived_from = if args.file.is_some() {
+        None
+    } else {
+        current_artifact_version(&store, id, &args.from).map(|v| (args.from.as_str(), v))
+    };
+    store.put_content_with_fetched_at(
+        id,
+        &args.role,
+        json_bytes,
+        "application/json",
+        Some("chunk"),
+        None,
+        &braincrawl_cli::store_client::rfc3339_now(),
+        derived_from,
+    )?;
     eprintln!(
         "chunked: {} chunk(s), pages_faithful {}/{}",
         chunk_count, pages_faithful, pages_total
     );
+    Ok(())
+}
+
+fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn std::error::Error>> {
+    use braincrawl_cli::store_client::ContentOutcome;
+
+    if !args.force {
+        if let Ok(ContentOutcome::Bytes { .. }) = store.get_content(&args.id, &args.role) {
+            eprintln!(
+                "already-present: {} artifact already in store (use --force to re-paginate)",
+                args.role
+            );
+            return Ok(());
+        }
+    }
+
+    let bytes = match store.get_content(&args.id, &args.from)? {
+        ContentOutcome::Bytes { bytes, mime } => {
+            if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
+                return Err(format!(
+                    "{} artifact for {} is not a PDF (mime={})",
+                    args.from, args.id, mime
+                )
+                .into());
+            }
+            bytes
+        }
+        ContentOutcome::Absent => {
+            return Err(format!(
+                "no {} artifact in store for {}; run library fetch first",
+                args.from, args.id
+            )
+            .into());
+        }
+        ContentOutcome::Pending => {
+            return Err(format!("{} for {} is still being fetched", args.from, args.id).into());
+        }
+    };
+
+    let raw_pages = pdf_text::extract_pages(&bytes)?;
+    let page_count = raw_pages.len();
+    let records = pages::detect_folios(&raw_pages);
+    let breaks = pages::validate_folios(&records);
+
+    if !breaks.is_empty() {
+        let gap_pages: usize = breaks
+            .iter()
+            .map(|b| match b {
+                pages::FolioBreak::Gap { pdf_pages } => pdf_pages.len(),
+                pages::FolioBreak::Contradiction { .. } => 0,
+            })
+            .sum();
+        let contradictions: Vec<usize> = breaks
+            .iter()
+            .filter_map(|b| match b {
+                pages::FolioBreak::Contradiction { pdf_page, .. } => Some(*pdf_page),
+                pages::FolioBreak::Gap { .. } => None,
+            })
+            .collect();
+        eprintln!(
+            "folio breaks: {} gap page(s), {} contradiction(s) at pdf page(s) {:?}",
+            gap_pages,
+            contradictions.len(),
+            contradictions
+        );
+    }
+
+    let folio_method = if records.iter().any(|r| r.folio.is_some()) {
+        pages::FolioMethod::Detected
+    } else {
+        pages::FolioMethod::None
+    };
+
+    let pages_artifact = Pages {
+        source_role: args.from.clone(),
+        page_count,
+        folio_method,
+        pages: records,
+    };
+
+    if args.stdout {
+        println!("{}", serde_json::to_string_pretty(&pages_artifact)?);
+        return Ok(());
+    }
+
+    let json_bytes = serde_json::to_vec(&pages_artifact)?;
+    let derived_from = current_artifact_version(store, &args.id, &args.from).map(|v| (args.from.as_str(), v));
+    store.put_content_with_fetched_at(
+        &args.id,
+        &args.role,
+        json_bytes,
+        "application/json",
+        Some("paginate"),
+        None,
+        &braincrawl_cli::store_client::rfc3339_now(),
+        derived_from,
+    )?;
+    eprintln!("paginated: {} page(s), stored at role {}", page_count, args.role);
+    Ok(())
+}
+
+fn run_outline(store: &StoreClient, args: &OutlineArgs) -> Result<(), Box<dyn std::error::Error>> {
+    use braincrawl_cli::store_client::ContentOutcome;
+
+    if !args.force {
+        if let Ok(ContentOutcome::Bytes { .. }) = store.get_content(&args.id, &args.role) {
+            eprintln!(
+                "already-present: {} artifact already in store (use --force to overwrite)",
+                args.role
+            );
+            return Ok(());
+        }
+    }
+
+    let raw = std::fs::read(&args.from_file)
+        .map_err(|e| format!("failed to read {}: {e}", args.from_file))?;
+    let outline_doc: Outline = serde_json::from_slice(&raw)
+        .map_err(|e| format!("failed to parse {} as an outline: {e}", args.from_file))?;
+
+    let pages_artifact = match store.get_content(&args.id, &outline_doc.source_role)? {
+        ContentOutcome::Bytes { bytes, .. } => {
+            serde_json::from_slice::<Pages>(&bytes).map_err(|e| format!("stored {} artifact is not a valid pages document: {e}", outline_doc.source_role))?
+        }
+        ContentOutcome::Absent => {
+            return Err(format!(
+                "no {} artifact in store for {}; run library paginate first",
+                outline_doc.source_role, args.id
+            )
+            .into());
+        }
+        ContentOutcome::Pending => {
+            return Err(format!("{} for {} is still being fetched", outline_doc.source_role, args.id).into());
+        }
+    };
+
+    if let Err(errors) = outline::validate(&outline_doc, pages_artifact.page_count) {
+        let messages: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+        return Err(format!("outline validation failed:\n  {}", messages.join("\n  ")).into());
+    }
+
+    let section_count = outline_doc.sections.len();
+    let json_bytes = serde_json::to_vec(&outline_doc)?;
+    let derived_from = current_artifact_version(store, &args.id, &outline_doc.source_role)
+        .map(|v| (outline_doc.source_role.as_str(), v));
+    store.put_content_with_fetched_at(
+        &args.id,
+        &args.role,
+        json_bytes,
+        "application/json",
+        Some("outline"),
+        None,
+        &braincrawl_cli::store_client::rfc3339_now(),
+        derived_from,
+    )?;
+    eprintln!("outlined: {} section(s), stored at role {}", section_count, args.role);
+    Ok(())
+}
+
+fn parse_range(s: &str) -> PageRange {
+    match s.split_once('-') {
+        Some((a, b)) => PageRange { start: a.trim().to_string(), end: b.trim().to_string() },
+        None => PageRange { start: s.trim().to_string(), end: s.trim().to_string() },
+    }
+}
+
+fn run_read(store: &StoreClient, args: &ReadArgs) -> Result<(), Box<dyn std::error::Error>> {
+    use braincrawl_cli::store_client::ContentOutcome;
+
+    let pages_artifact: Pages = match store.get_content(&args.id, &args.pages_role)? {
+        ContentOutcome::Bytes { bytes, .. } => serde_json::from_slice(&bytes)
+            .map_err(|e| format!("stored {} artifact is not a valid pages document: {e}", args.pages_role))?,
+        ContentOutcome::Absent => {
+            return Err(format!(
+                "no {} artifact in store for {}; run library paginate first",
+                args.pages_role, args.id
+            )
+            .into());
+        }
+        ContentOutcome::Pending => {
+            return Err(format!("{} for {} is still being fetched", args.pages_role, args.id).into());
+        }
+    };
+
+    let outline_artifact: Option<Outline> = match store.get_content(&args.id, &args.outline_role) {
+        Ok(ContentOutcome::Bytes { bytes, .. }) => Some(
+            serde_json::from_slice(&bytes)
+                .map_err(|e| format!("stored {} artifact is not a valid outline document: {e}", args.outline_role))?,
+        ),
+        _ => None,
+    };
+
+    let locator = if let Some(printed) = &args.printed {
+        Locator::Printed(parse_range(printed))
+    } else if let Some(pdf) = &args.pdf {
+        Locator::Pdf(parse_range(pdf))
+    } else if let Some(section) = &args.section {
+        Locator::Section { id: section.clone(), head: args.first, tail: args.last }
+    } else if let Some(find) = &args.find {
+        Locator::Quote(find.clone())
+    } else {
+        unreachable!("clap enforces exactly one of --printed/--pdf/--section/--find")
+    };
+
+    let span = locator::resolve(&locator, &pages_artifact, outline_artifact.as_ref())?;
+
+    let by_pdf_page: std::collections::HashMap<usize, &pages::PageRecord> =
+        pages_artifact.pages.iter().map(|p| (p.pdf_page, p)).collect();
+
+    for pdf_page in &span.pdf_pages {
+        let Some(record) = by_pdf_page.get(pdf_page) else { continue };
+        match &record.folio {
+            Some(folio) => println!("=== p.{folio} (pdf {pdf_page}) ==="),
+            None => println!("=== pdf {pdf_page} (no folio) ==="),
+        }
+        println!("{}", record.text);
+    }
+
     Ok(())
 }
 
@@ -647,6 +918,96 @@ fn render_stats(value: &serde_json::Value, opts: &OutputOpts) {
     let _ = writeln!(out, "  catalog:        {}", human_bytes(n("catalog_bytes")));
     let _ = writeln!(out, "  total:          {}", human_bytes(n("total_bytes")));
     print!("{out}");
+}
+
+/// Order artifacts into a tree: roots (no `derived_from`, or a `derived_from`
+/// that names a (role, version) absent from `artifacts`) first in role order,
+/// each immediately followed by its own children recursively, also in role
+/// order. `dangling` is `Some(parent_label)` when the entry's recorded parent
+/// was not found among `artifacts` — it is still shown at depth 0.
+fn artifact_tree_order(
+    artifacts: &[serde_json::Value],
+) -> Vec<(usize, &serde_json::Value, Option<String>)> {
+    let key = |a: &serde_json::Value| -> Option<(String, u64)> {
+        Some((a["role"].as_str()?.to_string(), a["version"].as_u64()?))
+    };
+    let present: std::collections::HashSet<(String, u64)> =
+        artifacts.iter().filter_map(key).collect();
+
+    let parent_key = |a: &serde_json::Value| -> Option<(String, u64)> {
+        let role = a["derived_from_role"].as_str()?;
+        let version = a["derived_from_version"].as_u64()?;
+        Some((role.to_string(), version))
+    };
+
+    let mut children: std::collections::HashMap<(String, u64), Vec<&serde_json::Value>> =
+        std::collections::HashMap::new();
+    let mut roots: Vec<(&serde_json::Value, Option<String>)> = Vec::new();
+
+    for a in artifacts {
+        match parent_key(a) {
+            Some(pk) if present.contains(&pk) => {
+                children.entry(pk).or_default().push(a);
+            }
+            Some((role, version)) => {
+                roots.push((a, Some(format!("{role} v{version}"))));
+            }
+            None => roots.push((a, None)),
+        }
+    }
+
+    let sort_key = |a: &&serde_json::Value| {
+        (
+            a["role"].as_str().unwrap_or("").to_string(),
+            std::cmp::Reverse(a["version"].as_u64().unwrap_or(0)),
+        )
+    };
+    roots.sort_by_key(|(a, _)| sort_key(a));
+    for siblings in children.values_mut() {
+        siblings.sort_by_key(sort_key);
+    }
+
+    let mut out = Vec::new();
+    for (root, dangling) in roots {
+        push_subtree(root, dangling, 0, &children, &mut out);
+    }
+    out
+}
+
+fn push_subtree<'a>(
+    node: &'a serde_json::Value,
+    dangling: Option<String>,
+    depth: usize,
+    children: &std::collections::HashMap<(String, u64), Vec<&'a serde_json::Value>>,
+    out: &mut Vec<(usize, &'a serde_json::Value, Option<String>)>,
+) {
+    out.push((depth, node, dangling));
+    if let (Some(role), Some(version)) = (node["role"].as_str(), node["version"].as_u64()) {
+        if let Some(kids) = children.get(&(role.to_string(), version)) {
+            for kid in kids {
+                push_subtree(kid, None, depth + 1, children, out);
+            }
+        }
+    }
+}
+
+/// `library list --text` — a tree instead of the flat one-line-per-result
+/// rendering the generic envelope printer gives (artifacts have no `id`/`title`
+/// for it to display anyway). A dangling parent (pointing at a role/version not
+/// present in this listing) is shown at the top level, annotated "unknown".
+fn print_artifact_tree(artifacts: &[serde_json::Value]) {
+    for (depth, a, dangling) in artifact_tree_order(artifacts) {
+        let role = a["role"].as_str().unwrap_or("?");
+        let version = a["version"].as_u64().unwrap_or(0);
+        let indent = "  ".repeat(depth);
+        let marker = if depth == 0 { "" } else { "└─ " };
+        match dangling {
+            Some(parent) => {
+                println!("{indent}{marker}{role} v{version}  (derived from {parent}, unknown)")
+            }
+            None => println!("{indent}{marker}{role} v{version}"),
+        }
+    }
 }
 
 /// Format a byte count as a human-readable size, e.g. `1.4 MiB (1462272 bytes)`.

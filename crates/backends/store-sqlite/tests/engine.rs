@@ -251,6 +251,7 @@ async fn test_content_roundtrip_custom_role() {
         None,
         None,
         "2024-01-01T00:00:00Z".to_string(),
+        None,
     )
     .await
     .unwrap();
@@ -287,6 +288,7 @@ async fn test_content_roundtrip() {
         Some("s".to_string()),
         None,
         "2024-01-01T00:00:00Z".to_string(),
+        None,
     )
     .await
     .unwrap();
@@ -333,6 +335,7 @@ async fn test_list_artifacts_versions_and_current_flag() {
             None,
             None,
             "2024-01-01T00:00:00Z".to_string(),
+            None,
         )
         .await
         .unwrap();
@@ -373,6 +376,7 @@ async fn test_list_artifacts_role_filter_and_empty() {
         None,
         None,
         "2024-01-01T00:00:00Z".to_string(),
+        None,
     )
     .await
     .unwrap();
@@ -384,6 +388,7 @@ async fn test_list_artifacts_role_filter_and_empty() {
         None,
         None,
         "2024-01-01T00:00:00Z".to_string(),
+        None,
     )
     .await
     .unwrap();
@@ -418,6 +423,7 @@ async fn test_list_artifacts_ordering() {
         None,
         None,
         "2024-01-01T00:00:00Z".to_string(),
+        None,
     )
     .await
     .unwrap();
@@ -430,6 +436,7 @@ async fn test_list_artifacts_ordering() {
             None,
             None,
             "2024-01-01T00:00:00Z".to_string(),
+            None,
         )
         .await
         .unwrap();
