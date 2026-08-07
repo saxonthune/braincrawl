@@ -14,8 +14,8 @@
 WORKTREE_PREFIX="agent"
 
 # Budget caps for headless Claude sessions (USD)
-MAX_BUDGET="5.00"
-RETRY_BUDGET="3.00"
+MAX_BUDGET="10.00"
+RETRY_BUDGET="6.00"
 
 # Maximum retry attempts when build/test fails
 MAX_RETRIES=4
