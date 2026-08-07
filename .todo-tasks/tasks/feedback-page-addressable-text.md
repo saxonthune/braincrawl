@@ -1,5 +1,13 @@
 # Page-keyed `pages` artifact, and text lookup by printed or PDF page
 
+> **Superseded** by the `book-paging` chain (2026-08-07). Reading the actual
+> reading-guide sessions showed three gaps this spec could not close: it has no
+> structure axis, so it cannot answer "the first 5 pages of chapter 11"; its folio
+> detection assumes headers exist, which fails on a reflowed ebook; and it treats
+> retrieval as lookup when a third of the hand-written scripts were search. The
+> chain also drops this spec's "no id-first command form" constraint, which was a
+> triage judgement the user overrode.
+
 ## Motivation
 
 A reading-guide session is almost entirely "the user names a printed page, I read that page and

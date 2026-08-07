@@ -1,5 +1,12 @@
 # `pdfutils` — inspect a PDF and cut a page range out of it
 
+> **Superseded** by the `book-paging` chain (2026-08-07). `library read` takes this
+> spec's remaining reading job, and the chain's `--from <role>` work removes the need
+> to cut chapters into separate PDF roles at all. Its own triage note already judged
+> it "the lowest-value of the three book tasks and the only one that adds external
+> dependencies. Reasonable to defer." Refile `pdfutils info` on its own if the
+> "is this splittable?" question comes back.
+
 ## Motivation
 
 Loading a user-supplied book into the Library took four shell tools braincrawl does not wrap,
