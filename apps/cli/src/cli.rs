@@ -110,6 +110,9 @@ pub struct ChunkArgs {
     /// External PDF file — PIPE-ONLY: emits JSON to stdout, never stored
     #[arg(long)]
     pub file: Option<String>,
+    /// Source artifact role to derive from
+    #[arg(long, default_value = "fulltext")]
+    pub from: String,
     /// Output artifact role slug
     #[arg(long, default_value = "chunks")]
     pub role: String,
@@ -257,6 +260,9 @@ pub struct FetchContentArgs {
 pub struct ExtractTextArgs {
     /// Work id in ns:value form (e.g. openalex:W2304167012)
     pub id: String,
+    /// Source artifact role to derive from
+    #[arg(long, default_value = "fulltext")]
+    pub from: String,
     /// Artifact role slug to store the extracted text at
     #[arg(long, default_value = "text")]
     pub role: String,

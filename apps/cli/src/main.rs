@@ -250,12 +250,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             match library.cmd {
                 LibraryCmd::ExtractText(args) => {
                     use braincrawl_cli::store_client::ContentOutcome;
-                    match store.get_content(&args.id, "fulltext")? {
+                    match store.get_content(&args.id, &args.from)? {
                         ContentOutcome::Bytes { bytes, mime } => {
                             if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
                                 return Err(format!(
-                                    "fulltext artifact for {} is not a PDF (mime={})",
-                                    args.id, mime
+                                    "{} artifact for {} is not a PDF (mime={})",
+                                    args.from, args.id, mime
                                 )
                                 .into());
                             }
@@ -289,15 +289,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         ContentOutcome::Absent => {
                             return Err(format!(
-                                "no fulltext artifact in store for {}; run library fetch first",
-                                args.id
+                                "no {} artifact in store for {}; run library fetch first",
+                                args.from, args.id
                             )
                             .into());
                         }
                         ContentOutcome::Pending => {
                             return Err(format!(
-                                "fulltext for {} is still being fetched",
-                                args.id
+                                "{} for {} is still being fetched",
+                                args.from, args.id
                             )
                             .into());
                         }
@@ -494,12 +494,12 @@ fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error
         std::fs::read(path)?
     } else {
         let id = args.id.as_ref().unwrap();
-        match store.get_content(id, "fulltext")? {
+        match store.get_content(id, &args.from)? {
             ContentOutcome::Bytes { bytes, mime } => {
                 if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
                     return Err(format!(
-                        "fulltext artifact for {} is not a PDF (mime={})",
-                        id, mime
+                        "{} artifact for {} is not a PDF (mime={})",
+                        args.from, id, mime
                     )
                     .into());
                 }
@@ -507,13 +507,13 @@ fn run_chunk(config: &Config, args: &ChunkArgs) -> Result<(), Box<dyn std::error
             }
             ContentOutcome::Absent => {
                 return Err(format!(
-                    "no fulltext artifact in store for {}; run fetch-content first",
-                    id
+                    "no {} artifact in store for {}; run fetch-content first",
+                    args.from, id
                 )
                 .into());
             }
             ContentOutcome::Pending => {
-                return Err(format!("fulltext for {} is still being fetched", id).into());
+                return Err(format!("{} for {} is still being fetched", args.from, id).into());
             }
         }
     };
