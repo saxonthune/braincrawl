@@ -92,32 +92,30 @@ There is **one** braincrawl server per machine. It owns the accumulating Library
 repo points at it so gathered catalog entries compound — a second project launching its own binary would
 fork the shared store into a per-repo DB and defeat the whole accumulation thesis.
 
-**First thing, every session: check it's up.** It exposes an unauthenticated liveness
-probe at `GET /health`:
+**First thing, every session: run `braincrawl doctor`.** It reports whether the server is
+up, which build it is running, and whether that build matches the CLI:
 
 ```bash
-curl -fsS http://127.0.0.1:8787/health && echo   # → {"service":"braincrawl","status":"ok"}
+braincrawl doctor
 ```
 
-- **200 / `status: ok`** → use it (go to §2). Don't start anything.
-- **connection refused / no response** → the server is down. **Do not silently launch a
-  binary from another repo.** Tell the user to bring it up from the braincrawl repo:
-
-  ```bash
-  # run from the braincrawl repo (the server's home)
-  just systemd-install   # first time only: install the systemd user service + start at boot
-  just systemd-start     # start it now (if installed but stopped)
-  just systemd-status    # up/down + /health
-  just systemd-stop
-  ```
+- **`server-reachable` OK and `build-match` OK** → use it (go to §2). Don't start anything.
+- **`build-match` WARN, or `server-build` absent** → the server is running older code than
+  the CLI. **Its answers cannot be trusted** — in particular a 404 from `library list` or
+  `catalog get` may mean "this build has an old route", not "the store does not hold this".
+  Do not conclude a work is missing, and do not re-ingest anything, until the builds match.
+  The remedy `doctor` prints is `just upgrade`, which rebuilds and bounces the service;
+  `just systemd-restart` does **not** rebuild.
+- **`server-reachable` FAIL** → the server is down. **Do not silently launch a binary from
+  another repo.** Tell the user to bring it up from the braincrawl repo, where `just -l`
+  lists the current recipes (`systemd-install` first time, then `systemd-start`).
 
   The server runs as a systemd **user** service (`braincrawl-server.service`), enabled with
   lingering so it starts at boot and stays up — lifecycle is **not** manual day-to-day. The
   `just` recipes drive it via `systemctl --user`; `scripts/braincrawl-server.sh` is a thin
   shim over the same. It binds `127.0.0.1:8787` with auth disabled (localhost dev) and uses a
   stable DB path under `~/.local/share/braincrawl`. Config lives in the unit
-  (`scripts/braincrawl-server.service` is the tracked template); `just restart` rebuilds the
-  release binary and bounces the service to pick up code changes.
+  (`scripts/braincrawl-server.service` is the tracked template).
 
 Underlying server env vars (if you bypass the script): `BRAINCRAWL_DB` (default
 `braincrawl.db`), `BRAINCRAWL_BLOB_ROOT` (default `blobs`), `BRAINCRAWL_BIND` (default
@@ -352,7 +350,8 @@ only drift from the binary. Generate the current reference on demand from the so
   `library`, …).
 - `braincrawl <command> --help` — a subcommand's flags and arguments (e.g.
   `braincrawl openalex --help`, `braincrawl collection --help`, `braincrawl library --help`).
+- `braincrawl doctor` — server reachability, build match, store identity, config sources (§1).
 - Server lifecycle is **not** part of this CLI — it lives in the braincrawl repo's `just`
-  recipes (`systemd-start` / `systemd-status` / `systemd-stop`, see §1) and the `/health` probe.
+  recipes. Run `just -l` for the current list rather than working from a remembered one.
 
 For OpenAlex filter/field details, see the `openalex-reference` skill.

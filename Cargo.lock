@@ -359,6 +359,7 @@ dependencies = [
  "braincrawl-conformance",
  "braincrawl-coord-local",
  "braincrawl-core",
+ "braincrawl-sql",
  "braincrawl-store-sqlite",
  "futures-util",
  "l3",
