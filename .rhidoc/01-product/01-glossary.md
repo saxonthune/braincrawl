@@ -46,7 +46,10 @@ braincrawl separates knowledge built once and shared — the first two layers �
 ## The library: artifacts
 An **artifact** is a stored piece of content attached to a catalog entry — an abstract, a fulltext, an LLM-summary projection, or another asset.
 
-- An artifact's **role** says what the content is to the work: `abstract`, `fulltext`, or a custom slug such as `map`. Its **mime** says how the bytes are encoded — `application/pdf`, `image/png`. The two are independent.
+- An artifact's **role** says what the content is: `abstract`, `fulltext`, or a custom slug such as `map`. Its **mime** says how the bytes are encoded — `application/pdf`, `image/png`. The two are independent.
+- `derived_from(artifact, artifact)` — an artifact says which other artifact it was derived from. Role and `derived_from` are separate facts: role names the content, `derived_from` names its lineage.
+- A work may hold more than one root artifact — two editions of the same book, for instance — each with its own derivations. Role alone does not distinguish them; `derived_from` does.
+- A **folio** is the printed page number as it appears on the page, recorded per page. It is read off the page, never computed from an offset.
 - An artifact also records its **provenance**: a source label, a source URL, and when it was fetched. Each push of the same role is kept in sequence, with the latest marked current.
 - An artifact attaches to a catalog entry that already exists; pushing content never creates the entry. Writing to the catalog is a separate door.
 - **`library chunk`** is a self-contained CLI tool braincrawl provides that partitions a stored fulltext into citation-carrying pieces, each carrying page provenance — a secondary derived artifact of a work.

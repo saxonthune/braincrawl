@@ -23,18 +23,28 @@ If `chunk` refuses because some pages carry no text layer, re-run with `--allow-
 report which pages were skipped. A born-digital PDF splits cleanly; a scanned one does not,
 and there is no OCR in the pipeline.
 
-## Record the printed-page to PDF-page offset
+## Derive the page and outline artifacts, once, at ingest
 
-Front matter almost always shifts the two. Establish the offset once, from a page the user
-names or from the table of contents, and put it in the doc as a `#reference` node together
-with the chapter starts in both numberings. Every later citation depends on it, and it is
-the one node that is worth writing before anyone asks.
+Run `library paginate` right after `extract-text`. It splits the stored fulltext into a
+per-page artifact and detects each page's **folio** — the printed page number as it appears
+on the page — recorded per page, not computed from a single offset. `paginate` reports the
+pages where it could not detect a folio; note those in the doc rather than guessing them.
+
+```bash
+braincrawl library paginate <ns:id>
+braincrawl library outline <ns:id> --from-file <sections.json>
+```
+
+Then run `library outline` from the table of contents read off the book, so sections (`ch01`,
+…) resolve to page ranges. With both artifacts in place, the `#reference` node records
+*which edition is cited* — not an offset to do arithmetic with.
 
 ## Answering a question
 
-Read the passage itself. `pdftotext -f <first> -l <last> -layout <file>` on the PDF pages
-around the question is the direct route; `braincrawl library get <ns:id> --role text` reads
-back what the store holds. Quote what the work actually says.
+Read the passage itself with `library read`, which addresses a place in the book directly and
+three ways: `--printed <range>` by the page number printed on the page, `--section <id>` by
+outline section, or `--find <text>` by searching page text for a quote. Its output carries
+page markers, so a quote can be cited without a second lookup.
 
 **Cite a page for every claim, and quote wherever a quote will do the work.** A finding that
 says what the author argues, without a page, is not usable later — the point of the document

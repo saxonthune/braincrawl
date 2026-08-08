@@ -223,8 +223,13 @@ them can be the first and only one a question requires.
   extracted text at role `text` and `library get --role text` to read it back and condense
   it in-context. When the source isn't reachable that way, bridge with WebFetch. Run
   `library list <id>` first if you are not sure which roles a work already holds — it
-  returns role, version, size, mime, and provenance for every stored artifact, so you are
-  not guessing a role name.
+  returns role, version, size, mime, and provenance for every stored artifact, and now shows
+  which artifacts derive from which, so a session can see a work holds two editions before it
+  picks one, and is not guessing a role name.
+- **Addressing a place in the book directly** — once `library paginate` and `library outline`
+  have derived a per-page artifact and a table-of-contents section map, `library read` reaches
+  a printed page, an outline section, or a text search directly, with page markers on the
+  output. Cheaper than condensing the whole work, and citable without a second lookup.
 - **Full text** — read the whole work. The dearest read; reserve for the load-bearing few
   a finding actually hangs on. The Library holds fulltext "on demand" — same `library fetch`/
   `library put` + `library extract-text` + `library get --role text` path as the condensed

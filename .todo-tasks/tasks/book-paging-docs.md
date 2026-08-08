@@ -88,7 +88,6 @@ Amend `01-glossary.md:49-53`, in the existing verbalized-fact style:
 
 ```bash
 cargo test
-rhidoc manifest
 ```
 
 ## Out of Scope
