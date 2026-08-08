@@ -42,6 +42,178 @@ enum CandidateKind {
     Roman(u64),
 }
 
+/// An operator-supplied fact: PDF page `pdf_page` bears printed folio `folio`.
+///
+/// Parsed from `--anchor <pdf_page>=<folio>`. Unlike a single global offset, a
+/// list of anchors describes a piecewise mapping: front matter in roman
+/// numerals, an unnumbered plate section, or a scan whose first leaf is folio 1
+/// while its second is folio 3 all break a constant offset but are exactly
+/// describable as a handful of anchors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolioAnchor {
+    pub pdf_page: usize,
+    pub folio: String,
+}
+
+impl std::str::FromStr for FolioAnchor {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (page, folio) = s
+            .split_once('=')
+            .ok_or_else(|| format!("anchor '{s}' is not in <pdf_page>=<folio> form"))?;
+        let pdf_page: usize = page
+            .trim()
+            .parse()
+            .map_err(|_| format!("anchor '{s}': '{page}' is not a pdf page number"))?;
+        if pdf_page == 0 {
+            return Err(format!("anchor '{s}': pdf pages are numbered from 1"));
+        }
+        let folio = folio.trim();
+        if folio.is_empty() {
+            return Err(format!("anchor '{s}': folio is empty"));
+        }
+        if folio_kind(folio).is_none() {
+            return Err(format!(
+                "anchor '{s}': folio '{folio}' is neither an arabic number nor a lowercase roman numeral"
+            ));
+        }
+        Ok(FolioAnchor { pdf_page, folio: folio.to_string() })
+    }
+}
+
+/// Classify a folio string so the next page's folio can be produced in the same
+/// numeral system. `None` if the string is neither form.
+fn folio_kind(folio: &str) -> Option<CandidateKind> {
+    if !folio.is_empty() && folio.chars().all(|c| c.is_ascii_digit()) {
+        return folio.parse::<u64>().ok().map(CandidateKind::Arabic);
+    }
+    if folio.chars().all(|c| c.is_ascii_lowercase()) && is_roman_numeral(folio) {
+        return roman_to_u64(folio).map(CandidateKind::Roman);
+    }
+    None
+}
+
+/// Render a numeric value back into the numeral system it came from.
+fn render_folio(kind: CandidateKind, value: u64) -> String {
+    match kind {
+        CandidateKind::Arabic(_) => value.to_string(),
+        CandidateKind::Roman(_) => u64_to_roman(value),
+    }
+}
+
+fn u64_to_roman(mut value: u64) -> String {
+    const TABLE: [(u64, &str); 13] = [
+        (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"),
+        (100, "c"), (90, "xc"), (50, "l"), (40, "xl"),
+        (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i"),
+    ];
+    let mut out = String::new();
+    for (n, sym) in TABLE {
+        while value >= n {
+            out.push_str(sym);
+            value -= n;
+        }
+    }
+    out
+}
+
+/// Assign folios from operator-supplied anchors rather than from the page text.
+///
+/// Anchors are sorted by PDF page and each governs the run of pages from itself
+/// up to (not including) the next anchor, incrementing by one per page in its
+/// own numeral system. Pages before the first anchor get no folio — the
+/// operator has said nothing about them, and guessing backwards would reinstate
+/// exactly the inference anchoring exists to replace.
+pub fn anchor_folios(pages: &[String], anchors: &[FolioAnchor]) -> Vec<PageRecord> {
+    let mut sorted: Vec<&FolioAnchor> = anchors.iter().collect();
+    sorted.sort_by_key(|a| a.pdf_page);
+
+    pages
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let pdf_page = i + 1;
+            let governing = sorted.iter().rev().find(|a| a.pdf_page <= pdf_page);
+            let folio = governing.and_then(|a| {
+                let kind = folio_kind(&a.folio)?;
+                let base = match kind {
+                    CandidateKind::Arabic(n) | CandidateKind::Roman(n) => n,
+                };
+                let value = base + (pdf_page - a.pdf_page) as u64;
+                Some(render_folio(kind, value))
+            });
+            PageRecord { pdf_page, folio, text: text.clone() }
+        })
+        .collect()
+}
+
+/// One stretch of pages over which the folio advances by one per PDF page
+/// without changing numeral system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolioRun {
+    pub first_pdf_page: usize,
+    pub last_pdf_page: usize,
+    pub first_folio: String,
+    pub last_folio: String,
+}
+
+impl std::fmt::Display for FolioRun {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.first_pdf_page == self.last_pdf_page {
+            write!(f, "pdf {} = folio {}", self.first_pdf_page, self.first_folio)
+        } else {
+            write!(
+                f,
+                "pdf {}-{} = folio {}-{}",
+                self.first_pdf_page, self.last_pdf_page, self.first_folio, self.last_folio
+            )
+        }
+    }
+}
+
+/// Collapse a folio assignment into runs, so the operator can eyeball the whole
+/// mapping as a few lines instead of one line per page. A run breaks wherever
+/// the PDF page skips, the numeral system changes, or the folio fails to
+/// advance by exactly one — which is precisely where a mapping needs checking.
+pub fn folio_runs(records: &[PageRecord]) -> Vec<FolioRun> {
+    let mut runs: Vec<FolioRun> = Vec::new();
+    let mut prev: Option<(usize, CandidateKind, u64)> = None;
+
+    for r in records {
+        let Some(folio) = &r.folio else {
+            prev = None;
+            continue;
+        };
+        let Some(kind) = folio_kind(folio) else {
+            prev = None;
+            continue;
+        };
+        let value = match kind {
+            CandidateKind::Arabic(n) | CandidateKind::Roman(n) => n,
+        };
+        let continues = matches!(prev, Some((page, prev_kind, prev_value))
+            if page + 1 == r.pdf_page
+                && std::mem::discriminant(&prev_kind) == std::mem::discriminant(&kind)
+                && prev_value + 1 == value);
+
+        if continues {
+            let run = runs.last_mut().expect("a continuing run has a predecessor");
+            run.last_pdf_page = r.pdf_page;
+            run.last_folio = folio.clone();
+        } else {
+            runs.push(FolioRun {
+                first_pdf_page: r.pdf_page,
+                last_pdf_page: r.pdf_page,
+                first_folio: folio.clone(),
+                last_folio: folio.clone(),
+            });
+        }
+        prev = Some((r.pdf_page, kind, value));
+    }
+    runs
+}
+
 fn is_roman_numeral(token: &str) -> bool {
     !token.is_empty() && token.chars().all(|c| matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm'))
 }
@@ -269,6 +441,86 @@ mod tests {
         assert_eq!(recs[0].folio.as_deref(), Some("7"));
         assert_eq!(recs[1].folio, None);
         assert_eq!(recs[2].folio.as_deref(), Some("9"));
+    }
+
+    fn anchor(s: &str) -> FolioAnchor {
+        s.parse().expect("test anchor parses")
+    }
+
+    #[test]
+    fn anchor_parses_page_and_folio() {
+        assert_eq!(anchor("2=3"), FolioAnchor { pdf_page: 2, folio: "3".into() });
+        assert_eq!(anchor(" 4 = xii "), FolioAnchor { pdf_page: 4, folio: "xii".into() });
+    }
+
+    #[test]
+    fn anchor_rejects_malformed_input() {
+        for bad in ["2", "0=1", "x=1", "2=", "2=III", "2=page3"] {
+            assert!(bad.parse::<FolioAnchor>().is_err(), "{bad} should not parse");
+        }
+    }
+
+    /// The case that motivated anchoring: a scan whose first leaf is folio 1
+    /// and whose second is folio 3. No single offset describes it.
+    #[test]
+    fn anchors_describe_a_discontinuous_mapping() {
+        let pages = vec![page("a"), page("b"), page("c"), page("d")];
+        let recs = anchor_folios(&pages, &[anchor("1=1"), anchor("2=3")]);
+        let folios: Vec<Option<&str>> = recs.iter().map(|r| r.folio.as_deref()).collect();
+        assert_eq!(folios, vec![Some("1"), Some("3"), Some("4"), Some("5")]);
+    }
+
+    #[test]
+    fn anchors_ignore_page_text_entirely() {
+        let pages = vec![page("999\nbody\n999"), page("999\nbody\n999")];
+        let recs = anchor_folios(&pages, &[anchor("1=7")]);
+        assert_eq!(recs[0].folio.as_deref(), Some("7"));
+        assert_eq!(recs[1].folio.as_deref(), Some("8"));
+    }
+
+    #[test]
+    fn anchor_advances_roman_front_matter_in_roman() {
+        let pages = vec![page("a"), page("b"), page("c")];
+        let recs = anchor_folios(&pages, &[anchor("1=viii")]);
+        let folios: Vec<Option<&str>> = recs.iter().map(|r| r.folio.as_deref()).collect();
+        assert_eq!(folios, vec![Some("viii"), Some("ix"), Some("x")]);
+    }
+
+    #[test]
+    fn pages_before_the_first_anchor_get_no_folio() {
+        let pages = vec![page("a"), page("b"), page("c")];
+        let recs = anchor_folios(&pages, &[anchor("2=1")]);
+        let folios: Vec<Option<&str>> = recs.iter().map(|r| r.folio.as_deref()).collect();
+        assert_eq!(folios, vec![None, Some("1"), Some("2")]);
+    }
+
+    #[test]
+    fn anchors_apply_in_page_order_however_they_are_given() {
+        let pages = vec![page("a"), page("b"), page("c"), page("d")];
+        let forward = anchor_folios(&pages, &[anchor("1=1"), anchor("3=10")]);
+        let reversed = anchor_folios(&pages, &[anchor("3=10"), anchor("1=1")]);
+        assert_eq!(forward.iter().map(|r| r.folio.clone()).collect::<Vec<_>>(),
+                   reversed.iter().map(|r| r.folio.clone()).collect::<Vec<_>>());
+        assert_eq!(forward[3].folio.as_deref(), Some("11"));
+    }
+
+    #[test]
+    fn folio_runs_break_where_the_sequence_jumps() {
+        let pages = vec![page("a"), page("b"), page("c")];
+        let recs = anchor_folios(&pages, &[anchor("1=1"), anchor("2=3")]);
+        let runs = folio_runs(&recs);
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].to_string(), "pdf 1 = folio 1");
+        assert_eq!(runs[1].to_string(), "pdf 2-3 = folio 3-4");
+    }
+
+    #[test]
+    fn folio_runs_collapse_a_clean_sequence_to_one_line() {
+        let pages = vec![page("a"), page("b"), page("c")];
+        let recs = anchor_folios(&pages, &[anchor("1=5")]);
+        let runs = folio_runs(&recs);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].to_string(), "pdf 1-3 = folio 5-7");
     }
 
     #[test]

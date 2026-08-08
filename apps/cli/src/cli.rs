@@ -251,9 +251,18 @@ pub struct PaginateArgs {
     /// Artifact role slug to store the pages artifact at
     #[arg(long, default_value = "pages")]
     pub role: String,
+    /// Declare that a pdf page bears a printed folio, as `<pdf_page>=<folio>`
+    /// (repeatable). Each anchor governs pages from itself up to the next one,
+    /// so `--anchor 1=1 --anchor 2=3` describes a book whose folio 2 is absent.
+    /// Given any anchor, folios are taken from these facts and never guessed.
+    #[arg(long = "anchor", value_name = "PDF_PAGE=FOLIO")]
+    pub anchors: Vec<crate::pages::FolioAnchor>,
     /// Re-paginate even if the role already holds an artifact
     #[arg(long)]
     pub force: bool,
+    /// Store a detected mapping even when no folio could be read from the text
+    #[arg(long)]
+    pub allow_no_folios: bool,
     /// Emit JSON to stdout instead of storing
     #[arg(long)]
     pub stdout: bool,

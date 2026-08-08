@@ -671,8 +671,13 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
 
     let raw_pages = pdf_text::extract_pages(&bytes)?;
     let page_count = raw_pages.len();
-    let records = pages::detect_folios(&raw_pages);
-    let breaks = pages::validate_folios(&records);
+    let anchored = !args.anchors.is_empty();
+    let records = if anchored {
+        pages::anchor_folios(&raw_pages, &args.anchors)
+    } else {
+        pages::detect_folios(&raw_pages)
+    };
+    let breaks = if anchored { Vec::new() } else { pages::validate_folios(&records) };
 
     if !breaks.is_empty() {
         let gap_pages: usize = breaks
@@ -697,11 +702,33 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
         );
     }
 
-    let folio_method = if records.iter().any(|r| r.folio.is_some()) {
-        pages::FolioMethod::Detected
-    } else {
-        pages::FolioMethod::None
+    let folio_method = match (anchored, records.iter().any(|r| r.folio.is_some())) {
+        (true, _) => pages::FolioMethod::Anchored,
+        (false, true) => pages::FolioMethod::Detected,
+        (false, false) => pages::FolioMethod::None,
     };
+
+    // Detection that read no folio at all is a failure wearing a success's
+    // clothes: every page-addressed read against the result would miss. Refuse
+    // it by default rather than store a mapping the operator cannot use.
+    if folio_method == pages::FolioMethod::None && !args.allow_no_folios {
+        return Err(format!(
+            "no folio could be read from any of the {page_count} page(s) of {}. \
+             Declare the mapping instead, e.g. --anchor 1=1 --anchor 2=3 \
+             (each anchor governs pages up to the next). \
+             Pass --allow-no-folios to store a pages artifact addressable only by pdf page.",
+            args.from
+        )
+        .into());
+    }
+
+    for run in pages::folio_runs(&records) {
+        eprintln!("  {run}");
+    }
+    let unmapped = records.iter().filter(|r| r.folio.is_none()).count();
+    if unmapped > 0 {
+        eprintln!("  {unmapped} page(s) with no folio");
+    }
 
     let pages_artifact = Pages {
         source_role: args.from.clone(),

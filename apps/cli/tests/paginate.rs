@@ -71,7 +71,7 @@ fn paginate_stores_a_pages_artifact() {
     let client = StoreClient::new(&base);
     put_work_with_pdf(&client, "10.0/paginate-store");
 
-    let output = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-store"]);
+    let output = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-store", "--allow-no-folios"]);
     assert!(
         output.status.success(),
         "paginate failed: {}",
@@ -85,6 +85,62 @@ fn paginate_stores_a_pages_artifact() {
     assert_eq!(pages["source_role"], "fulltext");
     assert_eq!(pages["pages"][0]["pdf_page"], 1);
     assert!(pages["pages"][0]["text"].as_str().unwrap().contains("Hello braincrawl"));
+}
+
+#[test]
+fn paginate_refuses_to_store_a_folioless_detection() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = start_server(dir.path());
+    let client = StoreClient::new(&base);
+    put_work_with_pdf(&client, "10.0/paginate-no-folio");
+
+    let output = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-no-folio"]);
+    assert!(!output.status.success(), "a folio-less detection should not be stored silently");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--anchor"), "the refusal should name the remedy, got: {stderr}");
+
+    let output = run_cli(&base, &["library", "get", "doi:10.0/paginate-no-folio", "--role", "pages"]);
+    assert!(!output.status.success(), "the refused run should have stored nothing");
+}
+
+#[test]
+fn paginate_takes_folios_from_anchors() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = start_server(dir.path());
+    let client = StoreClient::new(&base);
+    put_work_with_pdf(&client, "10.0/paginate-anchored");
+
+    let output = run_cli(
+        &base,
+        &["library", "paginate", "doi:10.0/paginate-anchored", "--anchor", "1=42"],
+    );
+    assert!(
+        output.status.success(),
+        "anchored paginate failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pdf 1 = folio 42"), "expected the mapping to be printed, got: {stderr}");
+
+    let output = run_cli(&base, &["library", "get", "doi:10.0/paginate-anchored", "--role", "pages"]);
+    assert!(output.status.success());
+    let pages: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(pages["folio_method"], "Anchored");
+    assert_eq!(pages["pages"][0]["folio"], "42");
+}
+
+#[test]
+fn paginate_rejects_a_malformed_anchor() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = start_server(dir.path());
+    let client = StoreClient::new(&base);
+    put_work_with_pdf(&client, "10.0/paginate-bad-anchor");
+
+    let output = run_cli(
+        &base,
+        &["library", "paginate", "doi:10.0/paginate-bad-anchor", "--anchor", "page-one"],
+    );
+    assert!(!output.status.success());
 }
 
 #[test]
@@ -118,15 +174,15 @@ fn paginate_already_present_requires_force() {
     let client = StoreClient::new(&base);
     put_work_with_pdf(&client, "10.0/paginate-force");
 
-    let first = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-force"]);
+    let first = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-force", "--allow-no-folios"]);
     assert!(first.status.success());
 
-    let second = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-force"]);
+    let second = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-force", "--allow-no-folios"]);
     assert!(second.status.success());
     let stderr = String::from_utf8_lossy(&second.stderr);
     assert!(stderr.contains("already-present"), "expected already-present notice, got: {stderr}");
 
-    let forced = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-force", "--force"]);
+    let forced = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-force", "--allow-no-folios", "--force"]);
     assert!(forced.status.success());
     let stderr = String::from_utf8_lossy(&forced.stderr);
     assert!(stderr.contains("paginated:"), "expected re-paginate to succeed, got: {stderr}");
@@ -139,7 +195,7 @@ fn read_prints_page_markers_for_pdf_range() {
     let client = StoreClient::new(&base);
     put_work_with_pdf(&client, "10.0/read-pdf-range");
 
-    let paginate = run_cli(&base, &["library", "paginate", "doi:10.0/read-pdf-range"]);
+    let paginate = run_cli(&base, &["library", "paginate", "doi:10.0/read-pdf-range", "--allow-no-folios"]);
     assert!(paginate.status.success());
 
     let output = run_cli(&base, &["library", "read", "doi:10.0/read-pdf-range", "--pdf", "1-1"]);
