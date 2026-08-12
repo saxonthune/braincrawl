@@ -164,3 +164,7 @@ braincrawl catalog get isbn:9780691215105
 - The verb name `catalog add` is provisional — it was proposed during triage, not committed to
   the glossary. It sits beside the existing `catalog put`, which keeps its meaning of "write
   an emission frame".
+- The line numbers throughout this spec (e.g. `cli.rs:322`, `main.rs:674`, `l3.rs:922`) are
+  from triage and may have drifted. Locate every referenced symbol by name — the enum variant,
+  the dispatch arm, the warning string — and do not trust the line numbers. The `l3.rs` warning
+  is now at line 923, not 922, which already confirms drift.
