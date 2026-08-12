@@ -300,6 +300,20 @@ no H1:
 - Anchors are **store-global**: `assign-ids` keeps every `^r-…` unique across the whole store,
   so a bare `^r-…` resolves to its node from any doc — no `slug#` prefix, and the reference
   survives if the node moves docs.
+- To cross-link two nodes written in the same batch, before `assign-ids` has run and a real
+  anchor exists — write a **temporary anchor** by hand instead of guessing a `^r-…`: give the
+  heading a `^t-<slug>` and reference it as `[[^t-<slug>]]` from any edge in any doc of the
+  batch. One `assign-ids` run resolves every `^t-<slug>` to a fresh store-global `^r-…`,
+  rewriting the heading and every reference to it. Worked example:
+
+  ```
+  ## The three textures ^t-three-textures
+  - tags: #meta
+
+  - builds-on [[^t-three-textures]]
+  ```
+
+  A `^r-…` is still never hand-written.
 - A `[[wikilink]]` inside a property *value* is text, not an edge — only a `- kind [[…]]`
   bullet line becomes a link.
 - Invariant: reference, never copy — store ids, look facts up from the server at read time.
@@ -316,7 +330,7 @@ braincrawl collection check <doc> | --all # advisory lint against the required f
 braincrawl collection index               # regenerate INDEX.md
 braincrawl collection import <file> [--doc <slug>] [--mv]   # adopt an existing md, normalize its frontmatter
 braincrawl collection rm <doc>            # delete + reindex
-braincrawl collection assign-ids [--dry-run]   # assign ^r-… anchors for every heading that lacks one
+braincrawl collection assign-ids [--dry-run]   # assign ^r-… anchors for every heading that lacks one, and resolve every ^t-<slug> temporary anchor to a fresh ^r-…
 braincrawl collection reading-list [--json]    # every node with a reading property, grouped by role
 ```
 

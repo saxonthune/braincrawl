@@ -374,6 +374,11 @@ model AssignedAnchor {
   headingLine: int32;
   id: string;
   title: string;
+
+  /** The `^t-<slug>` temporary anchor (without `^`) this id resolved, when the
+   * id came from a hand-written temporary anchor rather than an anchor-less
+   * heading. */
+  temp?: string;
 }
 
 model DocSummary {
@@ -442,6 +447,9 @@ interface Collection {
    * heading that lacks one and append them to the heading line. The one
    * operation in this layer that writes to document bodies: node identity is
    * tooling-owned, and anchors are store-global so they never need rewriting.
+   * Also resolves every hand-written `^t-<slug>` temporary anchor to a fresh
+   * store-global `^r-…`, rewriting the heading and every `[[^t-<slug>]]`
+   * reference to it across the whole store in the same pass.
    */
   assignIds(dryRun?: boolean, ...CommonOutput): AssignedAnchor[];
 

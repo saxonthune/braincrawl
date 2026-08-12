@@ -13,7 +13,9 @@ One markdown file per item under the consolidated store. A worked example is
 - **Frontmatter** — one required field (`collection check` warns if missing): `doc:`, a kebab-case
   slug that is the filename stem and primary key.
 - **Body** — only research nodes, no loose prose and no H1. A `## ` heading opens a node with
-  an opaque-prose title; `collection assign-ids` appends its `^r-…` anchor — never write one by hand.
+  an opaque-prose title; `collection assign-ids` appends its `^r-…` anchor — never write one by
+  hand. To cross-link two nodes in the same batch of edits before an anchor exists, write a
+  **temporary anchor** instead — see below.
 - **Property line** — `- key: value`, the value optionally one YAML flow map
   (`{role: core, why: '…'}`); quote any value holding a comma. `- tags: #a #b` is special —
   each `#`-token is a node label, not a property.
@@ -25,6 +27,10 @@ One markdown file per item under the consolidated store. A worked example is
 - **Anchors are store-global.** `assign-ids` keeps every `^r-…` unique across the whole store,
   so a bare `^r-…` resolves to its node from **any** doc — no slug prefix — and the reference
   survives if that node later moves to another doc.
+- **Temporary anchors** — an author may write `^t-<slug>` by hand on a heading (`## Title
+  ^t-my-slug`) and reference it as `[[^t-<slug>]]` from any edge in any doc of the same batch.
+  `collection assign-ids` resolves every `^t-<slug>` to a fresh store-global `^r-…`, rewriting the
+  heading and every reference to it in one pass. A `^r-…` is still never hand-written.
 - **Link vocabulary** — `catalog` links a node to a work; `contradicts` is the standard
   claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/`complicates`
   are free domain words. A `reading: {role, why}` property plus a `catalog` link marks a

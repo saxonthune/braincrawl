@@ -253,14 +253,31 @@ fn cmd_rm(root: &Path, doc: &str) -> Result<(), DynErr> {
 
 fn cmd_assign_ids(root: &Path, dry_run: bool) -> Result<(), DynErr> {
     let assigned = l3::assign_ids(root, dry_run)?;
+    let (mut resolved_count, mut plain_count) = (0usize, 0usize);
     for a in &assigned {
-        eprintln!("{}\t{}\t{}\t{}", a.doc, a.heading_line, a.id, a.title);
+        match &a.temp {
+            Some(temp) => {
+                resolved_count += 1;
+                eprintln!("{}\t{}\t^{} → {}\t{}", a.doc, a.heading_line, temp, a.id, a.title);
+            }
+            None => {
+                plain_count += 1;
+                eprintln!("{}\t{}\t{}\t{}", a.doc, a.heading_line, a.id, a.title);
+            }
+        }
     }
-    if dry_run {
-        eprintln!("{} anchor(s) would be assigned (dry run)", assigned.len());
-    } else {
-        eprintln!("{} anchor(s) assigned", assigned.len());
+
+    let docs = scan(root)?;
+    let sources: Vec<(String, String)> = docs
+        .iter()
+        .filter_map(|d| fs::read_to_string(&d.path).ok().map(|content| (d.doc.clone(), content)))
+        .collect();
+    for slug in l3::dangling_temp_refs(&sources) {
+        eprintln!("warn: dangling temporary anchor ^{slug} — referenced but never defined on a heading");
     }
+
+    let suffix = if dry_run { " (dry run)" } else { "" };
+    eprintln!("{plain_count} anchor(s) assigned, {resolved_count} temporary anchor(s) resolved{suffix}");
     Ok(())
 }
 
@@ -934,7 +951,26 @@ fn lint(path: &Path, content: &str, has_catalog_ref: bool) -> Vec<String> {
     if !has_catalog_ref {
         warns.push("no catalog reference (any ns:value, e.g. openalex:/doi:/isbn:) — L3 is annotation-over-reference".to_string());
     }
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            if heading_has_temp_anchor(rest) {
+                warns.push("unresolved temporary anchor `^t-…` — run `collection assign-ids` before pushing".to_string());
+                break;
+            }
+        }
+    }
     warns
+}
+
+/// Whether a `##` heading line (with the `## ` prefix already stripped) carries a
+/// `^t-<slug>` anchor — the same trailing-token scan as `split_anchor`.
+fn heading_has_temp_anchor(heading: &str) -> bool {
+    let heading = heading.trim_end();
+    let token = match heading.rsplit_once(char::is_whitespace) {
+        Some((_, last)) => last,
+        None => heading,
+    };
+    token.starts_with("^t-")
 }
 
 // ── scaffolding ───────────────────────────────────────────────────────────────
@@ -1136,6 +1172,26 @@ mod tests {
     fn lint_accepts_catalog_ref_when_present() {
         let warns = lint(Path::new("/x/foo.l3.md"), "---\ndoc: foo\n---\n\nbody\n", true);
         assert!(!warns.iter().any(|w| w.contains("no catalog reference")));
+    }
+
+    #[test]
+    fn lint_flags_surviving_temporary_anchor() {
+        let warns = lint(
+            Path::new("/x/foo.l3.md"),
+            "---\ndoc: foo\n---\n\n## Title ^t-alpha\n- tags: #a\n",
+            true,
+        );
+        assert!(warns.iter().any(|w| w.contains("unresolved temporary anchor")));
+    }
+
+    #[test]
+    fn lint_does_not_flag_an_ordinary_anchor() {
+        let warns = lint(
+            Path::new("/x/foo.l3.md"),
+            "---\ndoc: foo\n---\n\n## Title ^r-abc1234\n- tags: #a\n",
+            true,
+        );
+        assert!(!warns.iter().any(|w| w.contains("unresolved temporary anchor")));
     }
 
     fn temp_root(name: &str) -> PathBuf {

@@ -8,7 +8,7 @@ mod normalize;
 mod parse;
 pub mod ids;
 
-pub use assign::{assign_ids, assign_ids_source, collect_anchors, Assigned};
+pub use assign::{assign_ids, assign_ids_source, collect_anchors, dangling_temp_refs, Assigned};
 pub use frontmatter::upsert_frontmatter_key;
 pub use model::{Endpoint, Graph, Link, Node, NodeId, Provenance, Warning};
 pub use normalize::{normalize_doc, NormalizeOutcome};
