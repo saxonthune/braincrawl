@@ -39,40 +39,33 @@ Investigate the codebase to understand what changes are needed:
 3. **Read key files** — Read the files you'll need to modify. Understand their structure, patterns, and conventions.
 4. **Understand test patterns** — Find existing tests near the code you'll change. Note the test framework, assertion style, and what's already covered.
 5. **Check for gotchas** — Look for related code that might break, shared state, or implicit dependencies.
+6. **Load the design artifacts, to depth.** Before briefing, pull the concrete references a decision will touch — not a skim. Read the repo glossary or controlled vocabulary (follow the pointer in the repo `CLAUDE.md`/`AGENTS.md`), the current CLI or API surface the task changes (generated docs, `--help`, the actual enum/route/signature), and any dataflow the change moves. Read each to the point where you can quote it verbatim: the exact signature, the enum variants that exist today, the string a command prints, the `file:line`. A decision briefed from a skim produces a hand-back; a decision briefed from a quoted interface produces a recommendation.
 
 **Chain/epic phases:** When triaging a spec that is part of a chain or epic and whose predecessor phases have not merged yet, do not research live code for the predecessor's output. Read the predecessor spec's `## Surface after this phase` block and triage against that declared Surface. The Surface stands in for code that does not exist yet. If a symbol or behavior is not in the Surface, treat it as not existing.
 
 ## Step 4: Briefing
 
-Present your findings to the user before writing anything. This is where alignment happens.
+Present your findings to the user before writing anything. This is where alignment happens. The reader does not remember the codebase state you just finished reading — write the briefing for someone who moves between several repos in a day and needs the current interface put in front of them, not assumed.
+
+The briefing is a grounded artifact with four parts. Every decision it surfaces must live in this structure, not in a hand-back.
 
 ### 1. Plan Summary
 One paragraph restating the task's motivation and scope in your own words. Flag anything ambiguous.
 
-### 2. Codebase Landscape
-What exists today that's relevant:
-- Files/modules that will be modified or extended
-- Existing patterns the implementation should follow
-- Adjacent code that might be affected
+### 2. Status quo — quote the interface
+What exists today, stated concretely enough that the reader can decide without re-reading the source. For each behavior a decision touches, **quote the actual interface** — the current signature, the enum variants that exist now, the literal string a command prints, the `file:line`. "Today `CatalogCmd` (`cli.rs:422`) has `Get, Have, Neighborhood, Stats, Put` — no `Add`" is answerable cold. "How the catalog handles hand entry" is not. Do not describe an interface you can quote; quote it.
 
-### 3. Considerations
-Open questions, tradeoffs, and design decisions the task surfaces. Present each as a concrete question with your recommendation. Use `AskUserQuestion` for decisions that affect the approach:
+### 3. Recommended changes — state the decision, don't hand it back
+For each design decision the task surfaces, state your recommendation as a declarative sentence that cites the status-quo fact it rests on. End on the recommendation, not on a menu.
 
-```typescript
-AskUserQuestion({
-  questions: [{
-    question: "Should concept files co-locate tests or use separate test files?",
-    header: "Test layout",
-    options: [
-      { label: "Co-located (Recommended)", description: "Tests at the bottom of each concept file — reads like a spec" },
-      { label: "Separate files", description: "One .test.ts per concept — conventional but splits the narrative" }
-    ],
-    multiSelect: false
-  }]
-})
-```
+- **State the change and its ground:** "Add a `catalog add` subcommand reusing the `push_emission` write path (`usecases.rs:194`), because that path already mints a work node and its aliases." Not "the hand-entry verb is an open question."
+- **Name a coined term's referent.** If you catch yourself inventing a label for something the interface already names, state the interface fact instead. The label is how the decision skips its grounding.
+- **When the choice hinges on the user's priority,** name the deciding axis, state which option wins under the priority they have given, and ask for the priority only when it is genuinely unstated — do not present a branch for the user to resolve.
 
-Group up to 4 decisions into a single `AskUserQuestion` call when possible.
+Only use `AskUserQuestion` when the recommendation is already stated in the briefing body and the tool is capturing the user's pick of it — never as the place the recommendation first appears. The picker carries the choice; the briefing carries the reasoning and the ground.
+
+### 4. What it changes
+The interface and dataflow delta: which signatures, routes, or data paths move, before → after. This is what the reader approves.
 
 ## Step 5: Scope check — is this one headless session?
 
