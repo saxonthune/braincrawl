@@ -121,6 +121,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         std::process::exit(1);
                     }
                 }
+                CatalogCmd::Add { aliases, title, authors, year, kind } => {
+                    let record = braincrawl_cli::provider::build_manual_work_record(
+                        &aliases, title, authors, year, &kind,
+                    )?;
+                    let emission = Emission {
+                        records: vec![record],
+                        edges: vec![],
+                        skipped_unmappable: 0,
+                    };
+                    let summary = push_emission(&client, &emission);
+                    report_push_summary(&summary);
+                    if !summary.errors.is_empty() {
+                        std::process::exit(1);
+                    }
+                    for id in &summary.pushed_ids {
+                        println!("{id}");
+                    }
+                }
             }
         }
         Namespace::Collection(collection) => {
@@ -1077,12 +1095,16 @@ fn run_provider(
 fn push_emission(store: &StoreClient, em: &Emission) -> PushSummary {
     let mut nodes_pushed = 0usize;
     let mut errors: Vec<String> = Vec::new();
+    let mut pushed_ids: Vec<String> = Vec::new();
 
     for work_record in &em.records {
         match serde_json::to_value(work_record) {
             Err(e) => errors.push(format!("serialize failed: {e}")),
             Ok(v) => match store.put_work(&v) {
-                Ok(_) => nodes_pushed += 1,
+                Ok(id) => {
+                    nodes_pushed += 1;
+                    pushed_ids.push(id);
+                }
                 Err(e) => errors.push(format!("push node failed: {e}")),
             },
         }
@@ -1106,6 +1128,7 @@ fn push_emission(store: &StoreClient, em: &Emission) -> PushSummary {
         edges_pushed,
         skipped_unmappable: em.skipped_unmappable,
         errors,
+        pushed_ids,
     }
 }
 

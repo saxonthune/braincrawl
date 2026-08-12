@@ -103,3 +103,8 @@ normalized `title+author+year` key (or MinHash/LSH), then a similarity threshold
 path produces **merge proposals** that an agent or user confirms before any union is
 committed; it never auto-merges. Keeping it as a distinct path ensures probabilistic
 matching can never corrupt the deterministic core.
+
+A work no provider describes — a book is the ordinary case, typically carrying an ISBN
+and no DOI or OpenAlex id — is entered by hand with `catalog add`. It mints the node
+and its aliases directly, so the work becomes nameable without waiting on a fetch that
+will never succeed.

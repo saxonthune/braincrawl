@@ -449,6 +449,24 @@ pub enum CatalogCmd {
         /// Read the emission from this file instead of stdin
         file: Option<String>,
     },
+    /// Mint a work in the catalog by hand, for a source no provider has a record for
+    Add {
+        /// Aliases in ns:value form; at least one required (e.g. isbn:9780691215105)
+        #[arg(long = "alias", required = true)]
+        aliases: Vec<String>,
+        /// Work title
+        #[arg(long)]
+        title: String,
+        /// Author, repeatable in citation order
+        #[arg(long = "author")]
+        authors: Vec<String>,
+        /// Publication year
+        #[arg(long)]
+        year: Option<u32>,
+        /// Node kind (default: Work)
+        #[arg(long, default_value = "work")]
+        kind: String,
+    },
 }
 
 #[derive(Args)]

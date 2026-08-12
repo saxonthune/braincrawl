@@ -147,12 +147,24 @@ fn cmd_check(root: &Path, doc: Option<String>, all: bool) -> Result<(), DynErr> 
         vec![read_meta(&path)?]
     };
 
-    let (_graph, parse_warnings) = l3::parse(root);
+    let (graph, parse_warnings) = l3::parse(root);
+    let docs_with_catalog_ref: BTreeSet<&str> = graph
+        .links
+        .iter()
+        .filter_map(|link| {
+            let recorded_in = link.recorded_in.as_ref()?;
+            let source_doc = graph.node_by_id(&recorded_in.0)?.provenance.doc.as_str();
+            let has_catalog = [&link.source, &link.target]
+                .iter()
+                .any(|e| matches!(e, l3::Endpoint::Catalog(_)));
+            has_catalog.then_some(source_doc)
+        })
+        .collect();
 
     let mut total_warns = 0usize;
     for d in &targets {
         let content = fs::read_to_string(&d.path)?;
-        let mut warns = lint(&d.path, &content);
+        let mut warns = lint(&d.path, &content, docs_with_catalog_ref.contains(d.doc.as_str()));
         warns.extend(
             parse_warnings
                 .iter()
@@ -894,9 +906,9 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
 }
 
 /// Advisory lint: required frontmatter present + the one body invariant (reference, not copy).
-fn lint(path: &Path, content: &str) -> Vec<String> {
+fn lint(path: &Path, content: &str, has_catalog_ref: bool) -> Vec<String> {
     let mut warns = Vec::new();
-    let (fm, body) = split_frontmatter(content);
+    let (fm, _body) = split_frontmatter(content);
     if fm.is_empty() {
         warns.push("no YAML frontmatter block".to_string());
     }
@@ -919,8 +931,8 @@ fn lint(path: &Path, content: &str) -> Vec<String> {
         warns.push("legacy `domain` key present — should be `doc`".to_string());
     }
     // Body invariant: an L3 references canonical ids, it does not copy metadata.
-    if !body.contains("openalex:") && !body.contains("doi:") {
-        warns.push("no canonical ids (openalex:/doi:) referenced — L3 is annotation-over-reference".to_string());
+    if !has_catalog_ref {
+        warns.push("no catalog reference (any ns:value, e.g. openalex:/doi:/isbn:) — L3 is annotation-over-reference".to_string());
     }
     warns
 }
@@ -1110,8 +1122,20 @@ mod tests {
 
     #[test]
     fn lint_flags_missing_metadata_and_copy() {
-        let warns = lint(Path::new("/x/foo.l3.md"), "# just a body\n");
+        let warns = lint(Path::new("/x/foo.l3.md"), "# just a body\n", false);
         assert!(warns.iter().any(|w| w.contains("frontmatter")));
+    }
+
+    #[test]
+    fn lint_flags_missing_catalog_ref() {
+        let warns = lint(Path::new("/x/foo.l3.md"), "---\ndoc: foo\n---\n\nbody\n", false);
+        assert!(warns.iter().any(|w| w.contains("no catalog reference")));
+    }
+
+    #[test]
+    fn lint_accepts_catalog_ref_when_present() {
+        let warns = lint(Path::new("/x/foo.l3.md"), "---\ndoc: foo\n---\n\nbody\n", true);
+        assert!(!warns.iter().any(|w| w.contains("no catalog reference")));
     }
 
     fn temp_root(name: &str) -> PathBuf {

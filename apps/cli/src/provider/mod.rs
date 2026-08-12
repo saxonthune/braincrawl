@@ -74,12 +74,61 @@ impl Emission {
     pub fn empty() -> Self { Self::default() }
 }
 
+/// Node kinds a hand-entered record may declare (`crates/core/src/types.rs`'s `NodeKind`,
+/// lowercased).
+const VALID_KINDS: &[&str] = &["work", "author", "venue", "concept", "topic"];
+
+/// Build a `WorkRecord` for `catalog add` — hand entry for a work no provider describes
+/// (e.g. a book, named by ISBN). Mirrors what a provider's fetch path would emit, so a
+/// hand-entered work projects the same way a fetched one does.
+pub fn build_manual_work_record(
+    aliases: &[String],
+    title: String,
+    authors: Vec<String>,
+    year: Option<u32>,
+    kind: &str,
+) -> Result<WorkRecord, String> {
+    let kind = kind.to_lowercase();
+    if !VALID_KINDS.contains(&kind.as_str()) {
+        return Err(format!("invalid kind '{kind}': expected one of {}", VALID_KINDS.join(", ")));
+    }
+
+    let mut parsed_aliases = Vec::with_capacity(aliases.len());
+    for a in aliases {
+        let Some((namespace, value)) = a.split_once(':') else {
+            return Err(format!("invalid alias '{a}': expected ns:value form"));
+        };
+        parsed_aliases.push(Alias { namespace: namespace.to_string(), value: value.to_string() });
+    }
+
+    let mut attrs = serde_json::Map::new();
+    attrs.insert("title".to_string(), serde_json::Value::String(title));
+    if !authors.is_empty() {
+        attrs.insert(
+            "authors".to_string(),
+            serde_json::Value::Array(authors.into_iter().map(serde_json::Value::String).collect()),
+        );
+    }
+    if let Some(y) = year {
+        attrs.insert("publication_year".to_string(), serde_json::Value::Number(y.into()));
+    }
+
+    Ok(WorkRecord {
+        source: "manual".to_string(),
+        kind,
+        aliases: parsed_aliases,
+        attrs: serde_json::Value::Object(attrs),
+    })
+}
+
 /// Counts from a push operation; reported to stderr.
 pub struct PushSummary {
     pub nodes_pushed: usize,
     pub edges_pushed: u64,
     pub skipped_unmappable: usize,
     pub errors: Vec<String>,
+    /// Canonical id returned by the store for each successfully pushed record, in order.
+    pub pushed_ids: Vec<String>,
 }
 
 /// Format the current time as an RFC3339 UTC timestamp without external deps.

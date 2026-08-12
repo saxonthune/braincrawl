@@ -294,6 +294,9 @@ no H1:
   its canonical id directly). `catalog` names a work-link; `contradicts` is the blessed word
   for a claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/
   `complicates` are free domain vocabulary.
+- A catalog reference only resolves once some node in the store carries that alias. For a
+  work no provider has a record for — a book, most often — mint it by hand with
+  `braincrawl catalog add --alias isbn:… --title … [--author … --year …]` before linking to it.
 - Anchors are **store-global**: `assign-ids` keeps every `^r-…` unique across the whole store,
   so a bare `^r-…` resolves to its node from any doc — no `slug#` prefix, and the reference
   survives if the node moves docs.
