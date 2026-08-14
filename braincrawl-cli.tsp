@@ -458,19 +458,6 @@ interface Collection {
    * alongside its catalog work, grouped by role.
    */
   readingList(...CommonOutput): ReadingEntry[];
-
-  /**
-   * collection push [doc] — send local documents to the worker's consolidated
-   * store.
-   *
-   * NOTE: `push`/`pull` here are a two-way sync with a remote, not the layer
-   * write that Library.put and Catalog.put perform — a distinct sense of the
-   * word, carried by a distinct verb on purpose.
-   */
-  push(doc?: DocSlug, dryRun?: boolean, force?: boolean, ...CommonOutput): {};
-
-  /** collection pull [doc] — bring documents down from the worker's store. */
-  pull(doc?: DocSlug, dryRun?: boolean, ...CommonOutput): {};
 }
 
 // ---------------------------------------------------------------------------
@@ -559,21 +546,45 @@ interface OpenCitations {
 op web(): string;
 
 /**
- * migrate-store — replay a local SQLite and blob corpus into a remote store
- * over its HTTP API.
+ * A store spec: a configured store name from `[stores.<name>]` in the config
+ * file, or a bare base URL.
  */
-op migrateStore(
-  /** --db (default ~/.local/share/braincrawl/braincrawl.db) */
-  db?: string,
+scalar StoreSpec extends string;
 
-  /** --blobs (default ~/.local/share/braincrawl/blobs) */
-  blobs?: string,
+/**
+ * store — named stores: list them, switch the active one, diff two stores,
+ * and sync one into another over the `/export/*` + write routes.
+ */
+interface StoreOps {
+  /** store list — configured stores and which one is active. */
+  list(): {};
 
-  /** --dry-run (print plan counts; push nothing) */
-  dryRun?: boolean,
+  /** store use <name> — rewrite `active_store` in the config file. */
+  use(@doc("Store name from [stores.<name>]") name: string): {};
 
-  ...CommonOutput,
-): {};
+  /** store diff <a> [b] — counts per side and which works each side lacks. */
+  diff(a: StoreSpec, @doc("Default: the active store") b?: StoreSpec): {};
+
+  /**
+   * store sync <source> <dest> — replay everything the destination lacks
+   * from the source: catalog works/edges/artifacts, then Research Documents
+   * node-by-node (rules in crates/l3-sync). Idempotent; both directions use
+   * the same path.
+   */
+  sync(
+    source: StoreSpec,
+    dest: StoreSpec,
+
+    /** --dry-run (print plan counts; push nothing) */
+    dryRun?: boolean,
+
+    /** --doc (restrict to one Research Document; skips the catalog phases) */
+    doc?: DocSlug,
+
+    /** --force (with --doc: bypass the destination's parse-warning bounce) */
+    force?: boolean,
+  ): {};
+}
 
 /**
  * rename <file> — rename a work file to its canonical bibliographic filename.

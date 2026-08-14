@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 
 use crate::types::{
-    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind, JobSpec,
-    NodeKind, Artifact, ArtifactRole, StoredBlob,
+    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportEdgeAssertion, ExportNode,
+    GraphStats, Job, JobId, JobKind, JobSpec, NodeKind, Artifact, ArtifactRole, StoredBlob,
+    WorkSearchFilter,
 };
 
 /// Opaque key → bytes. Knows nothing of `kind`/`version`.
@@ -32,6 +33,15 @@ pub trait ArtifactStore {
         role: Option<ArtifactRole>,
         all_versions: bool,
     ) -> Result<Vec<Artifact>, DomainError>;
+
+    /// Enumerate current artifact descriptors store-wide, keyset-paginated by
+    /// (canonical_id, role). `cursor` is the opaque cursor from the previous
+    /// page; `None` starts from the beginning. Descriptors only, never bytes.
+    async fn export_artifacts(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, Option<String>), DomainError>;
 }
 
 /// The queryable graph facts.
@@ -103,12 +113,39 @@ pub trait MetadataStore {
     /// Returns which of the given aliases are already known (for `have` queries).
     async fn present_aliases(&self, aliases: &[Alias]) -> Result<Vec<Alias>, DomainError>;
 
+    /// Live work nodes whose assertions match every set field of `filter`
+    /// (author/title as case-insensitive substrings, year exact), ordered by
+    /// canonical_id and capped at `limit`. An empty filter matches every live
+    /// work (the use-case layer decides whether to allow that).
+    async fn search_work_ids(
+        &self,
+        filter: &WorkSearchFilter,
+        limit: u32,
+    ) -> Result<Vec<CanonicalId>, DomainError>;
+
     /// Aggregate counts over the whole network (works, nodes, edges, sources).
     async fn stats(&self) -> Result<GraphStats, DomainError>;
 
     /// Names of migrations applied in this database, for drift detection against
     /// the set compiled into the running binary.
     async fn applied_migrations(&self) -> Result<Vec<String>, DomainError>;
+
+    /// Enumerate live nodes (with aliases and assertions), keyset-paginated by
+    /// canonical_id. Tombstones are excluded — a sync replay only needs the
+    /// live representative; the destination re-merges by alias on its own.
+    async fn export_nodes(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportNode>, Option<String>), DomainError>;
+
+    /// Enumerate edge assertions store-wide, keyset-paginated by the full
+    /// (src_id, dst_id, relation, source) primary key.
+    async fn export_edge_assertions(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportEdgeAssertion>, Option<String>), DomainError>;
 }
 
 /// KV projection cache for id resolution.

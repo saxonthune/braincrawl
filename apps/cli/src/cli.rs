@@ -29,7 +29,7 @@ pub struct GlobalArgs {
     /// Return full record (all fields)
     #[arg(long, global = true)]
     pub full: bool,
-    /// Do not push results to the local store
+    /// Do not write provider results to the active store
     #[arg(long, global = true)]
     pub skip_push: bool,
     /// Include reconstructed abstract text (bulky; off by default)
@@ -63,10 +63,50 @@ pub enum Namespace {
     Web,
     #[command(about = "Report drift across the CLI, server, config, and store")]
     Doctor,
-    #[command(name = "migrate-store", about = "Replay the local SQLite + blob corpus into a remote store over its HTTP API")]
-    MigrateStore(MigrateStoreArgs),
+    #[command(about = "Named stores: list, switch the active one, diff, and sync between them")]
+    Store(StoreArgs),
     #[command(about = "Rename a work file to its canonical bibliographic filename")]
     Rename(RenameArgs),
+}
+
+#[derive(Args)]
+pub struct StoreArgs {
+    #[command(subcommand)]
+    pub cmd: StoreCmd,
+}
+
+#[derive(Subcommand)]
+pub enum StoreCmd {
+    /// List configured stores and which one is active
+    List,
+    /// Switch the active store (rewrites `active_store` in the config file)
+    Use {
+        /// Store name from the config's [stores.<name>] tables
+        name: String,
+    },
+    /// Compare two stores: counts per side and which works each side lacks
+    Diff {
+        /// Source store — a configured name or a base URL
+        a: String,
+        /// Other store — a configured name or a base URL (default: the active store)
+        b: Option<String>,
+    },
+    /// Copy everything the destination lacks from the source (replay; idempotent)
+    Sync {
+        /// Source store — a configured name or a base URL
+        source: String,
+        /// Destination store — a configured name or a base URL
+        dest: String,
+        /// Print the plan counts without writing anything
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+        /// Restrict the run to one Research Document (skips the catalog phases)
+        #[arg(long)]
+        doc: Option<String>,
+        /// With --doc: bypass the destination's parse-warning bounce
+        #[arg(long, requires = "doc")]
+        force: bool,
+    },
 }
 
 #[derive(Args)]
@@ -86,19 +126,6 @@ pub struct RenameArgs {
     #[arg(long)]
     pub title: String,
     /// Print the proposed new path; do not rename
-    #[arg(long = "dry-run")]
-    pub dry_run: bool,
-}
-
-#[derive(Args)]
-pub struct MigrateStoreArgs {
-    /// Path to the local SQLite database (default: $HOME/.local/share/braincrawl/braincrawl.db)
-    #[arg(long)]
-    pub db: Option<String>,
-    /// Path to the local blob root directory (default: $HOME/.local/share/braincrawl/blobs)
-    #[arg(long)]
-    pub blobs: Option<String>,
-    /// Print the plan counts without pushing any work, edge, or artifact
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
@@ -192,25 +219,6 @@ pub enum L3Cmd {
     },
     /// List every node with a `reading` property and its catalog work, grouped by role
     ReadingList,
-    /// Push local doc(s) to the worker's consolidated L3 store
-    Push {
-        /// Doc slug (omit to push every push-candidate doc)
-        doc: Option<String>,
-        /// Print the plan without transferring or touching sync state
-        #[arg(long = "dry-run")]
-        dry_run: bool,
-        /// Bypass the worker's warning bounce (400) on push
-        #[arg(long)]
-        force: bool,
-    },
-    /// Pull doc(s) from the worker's consolidated L3 store into the local repo
-    Pull {
-        /// Doc slug (omit to pull every pull-candidate doc)
-        doc: Option<String>,
-        /// Print the plan without transferring or touching sync state
-        #[arg(long = "dry-run")]
-        dry_run: bool,
-    },
 }
 
 #[derive(Args)]
@@ -448,6 +456,21 @@ pub enum CatalogCmd {
     Put {
         /// Read the emission from this file instead of stdin
         file: Option<String>,
+    },
+    /// Search the store's works by author, title, year, or held artifact (no provider call)
+    Search {
+        /// Author name substring, case-insensitive (matches any listed author)
+        #[arg(long)]
+        author: Option<String>,
+        /// Title substring, case-insensitive
+        #[arg(long)]
+        title: Option<String>,
+        /// Publication year, exact
+        #[arg(long)]
+        year: Option<u32>,
+        /// Only works currently holding an artifact of this role (e.g. fulltext, pages)
+        #[arg(long = "with-artifact")]
+        with_artifact: Option<String>,
     },
     /// Mint a work in the catalog by hand, for a source no provider has a record for
     Add {

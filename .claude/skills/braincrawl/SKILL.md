@@ -20,6 +20,7 @@ alone is the default.
 |---|---|---|
 | **Gathering** (default) | this file | Building the Catalog against a topic — search, follow citations, rank canon, add works to a Research Document. |
 | **Reading guide** | `reading-guide.md` | The user is reading one work directly and asking questions about specific passages. Answers come from the work's own text, cited to a page. |
+| **PDF import** | `pdf-import.md` | Bringing local PDF files into the Library — identify the work, land its canonical Catalog record, store and paginate the bytes, anchor folios, rename the source file. |
 
 **Your role in a session.** You are a signal converter, and you work best as the medium
 between sources of information. In a braincrawl session your job is a few general behaviors.
@@ -34,9 +35,13 @@ Three layers:
 
 | Layer | What it is | Where it lives |
 |---|---|---|
-| **L1 — Library** | works keyed by UUID + payloads (abstract now, fulltext on demand) | the **server's store** (shared) |
-| **L2 — Catalog** | nodes + citation edges, gathered lazily from OpenAlex | the **server's store** (shared) |
-| **L3 — Research Collection** | *your* questions, selections, annotations, domain edges | **the consolidated research document store** (one config-driven dir, one Research Document per item) |
+| **L1 — Library** | works keyed by UUID + payloads (abstract now, fulltext on demand) | the **active store** |
+| **L2 — Catalog** | nodes + citation edges, gathered lazily from OpenAlex | the **active store** |
+| **L3 — Research Collection** | *your* questions, selections, annotations, domain edges | the **active store** (one Research Document per item; file repo behind the machine-local store, R2 behind the worker) |
+
+Every store carries all three layers, and `store sync <src> <dst>` moves any of them
+between stores — there is no privileged "local" or "remote" side, only a source and a
+destination.
 
 The Library and Catalog are general and shared across every project. The Research Collection is yours. **The Research Collection is
 annotation-over-reference: it stores work *references* + your notes, never copies of the
@@ -44,10 +49,10 @@ metadata.** A work's canonical identity is its store-minted **UUID** (provider-n
 page you name a work by an `openalex:`/`doi:` reference that resolves to that UUID. Look facts
 back up from the store at read time so a doc never drifts from the graph.
 
-> Status note: The Library and Catalog live in the server's DB; the Research Collection is **not** a server feature (no
-> `/collections` endpoints). Instead the `braincrawl collection` CLI manages a **consolidated,
-> local document store** — one markdown file per doc under a single config-driven root —
-> so research knowledge stops scattering into per-project repos.
+> Status note: the `braincrawl collection` commands edit the Research Documents behind the
+> machine-local store directly — one markdown file per doc under the config-driven `l3_repo`
+> root, which the local server also serves over `/api/l3/docs`. Editing files is store-local
+> work; carrying docs to another store is `store sync`.
 
 ## 0. Read what you already hold before pulling anything
 
@@ -123,16 +128,32 @@ Underlying server env vars (if you bypass the script): `BRAINCRAWL_DB` (default
 
 ## 2. Point the CLI at the server
 
-The `braincrawl` CLI talks to the server (`BRAINCRAWL_SERVER_URL`, default
-`http://127.0.0.1:8787`) and forks directly to OpenAlex for provider queries. Config
-precedence is env > `~/.config/braincrawl/config.toml` > default.
+The `braincrawl` CLI talks to one store at a time and forks directly to OpenAlex for
+provider queries. Stores are named in `~/.config/braincrawl/config.toml` under
+`[stores.<name>]`; `active_store` picks the one every command targets. Config
+precedence is `BRAINCRAWL_SERVER_URL` env > active named store > flat `server_url` >
+default `http://127.0.0.1:8787`.
 
 ```toml
 # ~/.config/braincrawl/config.toml
-server_url = "http://127.0.0.1:8787"
-# auth_token = "..."                    # match BRAINCRAWL_AUTH_TOKEN if auth is enabled
-# openalex_api_key = "..."              # optional; OpenAlex needs no key
+active_store = "local"
+
+[stores.local]
+url = "http://127.0.0.1:8787"
+
+[stores.worker]
+url = "https://example-worker-host"
+# auth_token = "..."                    # the token belongs to the store it unlocks
+# openalex_api_key = "..."              # top-level; optional — OpenAlex needs no key
 ```
+
+Switch stores with `braincrawl store use <name>` (prints both sides' counts so you see
+what you are walking away from). `braincrawl store list` shows the roster;
+`braincrawl store diff <a> [b]` compares two stores; `braincrawl store sync <source>
+<dest>` copies everything the destination lacks (idempotent replay — safe to re-run).
+Sync carries all three layers: catalog works/edges/artifacts by replay, and Research
+Documents node-by-node (anchors are the unit; rules in `crates/l3-sync`). Node conflicts
+are reported, never clobbered; run the sync in both directions to converge both stores.
 
 Global output flags (work on every command): `--text` (one result/line, tab-separated),
 `--json` (default, pretty), `--limit N`, `--all`, `--fields a,b,c`, `--full`,

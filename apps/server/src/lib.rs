@@ -37,7 +37,7 @@ use braincrawl_core::{
     traits::{IdResolver, JobEnqueuer},
     types::{
         Alias, Artifact, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, JobSpec,
-        ArtifactRole, WorkRecord,
+        ArtifactRole, WorkRecord, WorkSearchFilter,
     },
     usecases::Store,
 };
@@ -475,11 +475,139 @@ async fn handler_works_put(
     StatusCode::NOT_FOUND.into_response()
 }
 
+/// GET /works — store-side work search.
+///
+/// Query params: `author`, `title` (case-insensitive substrings), `year`,
+/// `with_artifact` (an artifact role the work must currently hold), `limit`
+/// (default 25, max 200). At least one filter is required. Each result is a
+/// merged work view plus its current artifact descriptors.
+async fn handler_search_works(
+    State(store): State<Arc<LocalStore>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let filter = WorkSearchFilter {
+        author: params.get("author").cloned(),
+        title: params.get("title").cloned(),
+        year: params.get("year").and_then(|s| s.parse::<u32>().ok()),
+    };
+    let with_artifact = match params.get("with_artifact").map(|s| parse_artifact_role(s)) {
+        Some(Some(k)) => Some(k),
+        Some(None) => return (StatusCode::BAD_REQUEST, "invalid with_artifact role").into_response(),
+        None => None,
+    };
+    if filter.is_empty() && with_artifact.is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "at least one of author, title, year, with_artifact is required",
+        )
+            .into_response();
+    }
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(25)
+        .min(200);
+    let result = run_blocking(move || async move {
+        let views = store.search_works(&filter, with_artifact, limit).await?;
+        let mut out = Vec::with_capacity(views.len());
+        for view in views {
+            let artifacts = store
+                .list_artifacts_by_id(view.canonical_id.clone(), None, false)
+                .await?;
+            out.push((view, artifacts));
+        }
+        Ok::<_, DomainError>(out)
+    })
+    .await;
+    match result {
+        Ok(rows) => {
+            let works: Vec<serde_json::Value> = rows
+                .into_iter()
+                .map(|(view, artifacts)| {
+                    let mut body = serde_json::to_value(view).expect("WorkView serializes");
+                    let artifacts: Vec<_> = artifacts.iter().map(artifact_json).collect();
+                    body["artifacts"] = serde_json::Value::Array(artifacts);
+                    body
+                })
+                .collect();
+            Json(serde_json::json!({ "works": works })).into_response()
+        }
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
 /// GET /stats
 async fn handler_stats(State(store): State<Arc<LocalStore>>) -> impl IntoResponse {
     let result = run_blocking(move || async move { store.stats().await }).await;
     match result {
         Ok(stats) => Json(stats).into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// Read the shared `cursor` / `limit` params for the `/export/*` routes.
+/// Limit defaults to 100 and is capped at 200 per page.
+fn export_page_params(params: &HashMap<String, String>) -> (Option<String>, u32) {
+    let cursor = params.get("cursor").cloned();
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(100)
+        .clamp(1, 200);
+    (cursor, limit)
+}
+
+/// GET /export/nodes
+async fn handler_export_nodes(
+    State(store): State<Arc<LocalStore>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (cursor, limit) = export_page_params(&params);
+    let result = run_blocking(move || async move {
+        store.export_nodes(cursor.as_deref(), limit).await
+    })
+    .await;
+    match result {
+        Ok((items, cursor)) => {
+            Json(serde_json::json!({ "items": items, "cursor": cursor })).into_response()
+        }
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// GET /export/edges
+async fn handler_export_edges(
+    State(store): State<Arc<LocalStore>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (cursor, limit) = export_page_params(&params);
+    let result = run_blocking(move || async move {
+        store.export_edge_assertions(cursor.as_deref(), limit).await
+    })
+    .await;
+    match result {
+        Ok((items, cursor)) => {
+            Json(serde_json::json!({ "items": items, "cursor": cursor })).into_response()
+        }
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
+/// GET /export/artifacts
+async fn handler_export_artifacts(
+    State(store): State<Arc<LocalStore>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let (cursor, limit) = export_page_params(&params);
+    let result = run_blocking(move || async move {
+        store.export_artifacts(cursor.as_deref(), limit).await
+    })
+    .await;
+    match result {
+        Ok((items, cursor)) => {
+            let items: Vec<_> = items.iter().map(artifact_json).collect();
+            Json(serde_json::json!({ "items": items, "cursor": cursor })).into_response()
+        }
         Err(e) => (domain_status(&e), e.to_string()).into_response(),
     }
 }
@@ -582,11 +710,14 @@ pub fn make_app(
     let authed = Router::new()
         // Exact static routes first so they win over wildcards.
         .route("/works/have", post(handler_have))
-        .route("/works", put(handler_put_work))
+        .route("/works", put(handler_put_work).get(handler_search_works))
         .route("/edges", put(handler_put_edges))
         .route("/jobs", post(handler_post_job))
         .route("/graph/neighborhood", post(handler_neighborhood))
         .route("/stats", get(handler_stats))
+        .route("/export/nodes", get(handler_export_nodes))
+        .route("/export/edges", get(handler_export_edges))
+        .route("/export/artifacts", get(handler_export_artifacts))
         .route("/api/l3/graph", get(handlers::handler_l3_graph))
         .route("/api/l3/docs", get(handlers::handler_l3_docs_list))
         .route(

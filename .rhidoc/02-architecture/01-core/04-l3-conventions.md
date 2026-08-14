@@ -39,3 +39,21 @@ One markdown file per item under the consolidated store. A worked example is
   at read time so a doc never drifts. A work's canonical identity is its store-generated UUID; name
   it with an `openalex:`/`doi:` reference that resolves to that UUID — never treat the provider
   id as the identity itself.
+
+## Sync semantics — the node is the unit
+
+`store diff` and `store sync` compare Research Collections **node by node**, keyed by the
+store-global anchor; the doc is a container. The rules live in one place —
+`crates/l3-sync` (`braincrawl-l3-sync`), whose module doc is the authoritative table — and
+are pure text-in/text-out so they can be revisited without touching transport. In brief:
+
+- An anchor present on one store only was created there (anchors are minted once, never
+  reused), so additions merge as set union with no recorded state.
+- Recorded per-anchor base hashes (kept per store pair under
+  `~/.local/share/braincrawl/store-sync-state/`) arbitrate only edits and deletions. A base
+  is recorded only for content **both** sides hold; a run that leaves the sides different
+  records nothing and the reverse-direction sync converges the pair.
+- Both-sides edits of the same node union their body lines when the heading matches;
+  a heading changed on both sides is a per-node conflict, reported and never transferred.
+- Deletions never propagate; moves (same anchor, different doc) are reported, not applied.
+- Unanchored nodes are invisible to sync — run `collection assign-ids` first.

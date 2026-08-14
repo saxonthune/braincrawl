@@ -39,6 +39,7 @@ fn work(source: &str, aliases: Vec<Alias>) -> WorkRecord {
         kind: NodeKind::Work,
         aliases,
         attrs: serde_json::json!({ "title": format!("record from {}", source) }),
+        fetched_at: None,
     }
 }
 
@@ -74,6 +75,7 @@ async fn test_bundle_convergence() {
         kind: NodeKind::Work,
         aliases: vec![alias("doi", "10.1/x"), alias("arxiv", "2301.00001")],
         attrs: serde_json::json!({}),
+        fetched_at: None,
     };
     // B: doi + pmid  (overlaps on doi)
     let b = WorkRecord {
@@ -81,6 +83,7 @@ async fn test_bundle_convergence() {
         kind: NodeKind::Work,
         aliases: vec![alias("doi", "10.1/x"), alias("pmid", "99999")],
         attrs: serde_json::json!({}),
+        fetched_at: None,
     };
 
     let id_a = s.put_work(a).await.unwrap();
@@ -119,6 +122,7 @@ async fn test_merge_confluence() {
         kind: NodeKind::Work,
         aliases: vec![alias("doi", "10.1/x"), alias("pmid", "12345")],
         attrs: serde_json::json!({}),
+        fetched_at: None,
     };
     let survivor = s.put_work(bridging).await.unwrap();
 

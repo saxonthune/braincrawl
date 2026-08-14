@@ -12,8 +12,9 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{JobEnqueuer, JobQueue, MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, Job, JobId, JobKind,
-        JobSpec, NodeKind, Artifact, ArtifactRole, Tally,
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportAssertion,
+        ExportEdgeAssertion, ExportNode, GraphStats, Job, JobId, JobKind, JobSpec, NodeKind,
+        Artifact, ArtifactRole, Tally, WorkSearchFilter,
     },
 };
 use rusqlite::{params, Connection, OptionalExtension};
@@ -253,6 +254,50 @@ impl ArtifactStore for SqliteStore {
             }
         };
         Ok(rows)
+    }
+
+    async fn export_artifacts(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, Option<String>), DomainError> {
+        let conn = self.conn.lock().unwrap();
+        // Cursor: JSON {"c": last_canonical_id, "r": last_role}
+        let decoded: Option<(String, String)> = cursor.and_then(|c| {
+            let v: serde_json::Value = serde_json::from_str(c).ok()?;
+            Some((v["c"].as_str()?.to_string(), v["r"].as_str()?.to_string()))
+        });
+        let fetch_limit = (limit + 1) as i64;
+        let rows: Vec<Artifact> = match &decoded {
+            None => {
+                let mut stmt = conn.prepare(braincrawl_sql::export::ARTIFACTS_FIRST).map_err(be)?;
+                let mapped: Vec<Artifact> = stmt
+                    .query_map(params![fetch_limit], row_to_artifact)
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+            Some((last_id, last_role)) => {
+                let mut stmt = conn.prepare(braincrawl_sql::export::ARTIFACTS_PAGE).map_err(be)?;
+                let mapped: Vec<Artifact> = stmt
+                    .query_map(params![last_id, last_role, fetch_limit], row_to_artifact)
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+        };
+        let has_more = rows.len() > limit as usize;
+        let page: Vec<Artifact> = rows.into_iter().take(limit as usize).collect();
+        let next_cursor = if has_more {
+            page.last().map(|a| {
+                serde_json::json!({"c": a.canonical_id.0, "r": a.role.as_str()}).to_string()
+            })
+        } else {
+            None
+        };
+        Ok((page, next_cursor))
     }
 }
 
@@ -654,6 +699,40 @@ impl MetadataStore for SqliteStore {
         Ok((views, next_cursor))
     }
 
+    async fn search_work_ids(
+        &self,
+        filter: &WorkSearchFilter,
+        limit: u32,
+    ) -> Result<Vec<CanonicalId>, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let sql = braincrawl_sql::search::works(
+            filter.author.is_some(),
+            filter.title.is_some(),
+            filter.year.is_some(),
+        );
+        let mut params: Vec<rusqlite::types::Value> = Vec::new();
+        if let Some(a) = &filter.author {
+            params.push(a.clone().into());
+        }
+        if let Some(t) = &filter.title {
+            params.push(t.clone().into());
+            params.push(t.clone().into());
+        }
+        if let Some(y) = filter.year {
+            params.push((y as i64).into());
+        }
+        params.push((limit as i64).into());
+        let mut stmt = conn.prepare(&sql).map_err(be)?;
+        let ids: Vec<CanonicalId> = stmt
+            .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                Ok(CanonicalId(row.get::<_, String>(0)?))
+            })
+            .map_err(be)?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(ids)
+    }
+
     async fn present_aliases(&self, aliases: &[Alias]) -> Result<Vec<Alias>, DomainError> {
         if aliases.is_empty() {
             return Ok(Vec::new());
@@ -756,6 +835,177 @@ impl MetadataStore for SqliteStore {
             .filter_map(|r| r.ok())
             .collect();
         Ok(rows)
+    }
+
+    async fn export_nodes(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportNode>, Option<String>), DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let fetch_limit = (limit + 1) as i64;
+        // Cursor: the last canonical_id, verbatim.
+        let node_rows: Vec<(String, String)> = match cursor {
+            None => {
+                let mut stmt = conn.prepare(braincrawl_sql::export::NODES_FIRST).map_err(be)?;
+                let mapped: Vec<(String, String)> = stmt
+                    .query_map(params![fetch_limit], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+            Some(last_id) => {
+                let mut stmt = conn.prepare(braincrawl_sql::export::NODES_PAGE).map_err(be)?;
+                let mapped: Vec<(String, String)> = stmt
+                    .query_map(params![last_id, fetch_limit], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+        };
+        let has_more = node_rows.len() > limit as usize;
+        let page: Vec<(String, String)> = node_rows.into_iter().take(limit as usize).collect();
+        if page.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        // Aliases and assertions for the whole page, chunked to stay under the
+        // D1-parity bound-parameter ceiling (shape parity with present_aliases).
+        const IDS_PER_CHUNK: usize = 45;
+        let ids: Vec<&String> = page.iter().map(|(id, _)| id).collect();
+        let mut aliases_by_node: std::collections::HashMap<String, Vec<Alias>> = Default::default();
+        let mut assertions_by_node: std::collections::HashMap<String, Vec<ExportAssertion>> =
+            Default::default();
+        for chunk in ids.chunks(IDS_PER_CHUNK) {
+            let alias_q = braincrawl_sql::export::aliases_for_nodes(chunk.len());
+            let mut stmt = conn.prepare(&alias_q).map_err(be)?;
+            let rows: Vec<(String, String, String)> = stmt
+                .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .map_err(be)?
+                .collect::<Result<_, _>>()
+                .map_err(be)?;
+            for (cid, namespace, value) in rows {
+                aliases_by_node.entry(cid).or_default().push(Alias { namespace, value });
+            }
+
+            let assn_q = braincrawl_sql::export::assertions_for_nodes(chunk.len());
+            let mut stmt = conn.prepare(&assn_q).map_err(be)?;
+            let rows: Vec<(String, String, String, String)> = stmt
+                .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
+                .map_err(be)?
+                .collect::<Result<_, _>>()
+                .map_err(be)?;
+            for (cid, source, attrs_s, fetched_at) in rows {
+                let attrs = serde_json::from_str(&attrs_s)
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                assertions_by_node
+                    .entry(cid)
+                    .or_default()
+                    .push(ExportAssertion { source, attrs, fetched_at });
+            }
+        }
+
+        let nodes: Vec<ExportNode> = page
+            .iter()
+            .map(|(id, kind_s)| {
+                Ok(ExportNode {
+                    canonical_id: CanonicalId(id.clone()),
+                    kind: parse_node_kind(kind_s)?,
+                    aliases: aliases_by_node.remove(id).unwrap_or_default(),
+                    assertions: assertions_by_node.remove(id).unwrap_or_default(),
+                })
+            })
+            .collect::<Result<_, DomainError>>()?;
+
+        let next_cursor = if has_more {
+            page.last().map(|(id, _)| id.clone())
+        } else {
+            None
+        };
+        Ok((nodes, next_cursor))
+    }
+
+    async fn export_edge_assertions(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportEdgeAssertion>, Option<String>), DomainError> {
+        let conn = self.conn.lock().unwrap();
+        // Cursor: JSON {"s": src, "d": dst, "r": relation, "o": source}
+        let decoded: Option<(String, String, String, String)> = cursor.and_then(|c| {
+            let v: serde_json::Value = serde_json::from_str(c).ok()?;
+            Some((
+                v["s"].as_str()?.to_string(),
+                v["d"].as_str()?.to_string(),
+                v["r"].as_str()?.to_string(),
+                v["o"].as_str()?.to_string(),
+            ))
+        });
+        let fetch_limit = (limit + 1) as i64;
+        type Row = (String, String, String, String, Option<String>, String);
+        let rows: Vec<Row> = match &decoded {
+            None => {
+                let mut stmt =
+                    conn.prepare(braincrawl_sql::export::EDGE_ASSERTIONS_FIRST).map_err(be)?;
+                let mapped: Vec<Row> = stmt
+                    .query_map(params![fetch_limit], |row| {
+                        Ok((
+                            row.get(0)?, row.get(1)?, row.get(2)?,
+                            row.get(3)?, row.get(4)?, row.get(5)?,
+                        ))
+                    })
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+            Some((s0, d0, r0, o0)) => {
+                let mut stmt =
+                    conn.prepare(braincrawl_sql::export::EDGE_ASSERTIONS_PAGE).map_err(be)?;
+                let mapped: Vec<Row> = stmt
+                    .query_map(params![s0, d0, r0, o0, fetch_limit], |row| {
+                        Ok((
+                            row.get(0)?, row.get(1)?, row.get(2)?,
+                            row.get(3)?, row.get(4)?, row.get(5)?,
+                        ))
+                    })
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                mapped
+            }
+        };
+        let has_more = rows.len() > limit as usize;
+        let page: Vec<Row> = rows.into_iter().take(limit as usize).collect();
+        let next_cursor = if has_more {
+            page.last().map(|(s, d, r, o, _, _)| {
+                serde_json::json!({"s": s, "d": d, "r": r, "o": o}).to_string()
+            })
+        } else {
+            None
+        };
+        let items = page
+            .into_iter()
+            .map(|(src, dst, relation, source, attrs_s, fetched_at)| ExportEdgeAssertion {
+                src_id: CanonicalId(src),
+                dst_id: CanonicalId(dst),
+                relation,
+                source,
+                attrs: attrs_s.and_then(|s| serde_json::from_str(&s).ok()),
+                fetched_at,
+            })
+            .collect();
+        Ok((items, next_cursor))
     }
 }
 

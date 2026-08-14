@@ -1,5 +1,5 @@
 use braincrawl_cli::arxiv::ArxivProvider;
-use braincrawl_cli::cli::{ArxivCmd, CatalogCmd, ChunkArgs, Cli, CrossrefCmd, LibraryCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutlineArgs, OutputOpts, PaginateArgs, ReadArgs, SemanticscholarCmd};
+use braincrawl_cli::cli::{ArxivCmd, CatalogCmd, ChunkArgs, Cli, CrossrefCmd, LibraryCmd, Namespace, OpencitationsCmd, OpenalexCmd, OutlineArgs, OutputOpts, PaginateArgs, ReadArgs, SemanticscholarCmd, StoreCmd};
 use std::io::Write as IoWrite;
 use braincrawl_cli::chunk;
 use braincrawl_cli::locator::{self, Locator, PageRange};
@@ -7,9 +7,9 @@ use braincrawl_cli::outline::{self, Outline};
 use braincrawl_cli::pages::{self, Pages};
 use braincrawl_cli::pdf_text;
 use std::fmt::Write as _;
-use braincrawl_cli::config::Config;
+use braincrawl_cli::config::{Config, StoreRef};
 use braincrawl_cli::fetch_content;
-use braincrawl_cli::migrate;
+use braincrawl_cli::storesync;
 use braincrawl_cli::openalex::client::OpenAlexClient;
 use braincrawl_cli::openalex::OpenAlexProvider;
 use braincrawl_cli::output::{Envelope, QueryMeta, render};
@@ -120,6 +120,44 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     if !summary.errors.is_empty() {
                         std::process::exit(1);
                     }
+                }
+                CatalogCmd::Search { author, title, year, with_artifact } => {
+                    if author.is_none() && title.is_none() && year.is_none() && with_artifact.is_none() {
+                        return Err(
+                            "catalog search needs at least one of --author, --title, --year, --with-artifact".into(),
+                        );
+                    }
+                    let limit = if opts.all { 200 } else { opts.limit.unwrap_or(25) as u32 };
+                    let results = client.search_works(
+                        author.as_deref(),
+                        title.as_deref(),
+                        year,
+                        with_artifact.as_deref(),
+                        limit,
+                    )?;
+                    let filter_desc: Vec<String> = [
+                        author.map(|a| format!("author~{a}")),
+                        title.map(|t| format!("title~{t}")),
+                        year.map(|y| format!("year={y}")),
+                        with_artifact.map(|r| format!("with-artifact={r}")),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                    let count = results.len() as u64;
+                    let envelope = Envelope {
+                        query: QueryMeta {
+                            entity: Some("catalog:search".to_string()),
+                            resolved_filter: Some(filter_desc.join(" ")),
+                            url: None,
+                        },
+                        count,
+                        returned: results.len(),
+                        truncated: count == limit as u64,
+                        next_cursor: None,
+                        results,
+                    };
+                    render(&envelope, &opts);
                 }
                 CatalogCmd::Add { aliases, title, authors, year, kind } => {
                     let record = braincrawl_cli::provider::build_manual_work_record(
@@ -517,15 +555,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
         }
-        Namespace::MigrateStore(args) => {
-            let store = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            let migrate_opts = migrate::MigrateOpts::resolve(args.db, args.blobs, args.dry_run);
-            let report = migrate::run(&migrate_opts, &store)?;
-            migrate::print_report(&report, migrate_opts.dry_run);
-            let stats = store.stats()?;
-            eprintln!("--- remote stats ---");
-            render_stats(&stats, &opts);
+        Namespace::Store(store_args) => {
+            run_store_cmd(store_args.cmd, &config, &opts)?;
         }
         Namespace::Rename(args) => {
             braincrawl_cli::rename::run(args, &opts)?;
@@ -918,6 +949,129 @@ fn render_neighborhood(value: &serde_json::Value, opts: &OutputOpts) {
         }
     } else {
         println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+    }
+}
+
+fn client_for(store: &StoreRef) -> StoreClient {
+    StoreClient::new(&store.url).with_token(store.auth_token.clone())
+}
+
+fn store_label(store: &StoreRef) -> String {
+    match &store.name {
+        Some(name) => name.clone(),
+        None => store.url.clone(),
+    }
+}
+
+fn run_store_cmd(
+    cmd: StoreCmd,
+    config: &Config,
+    opts: &OutputOpts,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match cmd {
+        StoreCmd::List => {
+            if config.stores.is_empty() {
+                eprintln!("no named stores configured — add [stores.<name>] tables (url, auth_token) to the config file");
+                eprintln!("effective server_url: {}", config.server_url);
+                return Ok(());
+            }
+            for (name, store) in &config.stores {
+                let marker = if config.active_store.as_deref() == Some(name) { "*" } else { " " };
+                let token = if store.auth_token.is_some() { "token" } else { "no token" };
+                println!("{marker} {name:<12} {} ({token})", store.url);
+            }
+            if config.active_store.is_none() {
+                eprintln!("no active_store set — commands use server_url: {}", config.server_url);
+            }
+            Ok(())
+        }
+        StoreCmd::Use { name } => {
+            let target = config
+                .stores
+                .get(&name)
+                .ok_or_else(|| format!("unknown store '{name}' — run `braincrawl store list`"))?
+                .clone();
+            let previous = config.active_store_ref();
+            let path = Config::set_active_store(&name)?;
+            eprintln!("active store: {name} ({}) — written to {}", target.url, path.display());
+            // Show what each side holds so switching away from data is visible.
+            let mut sides = vec![&target];
+            if previous.url.trim_end_matches('/') != target.url.trim_end_matches('/') {
+                sides.push(&previous);
+            }
+            for store in sides {
+                match client_for(store).stats() {
+                    Ok(stats) => eprintln!(
+                        "{}: {} works, {} edges, {} nodes",
+                        store_label(store),
+                        stats["works"].as_u64().unwrap_or(0),
+                        stats["edges_total"].as_u64().unwrap_or(0),
+                        stats["nodes_total"].as_u64().unwrap_or(0),
+                    ),
+                    Err(_) => eprintln!("{}: unreachable", store_label(store)),
+                }
+            }
+            Ok(())
+        }
+        StoreCmd::Diff { a, b } => {
+            let a_ref = config.store_ref(&a)?;
+            let b_ref = match b {
+                Some(spec) => config.store_ref(&spec)?,
+                None => config.active_store_ref(),
+            };
+            let report = storesync::diff(
+                &client_for(&a_ref),
+                &store_label(&a_ref),
+                &client_for(&b_ref),
+                &store_label(&b_ref),
+            )?;
+            storesync::print_diff(&report);
+            let l3 = storesync::l3_diff(
+                &client_for(&a_ref),
+                &store_label(&a_ref),
+                &client_for(&b_ref),
+                &store_label(&b_ref),
+            )?;
+            storesync::print_l3_diff(&l3, &store_label(&a_ref), &store_label(&b_ref));
+            Ok(())
+        }
+        StoreCmd::Sync { source, dest, dry_run, doc, force } => {
+            let src_ref = config.store_ref(&source)?;
+            let dst_ref = config.store_ref(&dest)?;
+            if src_ref.url.trim_end_matches('/') == dst_ref.url.trim_end_matches('/') {
+                return Err("source and destination are the same store".into());
+            }
+            eprintln!(
+                "sync {} → {}{}{}",
+                store_label(&src_ref),
+                store_label(&dst_ref),
+                doc.as_deref().map(|d| format!(" (doc {d})")).unwrap_or_default(),
+                if dry_run { " (dry run)" } else { "" }
+            );
+            // A --doc run is a targeted Research Document transfer; the
+            // catalog phases don't apply.
+            if doc.is_none() {
+                let report =
+                    storesync::sync(&client_for(&src_ref), &client_for(&dst_ref), dry_run)?;
+                storesync::print_report(&report, dry_run);
+            }
+            let l3_report = storesync::l3_sync(
+                &client_for(&src_ref),
+                &src_ref.url,
+                &client_for(&dst_ref),
+                &dst_ref.url,
+                dry_run,
+                doc.as_deref(),
+                force,
+            )?;
+            storesync::print_l3_report(&l3_report, dry_run);
+            if !dry_run && doc.is_none() {
+                let stats = client_for(&dst_ref).stats()?;
+                eprintln!("--- destination stats ---");
+                render_stats(&stats, opts);
+            }
+            Ok(())
+        }
     }
 }
 

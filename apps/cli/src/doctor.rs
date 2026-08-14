@@ -100,10 +100,17 @@ fn server_reachable_check(
 fn server_url_check(config: &Config) -> Check {
     let sources = Config::sources();
     let source = sources.iter().find(|f| f.name == "server_url").map(|f| f.source).unwrap_or("default");
+    let detail = match &config.active_store {
+        // Env still outranks the active store, so name the winner accurately.
+        Some(name) if source != "env" => {
+            format!("{} (active store '{name}')", config.server_url)
+        }
+        _ => format!("{} (from {source})", config.server_url),
+    };
     Check {
         name: "server-url",
         status: Status::Info,
-        detail: format!("{} (from {source})", config.server_url),
+        detail,
         remedy: None,
     }
 }

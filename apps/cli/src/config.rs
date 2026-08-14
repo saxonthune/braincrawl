@@ -1,4 +1,15 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+/// One named store from the config's `[stores.<name>]` tables: a base URL and
+/// the token that belongs to it. Bare URLs given on the command line become an
+/// unnamed `StoreRef`.
+#[derive(Debug, Clone)]
+pub struct StoreRef {
+    pub name: Option<String>,
+    pub url: String,
+    pub auth_token: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -10,6 +21,16 @@ pub struct Config {
     pub crossref_mailto: Option<String>,
     /// Root directory of the consolidated L3 document store.
     pub l3_repo: Option<String>,
+    /// Named stores from `[stores.<name>]`; empty when none are configured.
+    pub stores: BTreeMap<String, StoreRef>,
+    /// Name of the store every command targets by default (`active_store`).
+    pub active_store: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default, Clone)]
+struct StoreEntry {
+    url: Option<String>,
+    auth_token: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -21,16 +42,38 @@ struct ConfigFile {
     unpaywall_email: Option<String>,
     crossref_mailto: Option<String>,
     l3_repo: Option<String>,
+    active_store: Option<String>,
+    stores: Option<BTreeMap<String, StoreEntry>>,
 }
 
 impl Config {
-    /// Resolve config with precedence: env > file > default.
-    /// A caller may override `server_url` before use (flag > env > file > default).
+    /// Resolve config with precedence: env > active named store > flat file
+    /// keys > default. A caller may override `server_url` before use
+    /// (flag > env > active store > file > default).
     pub fn resolve() -> Self {
         let file = load_config_file();
+        let stores: BTreeMap<String, StoreRef> = file
+            .stores
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(name, e)| {
+                e.url.map(|url| {
+                    (
+                        name.clone(),
+                        StoreRef { name: Some(name), url, auth_token: e.auth_token },
+                    )
+                })
+            })
+            .collect();
+        let active = file
+            .active_store
+            .as_ref()
+            .and_then(|name| stores.get(name))
+            .cloned();
         Config {
             server_url: std::env::var("BRAINCRAWL_SERVER_URL")
                 .ok()
+                .or_else(|| active.as_ref().map(|s| s.url.clone()))
                 .or(file.server_url)
                 .unwrap_or_else(|| "http://127.0.0.1:8787".to_string()),
             openalex_api_key: std::env::var("BRAINCRAWL_OPENALEX_API_KEY")
@@ -41,6 +84,7 @@ impl Config {
                 .or(file.semanticscholar_api_key),
             auth_token: std::env::var("BRAINCRAWL_AUTH_TOKEN")
                 .ok()
+                .or_else(|| active.as_ref().and_then(|s| s.auth_token.clone()))
                 .or(file.auth_token),
             unpaywall_email: std::env::var("BRAINCRAWL_UNPAYWALL_EMAIL")
                 .ok()
@@ -49,7 +93,82 @@ impl Config {
                 .ok()
                 .or(file.crossref_mailto),
             l3_repo: std::env::var("BRAINCRAWL_L3_REPO").ok().or(file.l3_repo),
+            stores,
+            active_store: file.active_store,
         }
+    }
+
+    /// Resolve a store spec — a configured store name, or a bare base URL — to
+    /// a `StoreRef`. A URL that matches a named store's URL borrows that
+    /// store's token.
+    pub fn store_ref(&self, spec: &str) -> Result<StoreRef, String> {
+        if spec.contains("://") {
+            let url = spec.trim_end_matches('/').to_string();
+            let named = self
+                .stores
+                .values()
+                .find(|s| s.url.trim_end_matches('/') == url);
+            return Ok(StoreRef {
+                name: named.and_then(|s| s.name.clone()),
+                url,
+                auth_token: named.and_then(|s| s.auth_token.clone()),
+            });
+        }
+        self.stores.get(spec).cloned().ok_or_else(|| {
+            let known: Vec<&str> = self.stores.keys().map(|s| s.as_str()).collect();
+            format!(
+                "unknown store '{spec}' (configured stores: {}; or pass a base URL)",
+                if known.is_empty() { "none".to_string() } else { known.join(", ") }
+            )
+        })
+    }
+
+    /// The active store as a `StoreRef`, falling back to the flat
+    /// `server_url`/`auth_token` when no named store is active.
+    pub fn active_store_ref(&self) -> StoreRef {
+        if let Some(s) = self.active_store.as_ref().and_then(|n| self.stores.get(n)) {
+            return s.clone();
+        }
+        StoreRef {
+            name: None,
+            url: self.server_url.clone(),
+            auth_token: self.auth_token.clone(),
+        }
+    }
+
+    /// Persist `active_store = "<name>"` into the config file, preserving the
+    /// rest of the file verbatim. Only the one top-level line is rewritten; a
+    /// missing line is inserted before the first `[table]` header so it stays
+    /// a top-level key.
+    pub fn set_active_store(name: &str) -> Result<PathBuf, String> {
+        let path = config_file_path().ok_or("cannot determine config file path (no HOME)")?;
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let line = format!("active_store = \"{name}\"");
+        let mut out = String::with_capacity(content.len() + line.len() + 1);
+        let mut replaced = false;
+        for l in content.lines() {
+            if !replaced && l.trim_start().starts_with("active_store") {
+                out.push_str(&line);
+                replaced = true;
+            } else {
+                out.push_str(l);
+            }
+            out.push('\n');
+        }
+        if !replaced {
+            let insert_at = content
+                .lines()
+                .take_while(|l| !l.trim_start().starts_with('['))
+                .map(|l| l.len() + 1)
+                .sum::<usize>()
+                .min(out.len());
+            out.insert_str(insert_at, &format!("{line}\n"));
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, out).map_err(|e| e.to_string())?;
+        Ok(path)
     }
 
     /// Resolve the L3 store root: configured `l3_repo` > `$HOME/.local/share/braincrawl/l3`.

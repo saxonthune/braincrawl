@@ -406,6 +406,81 @@ pub mod artifact {
         DELETE FROM artifacts WHERE canonical_id = ?";
 }
 
+// ── export ────────────────────────────────────────────────────────────────
+
+/// Store-wide enumeration queries backing the `/export/*` sync surface.
+/// All pages are keyset-paginated on the table's primary key so a page
+/// boundary never skips or repeats a row.
+pub mod export {
+    /// Live nodes, first page, ordered by canonical_id.
+    /// Params: (limit)
+    pub const NODES_FIRST: &str = "\
+        SELECT canonical_id, kind FROM node WHERE merged_into IS NULL \
+        ORDER BY canonical_id LIMIT ?";
+
+    /// Live nodes, subsequent page. Cursor is the last canonical_id.
+    /// Params: (last_canonical_id, limit)
+    pub const NODES_PAGE: &str = "\
+        SELECT canonical_id, kind FROM node \
+        WHERE merged_into IS NULL AND canonical_id > ? \
+        ORDER BY canonical_id LIMIT ?";
+
+    /// Edge assertions, first page, ordered by the full PK.
+    /// Params: (limit)
+    pub const EDGE_ASSERTIONS_FIRST: &str = "\
+        SELECT src_id, dst_id, relation, source, attrs, fetched_at \
+        FROM edge_assertion \
+        ORDER BY src_id, dst_id, relation, source LIMIT ?";
+
+    /// Edge assertions, subsequent page. Cursor encodes the last row's PK.
+    /// Params: (src, dst, relation, source, limit)
+    pub const EDGE_ASSERTIONS_PAGE: &str = "\
+        SELECT src_id, dst_id, relation, source, attrs, fetched_at \
+        FROM edge_assertion \
+        WHERE (src_id, dst_id, relation, source) > (?, ?, ?, ?) \
+        ORDER BY src_id, dst_id, relation, source LIMIT ?";
+
+    /// Current artifact descriptors, first page, ordered by (canonical_id, role).
+    /// Same column list as the `artifact::LIST_*` queries.
+    /// Params: (limit)
+    pub const ARTIFACTS_FIRST: &str = "\
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
+        FROM artifacts WHERE is_current = 1 \
+        ORDER BY canonical_id, role LIMIT ?";
+
+    /// Current artifact descriptors, subsequent page. Cursor encodes the last
+    /// row's (canonical_id, role).
+    /// Params: (last_canonical_id, last_role, limit)
+    pub const ARTIFACTS_PAGE: &str = "\
+        SELECT canonical_id, role, version, r2_key, content_hash, byte_size, \
+               mime, source, source_url, fetched_at, is_current, \
+               derived_from_role, derived_from_version \
+        FROM artifacts \
+        WHERE is_current = 1 AND (canonical_id, role) > (?, ?) \
+        ORDER BY canonical_id, role LIMIT ?";
+
+    /// Aliases for a page of nodes: `SELECT canonical_id, namespace, value FROM
+    /// alias WHERE canonical_id IN <in_list(n)>`. Built at runtime because the
+    /// id count varies; bind the page's canonical_ids in order.
+    pub fn aliases_for_nodes(n: usize) -> String {
+        format!(
+            "SELECT canonical_id, namespace, value FROM alias WHERE canonical_id IN {}",
+            crate::in_list(n)
+        )
+    }
+
+    /// Assertions for a page of nodes, same shape as [`aliases_for_nodes`].
+    pub fn assertions_for_nodes(n: usize) -> String {
+        format!(
+            "SELECT canonical_id, source, attrs, fetched_at FROM node_assertion \
+             WHERE canonical_id IN {}",
+            crate::in_list(n)
+        )
+    }
+}
+
 // ── stats ─────────────────────────────────────────────────────────────────
 
 /// Aggregate-count queries backing the `MetadataStore::stats` summary.
@@ -452,6 +527,66 @@ pub mod stats {
     /// `count`. Params: none.
     pub const LIBRARY_BYTES: &str =
         "SELECT COALESCE(SUM(byte_size), 0) AS count FROM artifacts";
+}
+
+// ── search ────────────────────────────────────────────────────────────────
+
+/// Work search over assertion attrs, shared by the sqlite and D1 backends.
+pub mod search {
+    /// Build the work-search query for the given set of active filters.
+    ///
+    /// Bind params, in order: author (if `author`), title twice (if `title`),
+    /// year (if `year`), then the row limit. Author and title are bound as the
+    /// bare needle; the query wraps them in `%…%` itself. SQLite's default
+    /// `LIKE` is already case-insensitive for ASCII.
+    ///
+    /// The author clause walks each assertion's JSON with `json_tree` and
+    /// matches only author-name paths — `$.authorships[i].author.display_name`
+    /// and `$.authorships[i].raw_author_name` (OpenAlex), `$.authors[i].name`
+    /// (arXiv), `$.authors[i]` bare strings (manual) — so an institution or
+    /// title string can never satisfy an author filter. `fullkey` is compared
+    /// with its `"` stripped: SQLite ≥ 3.42 quotes object keys that are not
+    /// simple identifiers (e.g. `."display_name"`), older versions do not.
+    pub fn works(author: bool, title: bool, year: bool) -> String {
+        let mut sql = String::from(
+            "SELECT DISTINCT n.canonical_id FROM node n \
+             WHERE n.kind = 'work' AND n.merged_into IS NULL",
+        );
+        if author {
+            sql.push_str(
+                " AND EXISTS ( \
+                   SELECT 1 FROM node_assertion na, json_tree(na.attrs) jt \
+                   WHERE na.canonical_id = n.canonical_id \
+                     AND jt.type = 'text' \
+                     AND (replace(jt.fullkey, '\"', '') LIKE '$.authorships[%].author.display_name' \
+                       OR replace(jt.fullkey, '\"', '') LIKE '$.authorships[%].raw_author_name' \
+                       OR replace(jt.fullkey, '\"', '') LIKE '$.authors[%') \
+                     AND jt.value LIKE '%' || ? || '%' \
+                 )",
+            );
+        }
+        if title {
+            sql.push_str(
+                " AND EXISTS ( \
+                   SELECT 1 FROM node_assertion na \
+                   WHERE na.canonical_id = n.canonical_id \
+                     AND (json_extract(na.attrs, '$.title') LIKE '%' || ? || '%' \
+                       OR json_extract(na.attrs, '$.display_name') LIKE '%' || ? || '%') \
+                 )",
+            );
+        }
+        if year {
+            sql.push_str(
+                " AND EXISTS ( \
+                   SELECT 1 FROM node_assertion na \
+                   WHERE na.canonical_id = n.canonical_id \
+                     AND json_extract(na.attrs, '$.publication_year') = ? \
+                 )",
+            );
+        }
+        sql.push_str(" ORDER BY n.canonical_id LIMIT ?");
+        sql
+    }
 }
 
 // ── variable-arity helpers ────────────────────────────────────────────────

@@ -11,13 +11,16 @@
 //! - `PUT /edges`
 //! - `POST /graph/neighborhood`
 //! - `GET /stats`
+//! - `GET /export/nodes` · `GET /export/edges` · `GET /export/artifacts`
+//!   (paginated store enumeration for `store diff` / `store sync`)
 //! - `GET /works/*id`                   → get_work
 //! - `GET /works/*id/edges`             → get_edges
 //! - `GET /works/*id/artifacts`         → list_artifacts
 //! - `GET /works/*id/content/{kind}`    → get_content
 //! - `PUT /works/*id/content/{kind}`    → put_content
 //!
-//! Plus worker-only Research Collection doc routes (see `l3` module):
+//! Plus Research Collection doc routes, served by both deployments — R2-backed
+//! here, filesystem-backed on the native server (see `l3` module):
 //! - `GET /api/l3/docs`
 //! - `GET /api/l3/docs/{slug}`
 //! - `PUT /api/l3/docs/{slug}`
@@ -61,7 +64,7 @@ use braincrawl_core::{
     traits::{Clock, Coordinator, IdGen, LockGuard},
     types::{
         Alias, Artifact, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput,
-        ArtifactRole, WorkRecord,
+        ArtifactRole, WorkRecord, WorkSearchFilter,
     },
     usecases::Store,
 };
@@ -323,6 +326,51 @@ async fn handle_stats(store: &WorkerStore) -> worker::Result<Response> {
     }
 }
 
+/// Read the shared `cursor` / `limit` params for the `/export/*` routes.
+/// Limit defaults to 100 and is capped at 200 per page — must match `apps/server`.
+fn export_page_params(url: &Url) -> (Option<String>, u32) {
+    let params: std::collections::HashMap<String, String> =
+        url.query_pairs().into_owned().collect();
+    let cursor = params.get("cursor").cloned();
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(100)
+        .clamp(1, 200);
+    (cursor, limit)
+}
+
+async fn handle_export_nodes(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let (cursor, limit) = export_page_params(url);
+    match store.export_nodes(cursor.as_deref(), limit).await {
+        Ok((items, cursor)) => {
+            Response::from_json(&serde_json::json!({ "items": items, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_export_edges(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let (cursor, limit) = export_page_params(url);
+    match store.export_edge_assertions(cursor.as_deref(), limit).await {
+        Ok((items, cursor)) => {
+            Response::from_json(&serde_json::json!({ "items": items, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_export_artifacts(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let (cursor, limit) = export_page_params(url);
+    match store.export_artifacts(cursor.as_deref(), limit).await {
+        Ok((items, cursor)) => {
+            let items: Vec<_> = items.iter().map(artifact_json).collect();
+            Response::from_json(&serde_json::json!({ "items": items, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
 async fn handle_have(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
     #[derive(Deserialize)]
     struct HaveRequest { ids: Vec<String> }
@@ -354,6 +402,51 @@ async fn handle_put_edges(mut req: Request, store: &WorkerStore) -> worker::Resu
         Ok(count) => Response::from_json(&serde_json::json!({"count": count})),
         Err(e) => err_response(&e),
     }
+}
+
+/// GET /works — same contract as the native server's handler_search_works:
+/// `author`/`title`/`year`/`with_artifact`/`limit` query params, at least one
+/// filter required; each result is a merged work view plus its artifacts.
+async fn handle_search_works(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let filter = WorkSearchFilter {
+        author: params.get("author").cloned(),
+        title: params.get("title").cloned(),
+        year: params.get("year").and_then(|s| s.parse::<u32>().ok()),
+    };
+    let with_artifact = match params.get("with_artifact").map(|s| parse_artifact_role(s)) {
+        Some(Some(k)) => Some(k),
+        Some(None) => return bad_request("invalid with_artifact role"),
+        None => None,
+    };
+    if filter.is_empty() && with_artifact.is_none() {
+        return bad_request("at least one of author, title, year, with_artifact is required");
+    }
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(25)
+        .min(200);
+    let views = match store.search_works(&filter, with_artifact, limit).await {
+        Ok(v) => v,
+        Err(e) => return err_response(&e),
+    };
+    let mut works = Vec::with_capacity(views.len());
+    for view in views {
+        let artifacts = match store
+            .list_artifacts_by_id(view.canonical_id.clone(), None, false)
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => return err_response(&e),
+        };
+        let mut body = serde_json::to_value(&view)
+            .map_err(|e| worker::Error::RustError(e.to_string()))?;
+        body["artifacts"] =
+            serde_json::Value::Array(artifacts.iter().map(artifact_json).collect());
+        works.push(body);
+    }
+    Response::from_json(&serde_json::json!({ "works": works }))
 }
 
 async fn handle_get_work(id_str: &str, store: &WorkerStore) -> worker::Result<Response> {
@@ -604,6 +697,11 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
         return handle_put_work(req, &store).await;
     }
 
+    // GET /works  — store-side work search by query params
+    if method == Method::Get && path == "/works" {
+        return handle_search_works(&url, &store).await;
+    }
+
     // PUT /edges
     if method == Method::Put && path == "/edges" {
         return handle_put_edges(req, &store).await;
@@ -617,6 +715,17 @@ async fn route(req: Request, env: Env) -> worker::Result<Response> {
     // GET /stats
     if method == Method::Get && path == "/stats" {
         return handle_stats(&store).await;
+    }
+
+    // GET /export/{nodes,edges,artifacts}
+    if method == Method::Get && path == "/export/nodes" {
+        return handle_export_nodes(&url, &store).await;
+    }
+    if method == Method::Get && path == "/export/edges" {
+        return handle_export_edges(&url, &store).await;
+    }
+    if method == Method::Get && path == "/export/artifacts" {
+        return handle_export_artifacts(&url, &store).await;
     }
 
     // /works/*path

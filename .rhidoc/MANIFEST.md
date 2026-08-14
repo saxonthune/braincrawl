@@ -28,6 +28,26 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc00.04 | `04-plain-language.md` | The plain-language standard for workspace prose — named standards, contrastive rules for jargon, word senses, parts of speech, prepositions, and sentence shape; the glossary as controlled vocabulary | docs, plain-language, style, vocabulary, glossary | — | — | — |
 | doc00.05 | `05-controlled-vocabulary.md` | The workspace glossary as a controlled vocabulary — entry kinds and sentence patterns from fact-based modeling (ORM), a worked example, and the naming rule | glossary, vocabulary, facts, subtypes, naming, docs | — | — | — |
 
+## 00-handbook — Handbook
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc00.00 | `00-index.md` |  |  | — | — | — |
+| doc00.01 | `01-about.md` | Why this workspace exists, how to read it, two-sources-of-truth theory | docs, meta, theory | — | — | — |
+| doc00.02 | `02-maintenance.md` | Doc philosophy — docs convert volatile source signals into stable intent; declarative intent, prefer facts to prose, author freely then structure separately, docs grow by unfolding | docs, maintenance, philosophy | — | — | — |
+| doc00.03 | `03-conventions.md` | Cross-reference syntax, frontmatter schema, file naming, writing style | docs, conventions | — | — | — |
+| doc00.04 | `04-plain-language.md` | The plain-language standard for workspace prose — named standards, contrastive rules for jargon, word senses, parts of speech, prepositions, and sentence shape; normative register (invariant, principle, illustration); the glossary as controlled vocabulary | docs, plain-language, style, vocabulary, glossary | — | — | — |
+| doc00.05 | `05-controlled-vocabulary.md` | The workspace glossary as a controlled vocabulary — which terms are admitted, entry kinds and sentence patterns from fact-based modeling (ORM), a worked example, and the naming rule | glossary, vocabulary, facts, subtypes, naming, docs | — | — | — |
+| doc00.06 | `06-drift.md` | Why docs drift and the rules that prevent it — the two-copies condition, the reason-to-write test, the generate-or-type escape for shared facts, timeless writing, and the banned-pattern list | docs, drift, maintenance, style | — | — | — |
+
+### User Handbook
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc00.07.00 | `07-user-handbook/00-index.md` |  |  | — | — | — |
+
 ## 01-product — Product
 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
@@ -64,10 +84,10 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.01.00 | `01-core/00-index.md` |  |  | — | — | — |
-| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared concern both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.01.04, doc02.04 | — |
+| doc02.01.01 | `01-core/01-layers.md` | Core splits into two storage worlds — the Library (Layer 1) is raw bytes in a blob store keyed by UUID, the Catalog (Layer 2) is the metadata database that holds every fact, including the facts about the bytes. Identity is the shared concern both depend on. | architecture, core, layers, storage, separation | — | doc02.01.02, doc02.01.03, doc02.01.04, doc02.04, doc02.06.02 | — |
 | doc02.01.02 | `01-core/02-id-resolution.md` | A core braincrawl feature — consumers hand in any external id and braincrawl routes every id of the same resource to one UUID. Resolution is incremental union-find over the alias table; convergence is guaranteed for any record that co-asserts two ids, and merges are confluent. | architecture, core, identity, id-resolution, union-find | doc02.01.01, doc02.01.03 | doc02.01.03 | — |
 | doc02.01.03 | `01-core/03-api.md` | The consumer-facing store API — upsert and read for works, content, and citation edges. Every id parameter accepts any external identifier; braincrawl resolves it to a UUID internally, so consumers never resolve identity themselves. | architecture, core, api, contract | doc02.01.01, doc02.01.02 | doc02.01.02, doc02.05, doc02.06.01.01, doc02.06.01.02 | openapi.yaml |
-| doc02.01.04 | `01-core/04-l3-conventions.md` | An L3 Research Document is markdown with two required frontmatter fields (doc, updated) and a body of research nodes — headings carrying property and link lines. Node anchors are store-global; reference ids, never copy metadata. A worked example ships with the braincrawl skill. | architecture, core, l3, research-collection, conventions, node-grammar | doc02.01.01 | — | — |
+| doc02.01.04 | `01-core/04-l3-conventions.md` | An L3 Research Document is markdown with one required frontmatter field (doc) and a body of research nodes — headings carrying property and link lines. Node anchors are store-global; reference ids, never copy metadata. A worked example ships with the braincrawl skill. | architecture, core, l3, research-collection, conventions, node-grammar | doc02.01.01 | — | — |
 
 ### Cloudflare
 
@@ -92,6 +112,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc02.06.01.00 | `06-cli/01-providers/00-index.md` |  |  | — | — | — |
 | doc02.06.01.01 | `06-cli/01-providers/01-openalex.md` | The braincrawl openalex namespace — a deliberate fork to the OpenAlex API exposing six read-only base verbs (get, search, find, autocomplete, cited-by, refs). Trimmed structured output, push-to-store by default. | cli, providers, openalex, fork, verbs, citations | doc02.06.01, doc02.01.03 | — | — |
 | doc02.06.01.02 | `06-cli/01-providers/02-semantic-scholar.md` | The braincrawl semanticscholar namespace — a deliberate fork to the Semantic Scholar API exposing four read-only base verbs (get, search, cited-by, refs). Trimmed structured output, push-to-store by default. | cli, providers, semanticscholar, fork, verbs, citations | doc02.06.01, doc02.01.03 | — | — |
+| doc02.06.02 | `06-cli/02-rename.md` | The braincrawl rename command gives a work file on disk one canonical bibliographic filename — Surname[EtAl]Year-title-slug.ext. The store itself never reads filenames; the name serves the human archive, applied at import time. | cli, rename, filename, naming, library | doc02.01.01 | — | — |
 
 ## Tag Index
 
@@ -106,15 +127,17 @@ Quick lookup for file-path→doc mapping:
 | `auth` | doc02.05 |
 | `chat` | doc01.04.01 |
 | `citations` | doc02.06.01.01, doc02.06.01.02 |
-| `cli` | doc02.06.01.01, doc02.06.01.02 |
+| `cli` | doc02.06.01.01, doc02.06.01.02, doc02.06.02 |
 | `cloudflare` | doc02.04 |
 | `contract` | doc02.01.03 |
 | `conventions` | doc00.03, doc02.01.04 |
 | `core` | doc02.01.01, doc02.01.02, doc02.01.03, doc02.01.04 |
 | `coverage` | doc01.01 |
-| `docs` | doc00.01, doc00.02, doc00.03, doc00.04, doc00.05 |
+| `docs` | doc00.01, doc00.02, doc00.03, doc00.04, doc00.05, doc00.06 |
+| `drift` | doc00.06 |
 | `evaluation` | doc01.04.03 |
 | `facts` | doc00.05, doc01.01 |
+| `filename` | doc02.06.02 |
 | `fork` | doc02.06.01.01, doc02.06.01.02 |
 | `glossary` | doc00.04, doc00.05, doc01.01 |
 | `harness` | doc01.04.01, doc01.04.02 |
@@ -122,11 +145,12 @@ Quick lookup for file-path→doc mapping:
 | `identity` | doc02.01.02 |
 | `l3` | doc02.01.04 |
 | `layers` | doc02.01.01 |
-| `maintenance` | doc00.02 |
+| `library` | doc02.06.02 |
+| `maintenance` | doc00.02, doc00.06 |
 | `mental-model` | doc01.02 |
 | `meta` | doc00.01 |
 | `monorepo` | doc02.04 |
-| `naming` | doc00.05 |
+| `naming` | doc00.05, doc02.06.02 |
 | `node-grammar` | doc02.01.04 |
 | `openalex` | doc02.06.01.01 |
 | `output-conventions` | doc01.04.02, doc01.04.04 |
@@ -139,6 +163,7 @@ Quick lookup for file-path→doc mapping:
 | `providers` | doc02.06.01.01, doc02.06.01.02 |
 | `read-only` | doc01.03 |
 | `reference` | doc01.04.02, doc01.04.03, doc01.04.04 |
+| `rename` | doc02.06.02 |
 | `research-collection` | doc02.01.04 |
 | `role` | doc01.02 |
 | `runtime` | doc02.04 |
@@ -149,7 +174,7 @@ Quick lookup for file-path→doc mapping:
 | `separation` | doc02.01.01, doc02.04 |
 | `storage` | doc02.01.01 |
 | `streaming` | doc01.04.02 |
-| `style` | doc00.04 |
+| `style` | doc00.04, doc00.06 |
 | `subtypes` | doc00.05 |
 | `tenancy` | doc02.05 |
 | `terms` | doc01.01 |

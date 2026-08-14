@@ -267,6 +267,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "braincrawl-auth",
+ "braincrawl-l3-sync",
  "braincrawl-server-lib",
  "clap",
  "deunicode",
@@ -316,6 +317,13 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "braincrawl-l3-sync"
+version = "0.1.0"
+dependencies = [
+ "sha2",
 ]
 
 [[package]]

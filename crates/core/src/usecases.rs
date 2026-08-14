@@ -38,7 +38,7 @@ use crate::{
     types::{
         Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, GraphStats,
         Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, Artifact, ArtifactRole,
-        WorkRecord, WorkView,
+        WorkRecord, WorkSearchFilter, WorkView,
     },
 };
 
@@ -142,13 +142,12 @@ where
             }
         };
 
+        let fetched_at = record
+            .fetched_at
+            .clone()
+            .unwrap_or_else(|| self.clock.now_rfc3339());
         self.meta
-            .upsert_node_assertion(
-                &canonical,
-                &record.source,
-                &record.attrs,
-                &self.clock.now_rfc3339(),
-            )
+            .upsert_node_assertion(&canonical, &record.source, &record.attrs, &fetched_at)
             .await?;
 
         Ok(canonical)
@@ -177,6 +176,46 @@ where
             provenance,
             aliases,
         }))
+    }
+
+    /// Store-side work search: metadata filters, optionally restricted to works
+    /// currently holding an artifact of `with_artifact`. Returns merged views,
+    /// ordered by canonical_id, at most `limit`.
+    pub async fn search_works(
+        &self,
+        filter: &WorkSearchFilter,
+        with_artifact: Option<ArtifactRole>,
+        limit: u32,
+    ) -> Result<Vec<WorkView>, DomainError> {
+        if filter.is_empty() && with_artifact.is_none() {
+            return Err(DomainError::Backend(
+                "search_works: at least one filter is required".into(),
+            ));
+        }
+        // The artifact check runs after the metadata query, so over-fetch ids
+        // to keep `limit` survivors reachable when many matches hold no artifact.
+        let fetch = if with_artifact.is_some() {
+            limit.saturating_mul(10).max(1000)
+        } else {
+            limit
+        };
+        let ids = self.meta.search_work_ids(filter, fetch).await?;
+        let mut out = Vec::new();
+        for id in ids {
+            if let Some(role) = &with_artifact {
+                if self.artifacts.current_artifact(&id, role.clone()).await?.is_none() {
+                    continue;
+                }
+            }
+            if let Some((kind, assertions, aliases)) = self.meta.read_node(&id).await? {
+                let (attrs, provenance) = merge_assertions(&assertions);
+                out.push(WorkView { canonical_id: id, kind, attrs, provenance, aliases });
+            }
+            if out.len() >= limit as usize {
+                break;
+            }
+        }
+        Ok(out)
     }
 
     /// Store content bytes and record an artifact descriptor.
@@ -261,6 +300,17 @@ where
     ) -> Result<Vec<Artifact>, DomainError> {
         let canonical = self.resolve_alias_to_live(&id).await?;
         self.artifacts.list_artifacts(&canonical, role, all_versions).await
+    }
+
+    /// As [`Self::list_artifacts`], keyed by a canonical id already in hand
+    /// (e.g. from `search_works`), skipping alias resolution.
+    pub async fn list_artifacts_by_id(
+        &self,
+        id: CanonicalId,
+        role: Option<ArtifactRole>,
+        all_versions: bool,
+    ) -> Result<Vec<Artifact>, DomainError> {
+        self.artifacts.list_artifacts(&id, role, all_versions).await
     }
 
     /// Resolve src/dst aliases (creating stub nodes for unknowns), write edges.
@@ -463,6 +513,33 @@ where
     /// Names of migrations applied in the underlying database.
     pub async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
         self.meta.applied_migrations().await
+    }
+
+    /// Enumerate live nodes for sync replay (see `MetadataStore::export_nodes`).
+    pub async fn export_nodes(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<crate::types::ExportNode>, Option<String>), DomainError> {
+        self.meta.export_nodes(cursor, limit).await
+    }
+
+    /// Enumerate edge assertions for sync replay.
+    pub async fn export_edge_assertions(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<crate::types::ExportEdgeAssertion>, Option<String>), DomainError> {
+        self.meta.export_edge_assertions(cursor, limit).await
+    }
+
+    /// Enumerate current artifact descriptors for sync replay.
+    pub async fn export_artifacts(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, Option<String>), DomainError> {
+        self.artifacts.export_artifacts(cursor, limit).await
     }
 
     // -----------------------------------------------------------------------

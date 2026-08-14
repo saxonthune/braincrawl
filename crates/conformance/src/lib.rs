@@ -17,6 +17,7 @@ pub fn run_all(base_url: &str, token: Option<&str>) -> Result<(), String> {
     artifact_listing(&client, base_url, token)?;
     large_content(&client, base_url, token)?;
     neighborhood(&client, base_url, token)?;
+    export_roundtrip(&client, base_url, token)?;
     Ok(())
 }
 
@@ -423,6 +424,141 @@ pub fn check_llm_proxy(base_url: &str, token: &str) -> Result<(), String> {
         return Err(format!(
             "check_llm_proxy: authed POST v1/other expected 404, got {}",
             res.status()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Drain a paginated `/export/*` route into one item list, following cursors.
+fn export_drain(
+    client: &Client,
+    base: &str,
+    token: Option<&str>,
+    route: &str,
+) -> Result<Vec<Value>, String> {
+    let mut items = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..100 {
+        let mut req = client.get(format!("{base}/export/{route}")).query(&[("limit", "2")]);
+        if let Some(c) = &cursor {
+            req = req.query(&[("cursor", c.as_str())]);
+        }
+        let res = auth(req, token)
+            .send()
+            .map_err(|e| format!("export_roundtrip: GET /export/{route} failed: {e}"))?;
+        if res.status() != 200 {
+            return Err(format!(
+                "export_roundtrip: GET /export/{route} expected 200, got {}",
+                res.status()
+            ));
+        }
+        let page: Value = res.json()
+            .map_err(|e| format!("export_roundtrip: /export/{route} parse failed: {e}"))?;
+        items.extend(page["items"].as_array().cloned().unwrap_or_default());
+        match page["cursor"].as_str() {
+            Some(c) => cursor = Some(c.to_string()),
+            None => return Ok(items),
+        }
+    }
+    Err(format!("export_roundtrip: /export/{route} did not terminate within 100 pages"))
+}
+
+fn export_roundtrip(client: &Client, base: &str, token: Option<&str>) -> Result<(), String> {
+    // A work with an explicit fetched_at: export must return it verbatim,
+    // proving put_work preserves caller-supplied provenance timestamps.
+    let stamp = "2001-02-03T04:05:06Z";
+    let res = auth(
+        client.put(format!("{base}/works")).json(&serde_json::json!({
+            "source": "conformance",
+            "kind": "Work",
+            "aliases": [{"namespace": "doi", "value": "10.99/export-a"}],
+            "attrs": {"title": "Export Smoke A"},
+            "fetched_at": stamp,
+        })),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("export_roundtrip: PUT work failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("export_roundtrip: PUT work expected 200, got {}", res.status()));
+    }
+
+    let res = auth(
+        client.put(format!("{base}/edges")).json(&serde_json::json!([{
+            "src": {"namespace": "doi", "value": "10.99/export-a"},
+            "dst": {"namespace": "doi", "value": "10.99/export-b"},
+            "relation": "cites",
+            "source": "conformance",
+            "attrs": null,
+            "fetched_at": stamp,
+        }])),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("export_roundtrip: PUT edge failed: {e}"))?;
+    if res.status() != 200 {
+        return Err(format!("export_roundtrip: PUT edge expected 200, got {}", res.status()));
+    }
+
+    let res = auth(
+        client.put(format!("{base}/works/doi:10.99/export-a/content/abstract"))
+            .query(&[("mime", "text/plain"), ("fetched_at", stamp)])
+            .body("export smoke abstract"),
+        token,
+    )
+    .send()
+    .map_err(|e| format!("export_roundtrip: PUT content failed: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("export_roundtrip: PUT content expected 2xx, got {}", res.status()));
+    }
+
+    // Nodes: the work must appear with its alias and the verbatim timestamp.
+    let nodes = export_drain(client, base, token, "nodes")?;
+    let node = nodes
+        .iter()
+        .find(|n| {
+            n["aliases"].as_array().is_some_and(|aliases| {
+                aliases.iter().any(|a| a["namespace"] == "doi" && a["value"] == "10.99/export-a")
+            })
+        })
+        .ok_or("export_roundtrip: exported nodes missing doi:10.99/export-a")?;
+    let assertion = node["assertions"]
+        .as_array()
+        .and_then(|a| a.iter().find(|x| x["source"] == "conformance"))
+        .ok_or("export_roundtrip: exported node missing the conformance assertion")?;
+    if assertion["fetched_at"] != stamp {
+        return Err(format!(
+            "export_roundtrip: expected fetched_at {stamp:?} preserved, got {:?}",
+            assertion["fetched_at"]
+        ));
+    }
+    // The cited-only stub must be exported too — it carries its alias.
+    if !nodes.iter().any(|n| {
+        n["aliases"].as_array().is_some_and(|aliases| {
+            aliases.iter().any(|a| a["value"] == "10.99/export-b")
+        })
+    }) {
+        return Err("export_roundtrip: exported nodes missing stub doi:10.99/export-b".to_string());
+    }
+
+    // Edges: the assertion must appear with relation and source intact.
+    let edges = export_drain(client, base, token, "edges")?;
+    if !edges
+        .iter()
+        .any(|e| e["relation"] == "cites" && e["source"] == "conformance" && e["fetched_at"] == stamp)
+    {
+        return Err(format!("export_roundtrip: exported edges missing the conformance edge, got {edges:?}"));
+    }
+
+    // Artifacts: the descriptor must appear (bytes are never exported).
+    let artifacts = export_drain(client, base, token, "artifacts")?;
+    if !artifacts
+        .iter()
+        .any(|a| a["role"] == "abstract" && a["mime"] == "text/plain" && a["fetched_at"] == stamp)
+    {
+        return Err(format!(
+            "export_roundtrip: exported artifacts missing the abstract descriptor, got {artifacts:?}"
         ));
     }
 

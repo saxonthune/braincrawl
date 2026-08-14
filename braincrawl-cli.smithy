@@ -34,7 +34,10 @@ service Braincrawl {
         CrossrefRefs
         OpenCitationsRefs
         Web
-        MigrateStore
+        StoreList
+        StoreUse
+        StoreDiff
+        StoreSync
         Rename
     ]
 }
@@ -516,8 +519,6 @@ resource Collection {
         CollectionImport
         CollectionAssignIds
         CollectionReadingList
-        CollectionPush
-        CollectionPull
     ]
 }
 
@@ -625,33 +626,6 @@ operation CollectionReadingList {
     output := {
         entries: ReadingEntryList
     }
-}
-
-/// `collection push [doc]` — send local documents to the worker's consolidated
-/// store. NOTE: `push`/`pull` here are a two-way sync with a remote, not the
-/// layer write that LibraryPut and CatalogPut perform — a distinct sense of the
-/// word, carried by a distinct verb on purpose.
-operation CollectionPush {
-    input := with [CommonOutput] {
-        /// doc slug (omit to push every push-candidate document)
-        doc: DocSlug
-        /// --dry-run  (print the plan; transfer nothing, touch no sync state)
-        dryRun: Boolean
-        /// --force  (bypass the worker's warning bounce)
-        force: Boolean
-    }
-    output := {}
-}
-
-/// `collection pull [doc]` — bring documents down from the worker's store.
-operation CollectionPull {
-    input := with [CommonOutput] {
-        /// doc slug (omit to pull every pull-candidate document)
-        doc: DocSlug
-        /// --dry-run
-        dryRun: Boolean
-    }
-    output := {}
 }
 
 // ---------------------------------------------------------------------------
@@ -856,16 +830,51 @@ operation Web {
     }
 }
 
-/// `migrate-store` — replay a local SQLite and blob corpus into a remote store
-/// over its HTTP API.
-operation MigrateStore {
-    input := with [CommonOutput] {
-        /// --db  (default ~/.local/share/braincrawl/braincrawl.db)
-        db: String
-        /// --blobs  (default ~/.local/share/braincrawl/blobs)
-        blobs: String
+/// `store list` — configured stores ([stores.<name>] in the config file) and
+/// which one is active.
+operation StoreList {
+    input := {}
+    output := {}
+}
+
+/// `store use <name>` — switch the active store; rewrites `active_store` in
+/// the config file and reports what each side holds.
+operation StoreUse {
+    input := {
+        @required
+        name: String
+    }
+    output := {}
+}
+
+/// `store diff <a> [b]` — counts per side and which works each side lacks.
+/// A store spec is a configured name or a bare base URL; `b` defaults to the
+/// active store.
+operation StoreDiff {
+    input := {
+        @required
+        a: String
+        b: String
+    }
+    output := {}
+}
+
+/// `store sync <source> <dest>` — replay everything the destination lacks
+/// from the source: catalog works/edges/artifacts over `/export/*` plus the
+/// ordinary write routes, then Research Documents node-by-node (rules in
+/// crates/l3-sync). Idempotent; both directions use the same path.
+operation StoreSync {
+    input := {
+        @required
+        source: String
+        @required
+        dest: String
         /// --dry-run  (print plan counts; push nothing)
         dryRun: Boolean
+        /// --doc  (restrict to one Research Document; skips the catalog phases)
+        doc: DocSlug
+        /// --force  (with --doc: bypass the destination's parse-warning bounce)
+        force: Boolean
     }
     output := {}
 }

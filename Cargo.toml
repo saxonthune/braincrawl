@@ -19,6 +19,7 @@ members = [
   "apps/cli",
   "crates/conformance",
   "crates/l3",
+  "crates/l3-sync",
 ]
 # Exclude apps/worker from default builds; it only targets wasm32-unknown-unknown.
 # Build it explicitly: cargo build -p braincrawl-worker --target wasm32-unknown-unknown
@@ -40,6 +41,7 @@ default-members = [
   "apps/cli",
   "crates/conformance",
   "crates/l3",
+  "crates/l3-sync",
 ]
 
 [workspace.package]

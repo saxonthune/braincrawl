@@ -19,10 +19,13 @@
 use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, ArtifactStore},
-    types::{Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, Artifact, ArtifactRole},
+    types::{
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportEdgeAssertion, ExportNode,
+        GraphStats, NodeKind, Artifact, ArtifactRole, WorkSearchFilter,
+    },
 };
 #[cfg(feature = "cloudflare")]
-use braincrawl_core::types::Tally;
+use braincrawl_core::types::{ExportAssertion, Tally};
 
 // ── shared helpers (no worker deps) ──────────────────────────────────────────
 
@@ -91,6 +94,9 @@ impl ArtifactStore for D1Store {
     async fn list_artifacts(&self, _id: &CanonicalId, _role: Option<ArtifactRole>, _all_versions: bool) -> Result<Vec<Artifact>, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
+    async fn export_artifacts(&self, _cursor: Option<&str>, _limit: u32) -> Result<(Vec<Artifact>, Option<String>), DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
 }
 
 #[cfg(not(feature = "cloudflare"))]
@@ -126,10 +132,19 @@ impl MetadataStore for D1Store {
     async fn present_aliases(&self, _aliases: &[Alias]) -> Result<Vec<Alias>, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
+    async fn search_work_ids(&self, _filter: &WorkSearchFilter, _limit: u32) -> Result<Vec<CanonicalId>, DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
     async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
         Ok(Vec::new())
     }
     async fn stats(&self) -> Result<GraphStats, DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
+    async fn export_nodes(&self, _cursor: Option<&str>, _limit: u32) -> Result<(Vec<ExportNode>, Option<String>), DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
+    async fn export_edge_assertions(&self, _cursor: Option<&str>, _limit: u32) -> Result<(Vec<ExportEdgeAssertion>, Option<String>), DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
 }
@@ -332,6 +347,74 @@ impl ArtifactStore for D1Store {
                 })
             })
             .collect()
+    }
+
+    async fn export_artifacts(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, Option<String>), DomainError> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            canonical_id: String,
+            role: String,
+            version: i64,
+            r2_key: String,
+            content_hash: String,
+            byte_size: i64,
+            mime: String,
+            source: Option<String>,
+            source_url: Option<String>,
+            fetched_at: String,
+            is_current: i32,
+            derived_from_role: Option<String>,
+            derived_from_version: Option<i64>,
+        }
+        // Cursor: JSON {"c": last_canonical_id, "r": last_role}
+        let decoded: Option<(String, String)> = cursor.and_then(|c| {
+            let v: serde_json::Value = serde_json::from_str(c).ok()?;
+            Some((v["c"].as_str()?.to_string(), v["r"].as_str()?.to_string()))
+        });
+        let fetch_limit = (limit + 1) as i64;
+        let stmt = match &decoded {
+            None => prep(&self.db, braincrawl_sql::export::ARTIFACTS_FIRST, &[n(fetch_limit)])?,
+            Some((c, r)) => prep(
+                &self.db,
+                braincrawl_sql::export::ARTIFACTS_PAGE,
+                &[s(c), s(r), n(fetch_limit)],
+            )?,
+        };
+        let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
+        let has_more = rows.len() > limit as usize;
+        let page: Vec<Artifact> = rows
+            .into_iter()
+            .take(limit as usize)
+            .map(|r| {
+                let derived_from = row_derived_from(r.derived_from_role, r.derived_from_version)?;
+                Ok(Artifact {
+                    canonical_id: CanonicalId(r.canonical_id),
+                    role: parse_artifact_role(&r.role)?,
+                    version: r.version as u32,
+                    r2_key: r.r2_key,
+                    content_hash: r.content_hash,
+                    byte_size: r.byte_size as u64,
+                    mime: r.mime,
+                    source: r.source,
+                    source_url: r.source_url,
+                    fetched_at: r.fetched_at,
+                    is_current: r.is_current != 0,
+                    derived_from,
+                })
+            })
+            .collect::<Result<_, DomainError>>()?;
+        let next_cursor = if has_more {
+            page.last().map(|a| {
+                serde_json::json!({"c": a.canonical_id.0, "r": a.role.as_str()}).to_string()
+            })
+        } else {
+            None
+        };
+        Ok((page, next_cursor))
     }
 }
 
@@ -664,6 +747,35 @@ impl MetadataStore for D1Store {
         Ok((views, next_cursor))
     }
 
+    async fn search_work_ids(
+        &self,
+        filter: &WorkSearchFilter,
+        limit: u32,
+    ) -> Result<Vec<CanonicalId>, DomainError> {
+        #[derive(serde::Deserialize)]
+        struct Row { canonical_id: String }
+        let sql = braincrawl_sql::search::works(
+            filter.author.is_some(),
+            filter.title.is_some(),
+            filter.year.is_some(),
+        );
+        let mut params: Vec<JsValue> = Vec::new();
+        if let Some(a) = &filter.author {
+            params.push(s(a));
+        }
+        if let Some(t) = &filter.title {
+            params.push(s(t));
+            params.push(s(t));
+        }
+        if let Some(y) = filter.year {
+            params.push(n(y as i64));
+        }
+        params.push(n(limit as i64));
+        let stmt = prep(&self.db, &sql, &params)?;
+        let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
+        Ok(rows.into_iter().map(|r| CanonicalId(r.canonical_id)).collect())
+    }
+
     async fn present_aliases(&self, aliases: &[Alias]) -> Result<Vec<Alias>, DomainError> {
         if aliases.is_empty() {
             return Ok(Vec::new());
@@ -770,5 +882,149 @@ impl MetadataStore for D1Store {
 
     async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
         Ok(Vec::new())
+    }
+
+    async fn export_nodes(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportNode>, Option<String>), DomainError> {
+        #[derive(serde::Deserialize)]
+        struct NodeRow { canonical_id: String, kind: String }
+        #[derive(serde::Deserialize)]
+        struct AliasRow { canonical_id: String, namespace: String, value: String }
+        #[derive(serde::Deserialize)]
+        struct AssertionRow { canonical_id: String, source: String, attrs: String, fetched_at: String }
+
+        let fetch_limit = (limit + 1) as i64;
+        let stmt = match cursor {
+            None => prep(&self.db, braincrawl_sql::export::NODES_FIRST, &[n(fetch_limit)])?,
+            Some(last_id) => prep(
+                &self.db,
+                braincrawl_sql::export::NODES_PAGE,
+                &[s(last_id), n(fetch_limit)],
+            )?,
+        };
+        let node_rows = stmt.all().await.map_err(be)?.results::<NodeRow>().map_err(be)?;
+        let has_more = node_rows.len() > limit as usize;
+        let page: Vec<NodeRow> = node_rows.into_iter().take(limit as usize).collect();
+        if page.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        // Aliases + assertions for the page, chunked under the ~100-param D1 cap;
+        // one batch keeps every chunk on a single round-trip.
+        const IDS_PER_CHUNK: usize = 45;
+        let ids: Vec<&String> = page.iter().map(|r| &r.canonical_id).collect();
+        let mut stmts = Vec::new();
+        for chunk in ids.chunks(IDS_PER_CHUNK) {
+            let params: Vec<JsValue> = chunk.iter().map(|id| s(id)).collect();
+            stmts.push(prep(&self.db, &braincrawl_sql::export::aliases_for_nodes(chunk.len()), &params)?);
+            stmts.push(prep(&self.db, &braincrawl_sql::export::assertions_for_nodes(chunk.len()), &params)?);
+        }
+        let results = self.db.batch(stmts).await.map_err(be)?;
+
+        let mut aliases_by_node: std::collections::HashMap<String, Vec<Alias>> = Default::default();
+        let mut assertions_by_node: std::collections::HashMap<String, Vec<ExportAssertion>> =
+            Default::default();
+        for (i, result) in results.into_iter().enumerate() {
+            if i % 2 == 0 {
+                for r in result.results::<AliasRow>().map_err(be)? {
+                    aliases_by_node
+                        .entry(r.canonical_id)
+                        .or_default()
+                        .push(Alias { namespace: r.namespace, value: r.value });
+                }
+            } else {
+                for r in result.results::<AssertionRow>().map_err(be)? {
+                    let attrs = serde_json::from_str(&r.attrs)
+                        .unwrap_or(serde_json::Value::Object(Default::default()));
+                    assertions_by_node
+                        .entry(r.canonical_id)
+                        .or_default()
+                        .push(ExportAssertion { source: r.source, attrs, fetched_at: r.fetched_at });
+                }
+            }
+        }
+
+        let nodes: Vec<ExportNode> = page
+            .iter()
+            .map(|r| {
+                Ok(ExportNode {
+                    canonical_id: CanonicalId(r.canonical_id.clone()),
+                    kind: parse_node_kind(&r.kind)?,
+                    aliases: aliases_by_node.remove(&r.canonical_id).unwrap_or_default(),
+                    assertions: assertions_by_node.remove(&r.canonical_id).unwrap_or_default(),
+                })
+            })
+            .collect::<Result<_, DomainError>>()?;
+
+        let next_cursor = if has_more {
+            page.last().map(|r| r.canonical_id.clone())
+        } else {
+            None
+        };
+        Ok((nodes, next_cursor))
+    }
+
+    async fn export_edge_assertions(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportEdgeAssertion>, Option<String>), DomainError> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            src_id: String,
+            dst_id: String,
+            relation: String,
+            source: String,
+            attrs: Option<String>,
+            fetched_at: String,
+        }
+        // Cursor: JSON {"s": src, "d": dst, "r": relation, "o": source}
+        let decoded: Option<(String, String, String, String)> = cursor.and_then(|c| {
+            let v: serde_json::Value = serde_json::from_str(c).ok()?;
+            Some((
+                v["s"].as_str()?.to_string(),
+                v["d"].as_str()?.to_string(),
+                v["r"].as_str()?.to_string(),
+                v["o"].as_str()?.to_string(),
+            ))
+        });
+        let fetch_limit = (limit + 1) as i64;
+        let stmt = match &decoded {
+            None => prep(&self.db, braincrawl_sql::export::EDGE_ASSERTIONS_FIRST, &[n(fetch_limit)])?,
+            Some((s0, d0, r0, o0)) => prep(
+                &self.db,
+                braincrawl_sql::export::EDGE_ASSERTIONS_PAGE,
+                &[s(s0), s(d0), s(r0), s(o0), n(fetch_limit)],
+            )?,
+        };
+        let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
+        let has_more = rows.len() > limit as usize;
+        let page: Vec<ExportEdgeAssertion> = rows
+            .into_iter()
+            .take(limit as usize)
+            .map(|r| ExportEdgeAssertion {
+                src_id: CanonicalId(r.src_id),
+                dst_id: CanonicalId(r.dst_id),
+                relation: r.relation,
+                source: r.source,
+                attrs: r.attrs.and_then(|a| serde_json::from_str(&a).ok()),
+                fetched_at: r.fetched_at,
+            })
+            .collect();
+        let next_cursor = if has_more {
+            page.last().map(|ea| {
+                serde_json::json!({
+                    "s": ea.src_id.0, "d": ea.dst_id.0,
+                    "r": ea.relation, "o": ea.source,
+                })
+                .to_string()
+            })
+        } else {
+            None
+        };
+        Ok((page, next_cursor))
     }
 }

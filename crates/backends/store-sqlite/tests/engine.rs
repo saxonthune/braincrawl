@@ -22,6 +22,7 @@ fn work(source: &str, aliases: Vec<Alias>) -> WorkRecord {
         kind: NodeKind::Work,
         aliases,
         attrs: serde_json::json!({ "title": format!("record from {}", source) }),
+        fetched_at: None,
     }
 }
 
@@ -78,12 +79,14 @@ async fn test_bundle_convergence() {
         kind: NodeKind::Work,
         aliases: vec![alias("doi", "10.1/x"), alias("arxiv", "2301.00001")],
         attrs: serde_json::json!({}),
+        fetched_at: None,
     };
     let b = WorkRecord {
         source: "pubmed".to_string(),
         kind: NodeKind::Work,
         aliases: vec![alias("doi", "10.1/x"), alias("pmid", "99999")],
         attrs: serde_json::json!({}),
+        fetched_at: None,
     };
 
     let id_a = s.put_work(a).await.unwrap();
@@ -126,6 +129,7 @@ async fn test_merge_confluence() {
         kind: NodeKind::Work,
         aliases: vec![alias("doi", "10.1/x"), alias("pmid", "12345")],
         attrs: serde_json::json!({}),
+        fetched_at: None,
     };
     let survivor = s.put_work(bridging).await.unwrap();
 
@@ -459,4 +463,101 @@ async fn test_list_artifacts_ordering() {
         ],
         "role ascending, then version descending"
     );
+}
+
+// ── 12. search_works ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_search_works_by_author_title_year_artifact() {
+    use braincrawl_core::types::{ArtifactRole, WorkSearchFilter};
+
+    let dir = tempfile::tempdir().unwrap();
+    let s = make_store(dir.path());
+
+    // OpenAlex-shaped authorships.
+    let openalex_rec = WorkRecord {
+        source: "openalex".to_string(),
+        kind: NodeKind::Work,
+        aliases: vec![alias("openalex", "W1")],
+        attrs: serde_json::json!({
+            "title": "Salt and Silt in Ancient Mesopotamian Agriculture",
+            "publication_year": 1958,
+            "authorships": [
+                {"author": {"display_name": "Thorkild Jacobsen"}, "raw_author_name": "Thorkild Jacobsen"},
+                {"author": {"display_name": "Robert M. Adams"}, "raw_author_name": "Robert M. Adams"}
+            ]
+        }),
+        fetched_at: None,
+    };
+    // Manual-shaped bare-string authors.
+    let manual_rec = WorkRecord {
+        source: "manual".to_string(),
+        kind: NodeKind::Work,
+        aliases: vec![alias("isbn", "9780826481702")],
+        attrs: serde_json::json!({
+            "title": "A New Philosophy of Society",
+            "publication_year": 2006,
+            "authors": ["Manuel DeLanda"]
+        }),
+        fetched_at: None,
+    };
+    let id_openalex = s.put_work(openalex_rec).await.unwrap();
+    let id_manual = s.put_work(manual_rec).await.unwrap();
+
+    // Author substring, case-insensitive, both shapes.
+    let by = |f: WorkSearchFilter| (f, None::<ArtifactRole>);
+    let (f, w) = by(WorkSearchFilter { author: Some("delanda".into()), ..Default::default() });
+    let hits = s.search_works(&f, w, 10).await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].canonical_id.0, id_manual.0);
+
+    let (f, w) = by(WorkSearchFilter { author: Some("jacobsen".into()), ..Default::default() });
+    let hits = s.search_works(&f, w, 10).await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].canonical_id.0, id_openalex.0);
+
+    // An author needle must not match a title.
+    let (f, w) = by(WorkSearchFilter { author: Some("mesopotamian".into()), ..Default::default() });
+    assert!(s.search_works(&f, w, 10).await.unwrap().is_empty());
+
+    // Title + year AND together.
+    let (f, w) = by(WorkSearchFilter {
+        title: Some("philosophy".into()),
+        year: Some(2006),
+        ..Default::default()
+    });
+    let hits = s.search_works(&f, w, 10).await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].canonical_id.0, id_manual.0);
+
+    let (f, w) = by(WorkSearchFilter {
+        title: Some("philosophy".into()),
+        year: Some(1958),
+        ..Default::default()
+    });
+    assert!(s.search_works(&f, w, 10).await.unwrap().is_empty());
+
+    // Empty filter with no artifact restriction is rejected.
+    assert!(s.search_works(&WorkSearchFilter::default(), None, 10).await.is_err());
+
+    // with_artifact keeps only the work holding a current fulltext.
+    s.put_content(
+        alias("openalex", "W1"),
+        ArtifactRole::Fulltext,
+        b"%PDF-1.4 fake".to_vec(),
+        "application/pdf".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+        None,
+    )
+    .await
+    .unwrap();
+    let f = WorkSearchFilter { year: Some(1958), ..Default::default() };
+    let hits = s.search_works(&f, Some(ArtifactRole::Fulltext), 10).await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].canonical_id.0, id_openalex.0);
+
+    let f = WorkSearchFilter { author: Some("delanda".into()), ..Default::default() };
+    assert!(s.search_works(&f, Some(ArtifactRole::Fulltext), 10).await.unwrap().is_empty());
 }

@@ -11,9 +11,12 @@ All provider config follows the same precedence: **env > `~/.config/braincrawl/c
 
 ```toml
 # ~/.config/braincrawl/config.toml
-server_url = "http://127.0.0.1:8787"
+active_store = "local"                # which [stores.<name>] every command targets
 unpaywall_email = "you@example.com"   # contact email Unpaywall requires for fulltext lookups
 crossref_mailto = "you@example.com"   # polite-pool contact for Crossref reference fetches
+
+[stores.local]
+url = "http://127.0.0.1:8787"
 ```
 
 Check the server is up before debugging provider calls:

@@ -72,9 +72,18 @@ pub struct StoreClient {
 
 impl StoreClient {
     pub fn new(base_url: impl Into<String>) -> Self {
+        // The blocking client's default timeout is 30 s for the WHOLE response;
+        // multi-megabyte transfers (export pages, book-sized PDFs) need longer.
+        // The User-Agent matters: Cloudflare intermittently 503s UA-less
+        // requests (error 1102) before they ever reach the worker.
+        let http = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(600))
+            .user_agent(concat!("braincrawl-cli/", env!("BRAINCRAWL_BUILD")))
+            .build()
+            .unwrap_or_default();
         StoreClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            http: reqwest::blocking::Client::new(),
+            http,
             token: None,
         }
     }
@@ -200,6 +209,41 @@ impl StoreClient {
         Ok(Some(resp.json()?))
     }
 
+    /// GET /works — store-side work search (no provider call).
+    /// Returns the matched work JSONs from the response's `works` array.
+    pub fn search_works(
+        &self,
+        author: Option<&str>,
+        title: Option<&str>,
+        year: Option<u32>,
+        with_artifact: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<serde_json::Value>> {
+        let url = format!("{}/works", self.base_url);
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(a) = author {
+            params.push(("author", a.to_string()));
+        }
+        if let Some(t) = title {
+            params.push(("title", t.to_string()));
+        }
+        if let Some(y) = year {
+            params.push(("year", y.to_string()));
+        }
+        if let Some(r) = with_artifact {
+            params.push(("with_artifact", r.to_string()));
+        }
+        params.push(("limit", limit.to_string()));
+        let resp = self.apply_auth(self.http.get(&url).query(&params)).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
+        }
+        let body: serde_json::Value = resp.json()?;
+        Ok(body["works"].as_array().cloned().unwrap_or_default())
+    }
+
     /// PUT /works/{alias}/content/{kind} — store a content artifact.
     ///
     /// Params are sent as query parameters per the server's handler_works_put:
@@ -321,6 +365,64 @@ impl StoreClient {
         Ok(ArtifactListing::Held(
             body["artifacts"].as_array().cloned().unwrap_or_default(),
         ))
+    }
+
+    /// GET /export/{nodes|edges|artifacts} — one page of the store's sync
+    /// enumeration. Returns the raw items plus the cursor for the next page
+    /// (`None` when drained).
+    pub fn export_page(
+        &self,
+        route: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<serde_json::Value>, Option<String>)> {
+        let url = format!("{}/export/{}", self.base_url, route);
+        let limit_s = limit.to_string();
+        let mut params: Vec<(&str, &str)> = vec![("limit", &limit_s)];
+        if let Some(c) = cursor {
+            params.push(("cursor", c));
+        }
+        let resp = self.apply_auth(self.http.get(&url).query(&params)).send()?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
+        }
+        let body: serde_json::Value = resp.json()?;
+        let items = body["items"].as_array().cloned().unwrap_or_default();
+        let cursor = body["cursor"].as_str().map(|s| s.to_string());
+        Ok((items, cursor))
+    }
+
+    /// Drain a paginated `/export/{route}` enumeration into one item list.
+    /// The worker 503s (error 1102, resource limits) under bursts of heavy
+    /// export pages and recovers after a short pause, so pages are paced and
+    /// a failed page is retried with growing backoff before the drain gives up.
+    pub fn export_all(&self, route: &str, limit: u32) -> Result<Vec<serde_json::Value>> {
+        const ATTEMPTS: u32 = 6;
+        let mut items = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut attempt = 0;
+            let (page, next) = loop {
+                match self.export_page(route, cursor.as_deref(), limit) {
+                    Ok(page) => break page,
+                    Err(e) => {
+                        attempt += 1;
+                        if attempt >= ATTEMPTS {
+                            return Err(e);
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(3 * attempt as u64));
+                    }
+                }
+            };
+            items.extend(page);
+            match next {
+                Some(c) => cursor = Some(c),
+                None => return Ok(items),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
     }
 
     /// GET /api/l3/docs — every doc currently in the consolidated L3 store.

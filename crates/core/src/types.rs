@@ -86,6 +86,27 @@ pub struct WorkRecord {
     pub kind: NodeKind,
     pub aliases: Vec<Alias>,
     pub attrs: serde_json::Value,
+    /// Provenance timestamp for the assertion; `None` means "stamp with the
+    /// store's own now". Sync replay passes the original timestamp so a copy
+    /// between stores does not rewrite provenance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fetched_at: Option<String>,
+}
+
+/// Store-side work search. Every set field must match (AND). `author` and
+/// `title` are case-insensitive substring matches against any assertion;
+/// `year` matches `publication_year` exactly.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WorkSearchFilter {
+    pub author: Option<String>,
+    pub title: Option<String>,
+    pub year: Option<u32>,
+}
+
+impl WorkSearchFilter {
+    pub fn is_empty(&self) -> bool {
+        self.author.is_none() && self.title.is_none() && self.year.is_none()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -142,6 +163,36 @@ pub struct Neighborhood {
     pub edges: Vec<NeighborhoodEdge>,
     /// True if max_nodes capped the traversal.
     pub truncated: bool,
+}
+
+/// One provider assertion carried by an [`ExportNode`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExportAssertion {
+    pub source: String,
+    pub attrs: serde_json::Value,
+    pub fetched_at: String,
+}
+
+/// One live node with everything needed to replay it into another store:
+/// aliases (identity) and per-provider assertions (metadata + provenance).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExportNode {
+    pub canonical_id: CanonicalId,
+    pub kind: NodeKind,
+    pub aliases: Vec<Alias>,
+    pub assertions: Vec<ExportAssertion>,
+}
+
+/// One edge assertion, endpoints as canonical ids. A sync client maps the ids
+/// to aliases using the node export's alias sets before replaying.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExportEdgeAssertion {
+    pub src_id: CanonicalId,
+    pub dst_id: CanonicalId,
+    pub relation: String,
+    pub source: String,
+    pub attrs: Option<serde_json::Value>,
+    pub fetched_at: String,
 }
 
 /// A single named count, e.g. `{ key: "work", count: 42 }`.

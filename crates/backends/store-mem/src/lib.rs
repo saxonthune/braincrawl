@@ -12,8 +12,9 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, GraphStats, NodeKind, Artifact,
-        ArtifactRole, Tally,
+        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportAssertion,
+        ExportEdgeAssertion, ExportNode, GraphStats, NodeKind, Artifact, ArtifactRole, Tally,
+        WorkSearchFilter,
     },
 };
 
@@ -203,6 +204,40 @@ impl ArtifactStore for MemStore {
                 .then(b.version.cmp(&a.version))
         });
         Ok(out)
+    }
+
+    async fn export_artifacts(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, Option<String>), DomainError> {
+        let inner = self.inner.borrow();
+        let decoded: Option<(String, String)> = cursor.and_then(|c| {
+            let v: serde_json::Value = serde_json::from_str(c).ok()?;
+            Some((v["c"].as_str()?.to_string(), v["r"].as_str()?.to_string()))
+        });
+        let mut current: Vec<Artifact> = inner
+            .artifacts
+            .values()
+            .flat_map(|rows| rows.iter().filter(|d| d.is_current).cloned())
+            .filter(|a| match &decoded {
+                None => true,
+                Some((c, r)) => (a.canonical_id.0.as_str(), a.role.as_str()) > (c.as_str(), r.as_str()),
+            })
+            .collect();
+        current.sort_by(|a, b| {
+            a.canonical_id.0.cmp(&b.canonical_id.0).then(a.role.as_str().cmp(b.role.as_str()))
+        });
+        let has_more = current.len() > limit as usize;
+        current.truncate(limit as usize);
+        let next_cursor = if has_more {
+            current.last().map(|a| {
+                serde_json::json!({"c": a.canonical_id.0, "r": a.role.as_str()}).to_string()
+            })
+        } else {
+            None
+        };
+        Ok((current, next_cursor))
     }
 }
 
@@ -516,6 +551,79 @@ impl MetadataStore for MemStore {
         Ok((views, next_cursor))
     }
 
+    async fn search_work_ids(
+        &self,
+        filter: &WorkSearchFilter,
+        limit: u32,
+    ) -> Result<Vec<CanonicalId>, DomainError> {
+        let inner = self.inner.borrow();
+
+        // Mirrors the SQL backends' author-path contract: only author-name
+        // fields can satisfy an author filter.
+        fn author_matches(attrs: &serde_json::Value, needle: &str) -> bool {
+            let contains = |v: &serde_json::Value| {
+                v.as_str().is_some_and(|s| s.to_lowercase().contains(needle))
+            };
+            if let Some(auths) = attrs.get("authorships").and_then(|v| v.as_array()) {
+                for a in auths {
+                    if a.get("author").and_then(|x| x.get("display_name")).is_some_and(|v| contains(v))
+                        || a.get("raw_author_name").is_some_and(|v| contains(v))
+                    {
+                        return true;
+                    }
+                }
+            }
+            if let Some(authors) = attrs.get("authors").and_then(|v| v.as_array()) {
+                for a in authors {
+                    if contains(a) || a.get("name").is_some_and(|v| contains(v)) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        fn title_matches(attrs: &serde_json::Value, needle: &str) -> bool {
+            ["title", "display_name"].iter().any(|k| {
+                attrs
+                    .get(*k)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.to_lowercase().contains(needle))
+            })
+        }
+
+        let author = filter.author.as_ref().map(|s| s.to_lowercase());
+        let title = filter.title.as_ref().map(|s| s.to_lowercase());
+
+        let mut ids: Vec<String> = inner
+            .nodes
+            .iter()
+            .filter(|(_, row)| row.kind == NodeKind::Work && row.merged_into.is_none())
+            .filter(|(id, _)| {
+                let assertions: Vec<&NodeAssertionRow> = inner
+                    .node_assertions
+                    .iter()
+                    .filter(|((nid, _), _)| nid == *id)
+                    .map(|(_, row)| row)
+                    .collect();
+                let field_ok = |pred: &dyn Fn(&serde_json::Value) -> bool| {
+                    assertions.iter().any(|row| pred(&row.attrs))
+                };
+                author.as_ref().is_none_or(|n| field_ok(&|a| author_matches(a, n)))
+                    && title.as_ref().is_none_or(|n| field_ok(&|a| title_matches(a, n)))
+                    && filter.year.is_none_or(|y| {
+                        field_ok(&|a| {
+                            a.get("publication_year").and_then(|v| v.as_u64()) == Some(y as u64)
+                        })
+                    })
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        ids.sort();
+        ids.truncate(limit as usize);
+        Ok(ids.into_iter().map(CanonicalId).collect())
+    }
+
     async fn present_aliases(&self, aliases: &[Alias]) -> Result<Vec<Alias>, DomainError> {
         let inner = self.inner.borrow();
         let present: Vec<Alias> = aliases
@@ -616,5 +724,115 @@ impl MetadataStore for MemStore {
 
     async fn applied_migrations(&self) -> Result<Vec<String>, DomainError> {
         Ok(Vec::new())
+    }
+
+    async fn export_nodes(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportNode>, Option<String>), DomainError> {
+        let inner = self.inner.borrow();
+        let mut ids: Vec<&String> = inner
+            .nodes
+            .iter()
+            .filter(|(_, row)| row.merged_into.is_none())
+            .map(|(id, _)| id)
+            .filter(|id| cursor.map(|c| id.as_str() > c).unwrap_or(true))
+            .collect();
+        ids.sort();
+        let has_more = ids.len() > limit as usize;
+        ids.truncate(limit as usize);
+
+        let nodes: Vec<ExportNode> = ids
+            .iter()
+            .map(|id| {
+                let row = &inner.nodes[*id];
+                let aliases: Vec<Alias> = inner
+                    .aliases
+                    .iter()
+                    .filter(|(_, cid)| *cid == *id)
+                    .map(|((ns, val), _)| Alias { namespace: ns.clone(), value: val.clone() })
+                    .collect();
+                let assertions: Vec<ExportAssertion> = inner
+                    .node_assertions
+                    .iter()
+                    .filter(|((nid, _), _)| nid == *id)
+                    .map(|((_, source), a)| ExportAssertion {
+                        source: source.clone(),
+                        attrs: a.attrs.clone(),
+                        fetched_at: a.fetched_at.clone(),
+                    })
+                    .collect();
+                ExportNode {
+                    canonical_id: CanonicalId((*id).clone()),
+                    kind: row.kind.clone(),
+                    aliases,
+                    assertions,
+                }
+            })
+            .collect();
+
+        let next_cursor = if has_more {
+            nodes.last().map(|n| n.canonical_id.0.clone())
+        } else {
+            None
+        };
+        Ok((nodes, next_cursor))
+    }
+
+    async fn export_edge_assertions(
+        &self,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<ExportEdgeAssertion>, Option<String>), DomainError> {
+        let inner = self.inner.borrow();
+        let decoded: Option<(String, String, String, String)> = cursor.and_then(|c| {
+            let v: serde_json::Value = serde_json::from_str(c).ok()?;
+            Some((
+                v["s"].as_str()?.to_string(),
+                v["d"].as_str()?.to_string(),
+                v["r"].as_str()?.to_string(),
+                v["o"].as_str()?.to_string(),
+            ))
+        });
+        let mut rows: Vec<ExportEdgeAssertion> = inner
+            .edges
+            .iter()
+            .flat_map(|((src, dst, rel), assertions)| {
+                assertions.iter().map(move |(source, a)| ExportEdgeAssertion {
+                    src_id: CanonicalId(src.clone()),
+                    dst_id: CanonicalId(dst.clone()),
+                    relation: rel.clone(),
+                    source: source.clone(),
+                    attrs: a.attrs.clone(),
+                    fetched_at: a.fetched_at.clone(),
+                })
+            })
+            .filter(|ea| match &decoded {
+                None => true,
+                Some((s, d, r, o)) => {
+                    (ea.src_id.0.as_str(), ea.dst_id.0.as_str(), ea.relation.as_str(), ea.source.as_str())
+                        > (s.as_str(), d.as_str(), r.as_str(), o.as_str())
+                }
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            (&a.src_id.0, &a.dst_id.0, &a.relation, &a.source)
+                .cmp(&(&b.src_id.0, &b.dst_id.0, &b.relation, &b.source))
+        });
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        let next_cursor = if has_more {
+            rows.last().map(|ea| {
+                serde_json::json!({
+                    "s": ea.src_id.0, "d": ea.dst_id.0,
+                    "r": ea.relation, "o": ea.source,
+                })
+                .to_string()
+            })
+        } else {
+            None
+        };
+        Ok((rows, next_cursor))
     }
 }
