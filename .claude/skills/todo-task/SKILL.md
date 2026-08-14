@@ -73,5 +73,5 @@ Full detail (with rationale) lives in `REFERENCE.md`. The invariants:
 - **Never hand-commit task specs** — the orchestrator commits them automatically before cutting the worktree.
 - **Never hand-edit `results/*.agent.md`** — it is worktree-owned and carried by the merge.
 - **Never write to `.running/`** — the run-record is the orchestrator's; the reporter only reads it.
-- **Never hand-move files** to archive — run `archive.sh` (it uses `git rm`).
+- **Never hand-move files** to archive — run `archive.sh` (it copies to `.archived/`, then removes).
 - **After manually resolving a merge conflict, always clean up** — see `REFERENCE.md`.

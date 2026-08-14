@@ -47,13 +47,18 @@ Investigate the codebase to understand what changes are needed:
 
 Present your findings to the user before writing anything. This is where alignment happens. The reader does not remember the codebase state you just finished reading — write the briefing for someone who moves between several repos in a day and needs the current interface put in front of them, not assumed.
 
-The briefing is a grounded artifact with four parts. Every decision it surfaces must live in this structure, not in a hand-back.
+The briefing is a grounded artifact with four parts. Every decision it surfaces must live in this structure, not in a hand-back. Where a part explains a mechanism, deliver it with **progressive disclosure** (defined in the Plain technical output-style): a concept-layer gloss in the repo's own glossary terms, then a detail-layer grounding in code — coarse first, so the reader can stop at the concept layer if they don't need to touch the code.
 
 ### 1. Plan Summary
 One paragraph restating the task's motivation and scope in your own words. Flag anything ambiguous.
 
-### 2. Status quo — quote the interface
-What exists today, stated concretely enough that the reader can decide without re-reading the source. For each behavior a decision touches, **quote the actual interface** — the current signature, the enum variants that exist now, the literal string a command prints, the `file:line`. "Today `CatalogCmd` (`cli.rs:422`) has `Get, Have, Neighborhood, Stats, Put` — no `Add`" is answerable cold. "How the catalog handles hand entry" is not. Do not describe an interface you can quote; quote it.
+### 2. Status quo — progressive disclosure
+State what exists today as the two-layer atom. Order the facts by the structure of the thing being changed — for a code-path change that is the control-flow trace in execution order, not an inventory of symbols in declaration order.
+
+- **Concept layer** — the dataflow the change touches, in the repo's own glossary terms and plain concepts. No symbol names, no `file:line`. Trace the mechanism as ideas, in the order data moves through it, and let every design consequence fall out here. A reader who knows the system but not this code approves the approach from this paragraph alone. Example: "Assigning ids is the one step that writes document bodies; it already gathers every anchor in the store so a new id can't collide, and writes each doc back untouched except the heading it stamps — and it stamps only headings that lack an anchor, so a temporary anchor is skipped today."
+- **Detail layer** — the same path grounded: the control-flow trace in execution order, each step a `file:line` with the exact signature, enum, or string, ending on the design consequence it forces. Example: "`assign_ids` (`assign.rs:63`) is the only writer; `collect_anchors` (`:22`) builds the store-global set; `assign_ids_source` skips `id.is_some()` (`:39`); `append_anchors` (`:103`) appends only."
+
+The concept layer must carry every decision the briefing will make; the detail layer only resolves it to code. Do not open the section with symbols — a reader handed `append_anchors` before they know what write-back *is* has been given the detail layer first.
 
 ### 3. Recommended changes — state the decision, don't hand it back
 For each design decision the task surfaces, state your recommendation as a declarative sentence that cites the status-quo fact it rests on. End on the recommendation, not on a menu.

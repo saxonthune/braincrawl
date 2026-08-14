@@ -153,26 +153,14 @@ phase_validate() {
   fi
 }
 
-# phase_commit_spec
-# Commits the spec on trunk (MERGE_DIR) BEFORE the worktree is cut, so the
-# squash-merge never collides with an untracked spec. Idempotent (skips if the
-# spec is already committed) and surgical (commits only this one path, never
-# sweeping unrelated changes). The user never hand-commits task files; the
-# orchestrator owns this commit. For chain phases the spec is already committed
-# on the chain branch, so this is a no-op.
-phase_commit_spec() {
-  local rel=".todo-tasks/tasks/${PLAN_SLUG}.md"
-  if [[ -n "$(git -C "$MERGE_DIR" status --porcelain -- "$rel" 2>/dev/null)" ]]; then
-    echo "── Committing spec to trunk ──"
-    git -C "$MERGE_DIR" add "$rel" 2>/dev/null || true
-    git -C "$MERGE_DIR" commit -q -m "todotask: spec ${PLAN_SLUG}" -- "$rel" 2>/dev/null || true
-    echo "Committed ${rel}"
-    echo ""
-  fi
-
-  # Capture trunk tip AFTER the spec commit — this is the true baseline before
-  # the agent runs, so phase_verify's trunk-leak check doesn't fire on our own
-  # spec commit in the no-op case.
+# phase_capture_baseline
+# Records the trunk tip before the agent runs, so phase_verify's trunk-leak
+# check has something to compare against.
+#
+# This used to also commit the spec, to keep the squash-merge from colliding
+# with an untracked spec file. `.todo-tasks/tasks/` is now ignored, so no such
+# collision is possible and the commit is gone — a task costs trunk one commit.
+phase_capture_baseline() {
   TRUNK_HEAD_BEFORE=$(git -C "$MERGE_DIR" rev-parse "${TRUNK}" 2>/dev/null || echo "")
 }
 
@@ -572,9 +560,6 @@ phase_merge() {
       [[ "$MERGE_STATUS" == "$SM_MERGE_DIRTY" ]] && conflict_detail="Conflict markers in: ${DIRTY_FILES}"
       mkdir -p "${MERGE_DIR}/.todo-tasks/results"
       write_merge_result "$merge_md" "$PLAN_SLUG" "$MERGE_STATUS" "$TRUNK_STATE" "$conflict_detail"
-      ( cd "${MERGE_DIR}" \
-        && git add ".todo-tasks/results/${PLAN_SLUG}.merge.md" \
-        && git commit -m "todotask: merge result ${PLAN_SLUG}" >/dev/null 2>&1 ) || true
       echo "Wrote merge result: ${merge_md}"
       ;;
   esac
@@ -583,24 +568,25 @@ phase_merge() {
 }
 
 # phase_compose_agent_result
-# Writes the worktree-owned agent.md INSIDE the worktree and commits it on the
-# agent branch, so the squash-merge carries it to trunk. Single writer (the
-# orchestrator, cd'd into the worktree); the headless agent never writes it.
-# Runs even in the no-op case — the result is durable on the branch and the
-# run-record points at it.
+# Writes agent.md directly to trunk (MERGE_DIR). Single writer (the
+# orchestrator); the headless agent never writes it. Runs even in the no-op
+# case — the run-record points at it either way.
+#
+# This used to write the file inside the worktree and commit it on the agent
+# branch, relying on the squash-merge to carry it to trunk. `results/` is now
+# ignored, so that commit could not happen; writing straight to trunk also
+# means the result survives outcomes that never merge at all.
 phase_compose_agent_result() {
   echo "── Composing agent result ──"
-  ( cd "${WORKTREE_DIR}" || exit 1
-    mkdir -p .todo-tasks/results
-    local agent_md=".todo-tasks/results/${PLAN_SLUG}.agent.md"
-    local build_test_tail; build_test_tail=$(echo "${BUILD_TEST_OUTPUT:-}" | tail -30)
-    write_agent_result "$agent_md" "$PLAN_SLUG" \
-      "$SESSION_STATE" "$VERIFICATION_STATE" \
-      "${COMMITS_COUNT:-0}" "${COMMITS:-(none)}" "$BRANCH" "${SESSION_ID:-}" \
-      "${CLAUDE_RESULT:-}" "$build_test_tail" "${SESSION_ERROR:-}" "${SURFACE_DEVIATIONS:-none}" \
-      "${TURNS_FIELD:-}" "${COST_FIELD:-}" "${UNCOMMITTED_SUMMARY:-none}"
-    git add "$agent_md"
-    git commit -m "todotask: result ${PLAN_SLUG}" >/dev/null 2>&1 || true )
+  mkdir -p "${MERGE_DIR}/.todo-tasks/results"
+  local agent_md="${MERGE_DIR}/.todo-tasks/results/${PLAN_SLUG}.agent.md"
+  local build_test_tail; build_test_tail=$(echo "${BUILD_TEST_OUTPUT:-}" | tail -30)
+  write_agent_result "$agent_md" "$PLAN_SLUG" \
+    "$SESSION_STATE" "$VERIFICATION_STATE" \
+    "${COMMITS_COUNT:-0}" "${COMMITS:-(none)}" "$BRANCH" "${SESSION_ID:-}" \
+    "${CLAUDE_RESULT:-}" "$build_test_tail" "${SESSION_ERROR:-}" "${SURFACE_DEVIATIONS:-none}" \
+    "${TURNS_FIELD:-}" "${COST_FIELD:-}" "${UNCOMMITTED_SUMMARY:-none}"
+  echo "Wrote agent result: ${agent_md}"
   echo ""
 }
 
@@ -633,7 +619,7 @@ phase_finalize() {
 
 main() {
   CURRENT_PHASE="validate";        phase_validate
-  CURRENT_PHASE="commit_spec";     phase_commit_spec
+  CURRENT_PHASE="capture_baseline"; phase_capture_baseline
   CURRENT_PHASE="create_worktree"; phase_create_worktree
   CURRENT_PHASE="record_run";      phase_record_run
   CURRENT_PHASE="copy_plan";       phase_copy_plan
@@ -668,8 +654,8 @@ main() {
     fi
   fi
 
-  # Compose + commit agent.md on the branch BEFORE merging, so the squash
-  # carries it. Runs for every outcome (including no-op and session failure).
+  # Runs for every outcome (including no-op and session failure), so a task
+  # that never reaches a merge still leaves a result behind.
   CURRENT_PHASE="compose_agent_result"; phase_compose_agent_result
 
   if [[ "$do_merge" == "true" ]]; then

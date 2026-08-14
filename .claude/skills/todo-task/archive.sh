@@ -2,9 +2,9 @@
 set -uo pipefail
 
 # ─── Archive ─────────────────────────────────────────────────────────────────
-# The ONLY component that moves files, and it does so with `git rm`: the tracked
-# active files leave main's working tree while a physical copy lands in the
-# gitignored .archived/. Serial, single-writer, conflict-free.
+# The ONLY component that removes files: a physical copy lands in .archived/,
+# then the active spec and results are deleted. Every path involved is ignored,
+# so no commit is made. Serial, single-writer, conflict-free.
 #
 # Usage:
 #   archive.sh                 archive every auto-eligible outcome
@@ -67,7 +67,7 @@ archive_one() {
     br="$(read_run_field "$run" branch)"
   fi
 
-  # Copy tracked trunk files to the gitignored archive.
+  # Copy the trunk-side lifecycle files into the archive.
   [[ -f "${TODO}/tasks/${slug}.md" ]]           && cp "${TODO}/tasks/${slug}.md"           "${TODO}/.archived/${TS}-${slug}.md"
   [[ -f "${TODO}/results/${slug}.agent.md" ]]   && cp "${TODO}/results/${slug}.agent.md"   "${TODO}/.archived/${TS}-${slug}.agent.md"
   [[ -f "${TODO}/results/${slug}.merge.md" ]]   && cp "${TODO}/results/${slug}.merge.md"   "${TODO}/.archived/${TS}-${slug}.merge.md"
@@ -76,13 +76,11 @@ archive_one() {
     cp "${wt}/.todo-tasks/results/${slug}.agent.md" "${TODO}/.archived/${TS}-${slug}.agent.md"
   fi
 
-  git -C "$REPO_ROOT" rm -q --ignore-unmatch \
-    ".todo-tasks/tasks/${slug}.md" \
-    ".todo-tasks/results/${slug}.agent.md" \
-    ".todo-tasks/results/${slug}.merge.md" >/dev/null 2>&1 || true
-  if ! git -C "$REPO_ROOT" diff --cached --quiet; then
-    git -C "$REPO_ROOT" commit -q -m "todotask: archive ${slug}" >/dev/null 2>&1 || true
-  fi
+  # Plain rm — these paths are ignored, so there is nothing to stage and no
+  # archive commit to make. The copies above are the durable record.
+  rm -f "${TODO}/tasks/${slug}.md" \
+        "${TODO}/results/${slug}.agent.md" \
+        "${TODO}/results/${slug}.merge.md"
 
   printf '%s\n' "$disposition" > "${TODO}/.archived/${TS}-${slug}.disposition"
 
@@ -98,10 +96,7 @@ archive_chain() {
   local name="$1"
   mkdir -p "${TODO}/.archived"
   [[ -f "${TODO}/chains/${name}.md" ]] && cp "${TODO}/chains/${name}.md" "${TODO}/.archived/${TS}-chain-${name}.md"
-  git -C "$REPO_ROOT" rm -q --ignore-unmatch ".todo-tasks/chains/${name}.md" >/dev/null 2>&1 || true
-  if ! git -C "$REPO_ROOT" diff --cached --quiet; then
-    git -C "$REPO_ROOT" commit -q -m "todotask: archive chain ${name}" >/dev/null 2>&1 || true
-  fi
+  rm -f "${TODO}/chains/${name}.md"
   printf '%s\n' "$SM_OVERALL_SUCCESS" > "${TODO}/.archived/${TS}-chain-${name}.disposition"
   echo "- Archived chain ${name}"
 }
@@ -132,9 +127,9 @@ if [[ ${#SLUGS[@]} -gt 0 ]]; then
     fi
   done
 else
-  # Refuse the unscoped sweep inside a todotask agent worktree: it would archive
-  # (git rm) sibling tasks' merged results and carry the deletions to trunk on the
-  # agent's squash-merge. Explicit `archive.sh <slug>` / `--merged` remain allowed.
+  # Refuse the unscoped sweep inside a todotask agent worktree: it would delete
+  # sibling tasks' specs and results out from under a run still using them.
+  # Explicit `archive.sh <slug>` / `--merged` remain allowed.
   current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
   if [[ "$current_branch" == *_claude* ]]; then
     echo "- Refusing sweep: running inside a todotask agent worktree (branch ${current_branch})."
