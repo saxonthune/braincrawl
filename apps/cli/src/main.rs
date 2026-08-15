@@ -16,8 +16,7 @@ use braincrawl_cli::output::{Envelope, QueryMeta, render};
 use braincrawl_cli::provider::{Emission, Provider, ProviderCmd, PushSummary};
 use braincrawl_cli::semanticscholar::client::SemanticScholarClient;
 use braincrawl_cli::semanticscholar::SemanticScholarProvider;
-use braincrawl_cli::refs_backfill::crossref::CrossrefClient;
-use braincrawl_cli::refs_backfill::mapping::{doi_edges, extract_doi_from_work};
+use braincrawl_cli::refs_backfill::mapping::doi_edges;
 use braincrawl_cli::refs_backfill::opencitations::OpenCitationsClient;
 use braincrawl_cli::store_client::StoreClient;
 use clap::Parser;
@@ -213,58 +212,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             run_provider(&provider, cmd, &store, &opts)?;
         }
         Namespace::Crossref(cr) => {
-            let store = StoreClient::new(&config.server_url)
-                .with_token(config.auth_token.clone());
-            let cr_client = CrossrefClient::new(config.crossref_mailto.clone());
+            let provider = braincrawl_cli::crossref::CrossrefProvider::new(config.crossref_mailto.clone());
+            let store = StoreClient::new(&config.server_url).with_token(config.auth_token.clone());
             match cr.cmd {
                 CrossrefCmd::Refs { id } => {
-                    let Some(work) = store.get_work(&id)? else {
-                        return Err(format!("work not found in store: {id}").into());
-                    };
-                    let Some(citing_doi) = extract_doi_from_work(&work) else {
-                        return Err(format!(
-                            "no DOI known for {id} — Crossref/OpenCitations are DOI-keyed"
-                        )
-                        .into());
-                    };
-                    let (cited_dois, skipped) = cr_client.get_references(&citing_doi)?;
-                    let edges = doi_edges(&citing_doi, &cited_dois, "crossref");
-                    let count = cited_dois.len() as u64;
-                    let results: Vec<serde_json::Value> = cited_dois
-                        .iter()
-                        .map(|d| serde_json::json!({"id": format!("doi:{d}")}))
-                        .collect();
-                    let envelope = Envelope {
-                        query: QueryMeta {
-                            entity: Some("crossref:refs".to_string()),
-                            resolved_filter: Some(format!("doi:{citing_doi}")),
-                            url: None,
-                        },
-                        count,
-                        returned: results.len(),
-                        truncated: false,
-                        next_cursor: None,
-                        results,
-                    };
-                    render(&envelope, &opts);
-                    if !opts.skip_push {
-                        match store.put_edges(&edges) {
-                            Ok(n) => eprintln!(
-                                "push: {} edge(s) stored, {} reference(s) skipped (no DOI)",
-                                n, skipped
-                            ),
-                            Err(e) => {
-                                eprintln!("push error: {e}");
-                                std::process::exit(1);
-                            }
-                        }
-                    } else {
-                        eprintln!(
-                            "skip-push: {} edge(s) found, {} reference(s) skipped (no DOI)",
-                            edges.len(),
-                            skipped
-                        );
-                    }
+                    let doi = resolve_doi(&store, &id)?;
+                    run_provider(&provider, ProviderCmd::Refs { id: doi }, &store, &opts)?;
                 }
             }
         }
@@ -274,15 +227,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let oc_client = OpenCitationsClient::new();
             match oc.cmd {
                 OpencitationsCmd::Refs { id } => {
-                    let Some(work) = store.get_work(&id)? else {
-                        return Err(format!("work not found in store: {id}").into());
-                    };
-                    let Some(citing_doi) = extract_doi_from_work(&work) else {
-                        return Err(format!(
-                            "no DOI known for {id} — Crossref/OpenCitations are DOI-keyed"
-                        )
-                        .into());
-                    };
+                    let citing_doi = resolve_doi(&store, &id)?;
                     let cited_dois = oc_client.get_references(&citing_doi)?;
                     let edges = doi_edges(&citing_doi, &cited_dois, "opencitations");
                     let count = cited_dois.len() as u64;
@@ -1224,6 +1169,22 @@ fn human_bytes(bytes: u64) -> String {
     format!("{size:.1} {} ({bytes} bytes)", UNITS[unit])
 }
 
+fn resolve_doi(store: &StoreClient, id: &str) -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(a) = braincrawl_cli::alias::parse(id) {
+        if a.namespace == "doi" {
+            return Ok(a.value.to_lowercase());
+        }
+    }
+    let Some(work) = store.get_work(id)? else {
+        return Err(format!("work not found in store: {id}").into());
+    };
+    braincrawl_cli::alias::alias_of(&work, "doi")
+        .map(|d| d.to_lowercase())
+        .ok_or_else(|| {
+            format!("no DOI known for {id} — Crossref/OpenCitations are DOI-keyed").into()
+        })
+}
+
 fn run_provider(
     p: &dyn Provider,
     cmd: ProviderCmd,
@@ -1288,7 +1249,7 @@ fn push_emission(store: &StoreClient, em: &Emission) -> PushSummary {
 
 fn report_push_summary(s: &PushSummary) {
     eprintln!(
-        "push: {} node(s) stored, {} edge(s) stored, {} skipped (unmappable kind)",
+        "push: {} node(s) stored, {} edge(s) stored, {} skipped (unmappable)",
         s.nodes_pushed, s.edges_pushed, s.skipped_unmappable
     );
     for e in &s.errors {

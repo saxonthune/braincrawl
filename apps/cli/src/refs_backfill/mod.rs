@@ -1,4 +1,3 @@
-pub mod crossref;
 pub mod mapping;
 pub mod opencitations;
 

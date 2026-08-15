@@ -1,4 +1,4 @@
-use super::{RefsBackfillError, Result};
+use super::{CrossrefError, Result};
 
 const DEFAULT_BASE_URL: &str = "https://api.crossref.org";
 const MAX_RETRIES: u32 = 3;
@@ -54,7 +54,7 @@ impl CrossrefClient {
     where
         F: Fn() -> reqwest::blocking::RequestBuilder,
     {
-        let mut last_err: Option<RefsBackfillError> = None;
+        let mut last_err: Option<CrossrefError> = None;
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
                 let ms = 1_000u64 << (attempt - 1);
@@ -63,23 +63,23 @@ impl CrossrefClient {
             let resp = match build().send() {
                 Ok(r) => r,
                 Err(e) => {
-                    last_err = Some(RefsBackfillError::Http(e));
+                    last_err = Some(CrossrefError::Http(e));
                     continue;
                 }
             };
             let status = resp.status();
             if status.as_u16() == 429 || status.is_server_error() {
                 let body = resp.text().unwrap_or_default();
-                last_err = Some(RefsBackfillError::Api { status: status.as_u16(), body });
+                last_err = Some(CrossrefError::Api { status: status.as_u16(), body });
                 continue;
             }
             if !status.is_success() {
                 let body = resp.text().unwrap_or_default();
-                return Err(RefsBackfillError::Api { status: status.as_u16(), body });
+                return Err(CrossrefError::Api { status: status.as_u16(), body });
             }
             return Ok(resp.json()?);
         }
-        Err(last_err.unwrap_or(RefsBackfillError::Api {
+        Err(last_err.unwrap_or(CrossrefError::Api {
             status: 0,
             body: "max retries exceeded".into(),
         }))

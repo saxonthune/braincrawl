@@ -1,20 +1,5 @@
 use serde_json::Value;
 
-/// Extract the DOI from a store work record's aliases array.
-/// The store returns aliases as [{namespace, value}] objects.
-/// Returns the bare DOI (no https://doi.org/ prefix) or None.
-pub fn extract_doi_from_work(work: &Value) -> Option<String> {
-    let aliases = work.get("aliases").and_then(|a| a.as_array())?;
-    for alias in aliases {
-        if alias.get("namespace").and_then(|n| n.as_str()) == Some("doi") {
-            if let Some(v) = alias.get("value").and_then(|v| v.as_str()) {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
-}
-
 /// Build doi-namespaced EdgeInput JSON values for a slice of cited DOIs.
 /// Both src and dst use the "doi" namespace; `source` identifies the provider.
 pub fn doi_edges(citing_doi: &str, cited_dois: &[String], source: &str) -> Vec<Value> {
@@ -80,35 +65,6 @@ fn is_leap(year: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn extract_doi_present() {
-        let work = serde_json::json!({
-            "aliases": [
-                {"namespace": "openalex", "value": "W123"},
-                {"namespace": "doi", "value": "10.1000/test"},
-                {"namespace": "mag", "value": "999"}
-            ]
-        });
-        assert_eq!(extract_doi_from_work(&work), Some("10.1000/test".to_string()));
-    }
-
-    #[test]
-    fn extract_doi_absent_returns_none() {
-        let work = serde_json::json!({
-            "aliases": [
-                {"namespace": "openalex", "value": "W123"},
-                {"namespace": "mag", "value": "999"}
-            ]
-        });
-        assert_eq!(extract_doi_from_work(&work), None);
-    }
-
-    #[test]
-    fn extract_doi_empty_aliases() {
-        let work = serde_json::json!({"aliases": []});
-        assert_eq!(extract_doi_from_work(&work), None);
-    }
 
     #[test]
     fn doi_edges_shape_and_source_crossref() {
