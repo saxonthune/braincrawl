@@ -51,7 +51,7 @@ fn test_have_round_trip() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.0/known"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/known"}],
             "attrs": {}
         }))
         .unwrap();
@@ -83,7 +83,7 @@ fn test_get_work_present_returns_some() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.1/present"}],
+            "aliases": [{"scheme": "doi", "value": "10.1/present"}],
             "attrs": {"title": "Hello"}
         }))
         .unwrap();

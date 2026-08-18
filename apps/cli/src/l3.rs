@@ -300,10 +300,10 @@ fn cmd_reading_list(root: &Path, opts: &OutputOpts) -> Result<(), DynErr> {
                     }
                     match (&l.source, &l.target) {
                         (l3::Endpoint::Node(src), l3::Endpoint::Catalog(dst)) if src.0 == id.0 => {
-                            Some(format!("{}:{}", dst.namespace, dst.value))
+                            Some(format!("{}:{}", dst.scheme, dst.value))
                         }
                         (l3::Endpoint::Catalog(src), l3::Endpoint::Node(dst)) if dst.0 == id.0 => {
-                            Some(format!("{}:{}", src.namespace, src.value))
+                            Some(format!("{}:{}", src.scheme, src.value))
                         }
                         _ => None,
                     }
@@ -463,7 +463,7 @@ fn reindex(root: &Path) -> Result<PathBuf, DynErr> {
         for endpoint in [&link.source, &link.target] {
             match endpoint {
                 l3::Endpoint::Catalog(id) => {
-                    work_index.entry(format!("{}:{}", id.namespace, id.value)).or_default().insert(source_doc);
+                    work_index.entry(format!("{}:{}", id.scheme, id.value)).or_default().insert(source_doc);
                 }
                 l3::Endpoint::Node(id) => {
                     let target_doc = if let Some(slug) = id.0.strip_prefix("doc:") {

@@ -472,7 +472,7 @@ fn export_roundtrip(client: &Client, base: &str, token: Option<&str>) -> Result<
         client.put(format!("{base}/works")).json(&serde_json::json!({
             "source": "conformance",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.99/export-a"}],
+            "aliases": [{"scheme": "doi", "value": "10.99/export-a"}],
             "attrs": {"title": "Export Smoke A"},
             "fetched_at": stamp,
         })),
@@ -486,8 +486,8 @@ fn export_roundtrip(client: &Client, base: &str, token: Option<&str>) -> Result<
 
     let res = auth(
         client.put(format!("{base}/edges")).json(&serde_json::json!([{
-            "src": {"namespace": "doi", "value": "10.99/export-a"},
-            "dst": {"namespace": "doi", "value": "10.99/export-b"},
+            "src": {"scheme": "doi", "value": "10.99/export-a"},
+            "dst": {"scheme": "doi", "value": "10.99/export-b"},
             "relation": "cites",
             "source": "conformance",
             "attrs": null,
@@ -519,7 +519,7 @@ fn export_roundtrip(client: &Client, base: &str, token: Option<&str>) -> Result<
         .iter()
         .find(|n| {
             n["aliases"].as_array().is_some_and(|aliases| {
-                aliases.iter().any(|a| a["namespace"] == "doi" && a["value"] == "10.99/export-a")
+                aliases.iter().any(|a| a["scheme"] == "doi" && a["value"] == "10.99/export-a")
             })
         })
         .ok_or("export_roundtrip: exported nodes missing doi:10.99/export-a")?;
@@ -576,7 +576,7 @@ fn put_and_get_work(client: &Client, base: &str, token: Option<&str>) -> Result<
     let body = serde_json::json!({
         "source": "openalex",
         "kind": "Work",
-        "aliases": [{"namespace": "doi", "value": "10.99/smoke"}],
+        "aliases": [{"scheme": "doi", "value": "10.99/smoke"}],
         "attrs": {"title": "Smoke Test Paper"}
     });
     let res = auth(client.put(format!("{base}/works")).json(&body), token)
@@ -630,7 +630,7 @@ fn have(client: &Client, base: &str, token: Option<&str>) -> Result<(), String> 
             .json(&serde_json::json!({
                 "source": "test",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.0/known"}],
+                "aliases": [{"scheme": "doi", "value": "10.0/known"}],
                 "attrs": {}
             })),
         token,
@@ -663,7 +663,7 @@ fn content_roundtrip(client: &Client, base: &str, token: Option<&str>) -> Result
             .json(&serde_json::json!({
                 "source": "test",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.1"}],
+                "aliases": [{"scheme": "doi", "value": "10.1"}],
                 "attrs": {}
             })),
         token,
@@ -708,7 +708,7 @@ fn artifact_listing(client: &Client, base: &str, token: Option<&str>) -> Result<
             .json(&serde_json::json!({
                 "source": "test",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.3/listing"}],
+                "aliases": [{"scheme": "doi", "value": "10.3/listing"}],
                 "attrs": {}
             })),
         token,
@@ -844,7 +844,7 @@ fn large_content(client: &Client, base: &str, token: Option<&str>) -> Result<(),
             .json(&serde_json::json!({
                 "source": "test",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.2/large"}],
+                "aliases": [{"scheme": "doi", "value": "10.2/large"}],
                 "attrs": {}
             })),
         token,
@@ -906,7 +906,7 @@ fn stats(client: &Client, base: &str, token: Option<&str>) -> Result<(), String>
             .json(&serde_json::json!({
                 "source": "openalex",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.1/described"}],
+                "aliases": [{"scheme": "doi", "value": "10.1/described"}],
                 "attrs": {"title": "Described"}
             })),
         token,
@@ -917,8 +917,8 @@ fn stats(client: &Client, base: &str, token: Option<&str>) -> Result<(), String>
     auth(
         client.put(format!("{base}/edges"))
             .json(&serde_json::json!([{
-                "src": {"namespace": "doi", "value": "10.1/described"},
-                "dst": {"namespace": "doi", "value": "10.1/stub"},
+                "src": {"scheme": "doi", "value": "10.1/described"},
+                "dst": {"scheme": "doi", "value": "10.1/stub"},
                 "relation": "cites",
                 "source": "openalex",
                 "attrs": null,
@@ -984,7 +984,7 @@ fn neighborhood(client: &Client, base: &str, token: Option<&str>) -> Result<(), 
             .json(&serde_json::json!({
                 "source": "test",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.1/src"}],
+                "aliases": [{"scheme": "doi", "value": "10.1/src"}],
                 "attrs": {"title": "Source"}
             })),
         token,
@@ -997,7 +997,7 @@ fn neighborhood(client: &Client, base: &str, token: Option<&str>) -> Result<(), 
             .json(&serde_json::json!({
                 "source": "test",
                 "kind": "Work",
-                "aliases": [{"namespace": "doi", "value": "10.1/dst"}],
+                "aliases": [{"scheme": "doi", "value": "10.1/dst"}],
                 "attrs": {"title": "Dest"}
             })),
         token,
@@ -1008,8 +1008,8 @@ fn neighborhood(client: &Client, base: &str, token: Option<&str>) -> Result<(), 
     auth(
         client.put(format!("{base}/edges"))
             .json(&serde_json::json!([{
-                "src": {"namespace": "doi", "value": "10.1/src"},
-                "dst": {"namespace": "doi", "value": "10.1/dst"},
+                "src": {"scheme": "doi", "value": "10.1/src"},
+                "dst": {"scheme": "doi", "value": "10.1/dst"},
                 "relation": "cites",
                 "source": "test",
                 "attrs": null,

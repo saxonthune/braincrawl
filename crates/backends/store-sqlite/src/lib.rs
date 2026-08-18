@@ -309,7 +309,7 @@ impl MetadataStore for SqliteStore {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
             braincrawl_sql::alias::GET,
-            params![alias.namespace, alias.value],
+            params![alias.scheme, alias.value],
             |row| row.get::<_, String>(0),
         )
         .map(|id| Some(CanonicalId(id)))
@@ -324,13 +324,13 @@ impl MetadataStore for SqliteStore {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             braincrawl_sql::alias::INSERT_IGNORE,
-            params![alias.namespace, alias.value, candidate.0],
+            params![alias.scheme, alias.value, candidate.0],
         )
         .map_err(be)?;
         let id: String = conn
             .query_row(
                 braincrawl_sql::alias::GET,
-                params![alias.namespace, alias.value],
+                params![alias.scheme, alias.value],
                 |row| row.get(0),
             )
             .map_err(be)?;
@@ -547,7 +547,7 @@ impl MetadataStore for SqliteStore {
         let aliases: Vec<Alias> = stmt
             .query_map(params![id.0], |row| {
                 Ok(Alias {
-                    namespace: row.get(0)?,
+                    scheme: row.get(0)?,
                     value: row.get(1)?,
                 })
             })
@@ -745,17 +745,17 @@ impl MetadataStore for SqliteStore {
         for chunk in aliases.chunks(PAIRS_PER_CHUNK) {
             let pair_list = braincrawl_sql::alias_pair_list(chunk.len());
             let query = format!(
-                "SELECT namespace, value FROM alias WHERE (namespace, value) IN {pair_list}"
+                "SELECT scheme, value FROM alias WHERE (scheme, value) IN {pair_list}"
             );
             let mut stmt = conn.prepare(&query).map_err(be)?;
             let params_flat: Vec<String> = chunk
                 .iter()
-                .flat_map(|a| [a.namespace.clone(), a.value.clone()])
+                .flat_map(|a| [a.scheme.clone(), a.value.clone()])
                 .collect();
             let chunk_rows: Vec<Alias> = stmt
                 .query_map(rusqlite::params_from_iter(params_flat.iter()), |row| {
                     Ok(Alias {
-                        namespace: row.get(0)?,
+                        scheme: row.get(0)?,
                         value: row.get(1)?,
                     })
                 })
@@ -892,8 +892,8 @@ impl MetadataStore for SqliteStore {
                 .map_err(be)?
                 .collect::<Result<_, _>>()
                 .map_err(be)?;
-            for (cid, namespace, value) in rows {
-                aliases_by_node.entry(cid).or_default().push(Alias { namespace, value });
+            for (cid, scheme, value) in rows {
+                aliases_by_node.entry(cid).or_default().push(Alias { scheme, value });
             }
 
             let assn_q = braincrawl_sql::export::assertions_for_nodes(chunk.len());

@@ -67,7 +67,7 @@ fn doi_alias_is_bare_for_openalex_merge() {
     let aliases = extract_aliases(Entity::Papers, &record);
     let map: std::collections::HashMap<&str, &str> = aliases
         .iter()
-        .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+        .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
         .collect();
     // The merge guarantee: this exact value must match what OpenAlex registers
     assert_eq!(
@@ -89,7 +89,7 @@ fn doi_url_prefix_stripped() {
     let aliases = extract_aliases(Entity::Papers, &record);
     let doi_alias = aliases
         .iter()
-        .find(|a| a["namespace"].as_str() == Some("doi"))
+        .find(|a| a["scheme"].as_str() == Some("doi"))
         .expect("doi alias should be present");
     assert_eq!(
         doi_alias["value"].as_str(),
@@ -101,7 +101,7 @@ fn doi_url_prefix_stripped() {
 // ── unit tests: alias extraction ──────────────────────────────────────────────
 
 #[test]
-fn aliases_paper_all_namespaces() {
+fn aliases_paper_all_schemes() {
     let record = serde_json::json!({
         "paperId": "649def34f8be52c8b66281af98ae884c09aef38b",
         "externalIds": {
@@ -116,7 +116,7 @@ fn aliases_paper_all_namespaces() {
     let aliases = extract_aliases(Entity::Papers, &record);
     let ns_set: std::collections::HashSet<&str> = aliases
         .iter()
-        .map(|a| a["namespace"].as_str().unwrap())
+        .map(|a| a["scheme"].as_str().unwrap())
         .collect();
     assert!(ns_set.contains("s2"));
     assert!(ns_set.contains("doi"));
@@ -136,7 +136,7 @@ fn aliases_author_s2author_and_orcid() {
     let aliases = extract_aliases(Entity::Authors, &record);
     let map: std::collections::HashMap<&str, &str> = aliases
         .iter()
-        .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+        .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
         .collect();
     assert_eq!(map.get("s2author"), Some(&"1741101"));
     assert_eq!(map.get("orcid"), Some(&"0000-0001-6187-6610"));
@@ -154,16 +154,16 @@ fn to_edges_cites_relation_and_source() {
     assert_eq!(edges.len(), 2);
 
     let e0 = &edges[0];
-    assert_eq!(e0["src"]["namespace"].as_str(), Some("doi"));
+    assert_eq!(e0["src"]["scheme"].as_str(), Some("doi"));
     assert_eq!(e0["src"]["value"].as_str(), Some("10.1000/citing"));
-    assert_eq!(e0["dst"]["namespace"].as_str(), Some("doi"));
+    assert_eq!(e0["dst"]["scheme"].as_str(), Some("doi"));
     assert_eq!(e0["dst"]["value"].as_str(), Some("10.7717/peerj.4375"));
     assert_eq!(e0["relation"].as_str(), Some("cites"));
     assert_eq!(e0["source"].as_str(), Some("semanticscholar"));
     assert!(e0["fetched_at"].as_str().is_some());
 
     let e1 = &edges[1];
-    assert_eq!(e1["src"]["namespace"].as_str(), Some("s2"));
+    assert_eq!(e1["src"]["scheme"].as_str(), Some("s2"));
     assert_eq!(e1["src"]["value"].as_str(), Some("abc"));
 }
 

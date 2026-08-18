@@ -70,7 +70,7 @@ fn aliases_work_strips_urls() {
     let aliases = extract_aliases(Entity::Works, &record);
     let map: std::collections::HashMap<&str, &str> = aliases
         .iter()
-        .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+        .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
         .collect();
     assert_eq!(map.get("openalex"), Some(&"W2741809807"));
     assert_eq!(map.get("doi"), Some(&"10.7717/peerj.4375"));
@@ -87,7 +87,7 @@ fn aliases_author_strips_orcid_url() {
     let aliases = extract_aliases(Entity::Authors, &record);
     let map: std::collections::HashMap<&str, &str> = aliases
         .iter()
-        .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+        .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
         .collect();
     assert_eq!(map.get("openalex"), Some(&"A5023888391"));
     assert_eq!(map.get("orcid"), Some(&"0000-0001-6187-6610"));
@@ -103,7 +103,7 @@ fn aliases_source_includes_all_issns() {
     let aliases = extract_aliases(Entity::Sources, &record);
     let issn_vals: Vec<&str> = aliases
         .iter()
-        .filter(|a| a["namespace"].as_str() == Some("issn"))
+        .filter(|a| a["scheme"].as_str() == Some("issn"))
         .map(|a| a["value"].as_str().unwrap())
         .collect();
     assert_eq!(issn_vals.len(), 2);
@@ -129,9 +129,9 @@ fn to_edges_shape() {
     assert_eq!(edges.len(), 2);
 
     let e0 = &edges[0];
-    assert_eq!(e0["src"]["namespace"].as_str(), Some("openalex"));
+    assert_eq!(e0["src"]["scheme"].as_str(), Some("openalex"));
     assert_eq!(e0["src"]["value"].as_str(), Some("W111"));
-    assert_eq!(e0["dst"]["namespace"].as_str(), Some("openalex"));
+    assert_eq!(e0["dst"]["scheme"].as_str(), Some("openalex"));
     assert_eq!(e0["dst"]["value"].as_str(), Some("W222"));
     assert_eq!(e0["relation"].as_str(), Some("cites"));
     assert_eq!(e0["source"].as_str(), Some("openalex"));
@@ -186,7 +186,7 @@ fn push_rejected_without_token() {
     let record = serde_json::json!({
         "source": "openalex",
         "kind": "Work",
-        "aliases": [{"namespace": "openalex", "value": "W999"}],
+        "aliases": [{"scheme": "openalex", "value": "W999"}],
         "attrs": {}
     });
     let err = client.put_work(&record).unwrap_err();
@@ -209,7 +209,7 @@ fn push_rejected_with_wrong_token() {
     let record = serde_json::json!({
         "source": "openalex",
         "kind": "Work",
-        "aliases": [{"namespace": "openalex", "value": "W998"}],
+        "aliases": [{"scheme": "openalex", "value": "W998"}],
         "attrs": {}
     });
     let err = client.put_work(&record).unwrap_err();
@@ -237,8 +237,8 @@ fn push_edges_round_trip() {
             "source": "openalex",
             "kind": "Work",
             "aliases": [
-                {"namespace": "openalex", "value": id},
-                {"namespace": "doi", "value": doi}
+                {"scheme": "openalex", "value": id},
+                {"scheme": "doi", "value": doi}
             ],
             "attrs": {}
         });

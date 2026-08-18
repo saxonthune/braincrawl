@@ -12,11 +12,11 @@ pub fn extract_aliases(record: &Value) -> Vec<Alias> {
     let mut aliases = Vec::new();
 
     if let Some(id) = record["arxiv_id"].as_str() {
-        aliases.push(Alias { namespace: "arxiv".to_string(), value: id.to_string() });
+        aliases.push(Alias { scheme: "arxiv".to_string(), value: id.to_string() });
     }
     if let Some(doi) = record["doi"].as_str() {
         if !doi.is_empty() {
-            aliases.push(Alias { namespace: "doi".to_string(), value: doi.to_string() });
+            aliases.push(Alias { scheme: "doi".to_string(), value: doi.to_string() });
         }
     }
 
@@ -58,7 +58,7 @@ mod tests {
         let aliases = extract_aliases(&record);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a.namespace.as_str(), a.value.as_str()))
+            .map(|a| (a.scheme.as_str(), a.value.as_str()))
             .collect();
         assert_eq!(map.get("arxiv"), Some(&"2301.07041"));
         assert_eq!(map.get("doi"), Some(&"10.18653/v1/2023.acl-long.108"));
@@ -72,7 +72,7 @@ mod tests {
         });
         let aliases = extract_aliases(&record);
         assert_eq!(aliases.len(), 1);
-        assert_eq!(aliases[0].namespace, "arxiv");
+        assert_eq!(aliases[0].scheme, "arxiv");
         assert_eq!(aliases[0].value, "2206.06336");
     }
 
@@ -106,13 +106,13 @@ mod tests {
         let aliases = extract_aliases(&entries[0]);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a.namespace.as_str(), a.value.as_str()))
+            .map(|a| (a.scheme.as_str(), a.value.as_str()))
             .collect();
         assert!(map.contains_key("arxiv"), "must have arxiv alias");
         assert!(map.contains_key("doi"), "must have doi alias when DOI present");
         // entry 1 has no DOI
         let aliases2 = extract_aliases(&entries[1]);
         assert_eq!(aliases2.len(), 1);
-        assert_eq!(aliases2[0].namespace, "arxiv");
+        assert_eq!(aliases2[0].scheme, "arxiv");
     }
 }

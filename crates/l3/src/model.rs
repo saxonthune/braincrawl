@@ -21,8 +21,8 @@ pub enum Endpoint {
     Catalog(Alias),
 }
 
-/// Splits `"namespace:value"` into an `Alias`, or `None` if there's no `:` or the
-/// namespace/value don't fit the reserved shape. Any namespace is accepted —
+/// Splits `"scheme:value"` into an `Alias`, or `None` if there's no `:` or the
+/// scheme/value don't fit the reserved shape. Any scheme is accepted —
 /// `uuid:` is not special-cased here; the convention that its value is the work's
 /// canonical id belongs to alias resolution (a later phase), not to parsing.
 fn parse_alias(s: &str) -> Option<Alias> {
@@ -30,12 +30,12 @@ fn parse_alias(s: &str) -> Option<Alias> {
     if value.is_empty() || !ns.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')) {
         return None;
     }
-    Some(Alias { namespace: ns.to_string(), value: value.to_string() })
+    Some(Alias { scheme: ns.to_string(), value: value.to_string() })
 }
 
 impl Endpoint {
     /// `^r-…` → a research node, resolved by its store-global anchor from any doc;
-    /// any `namespace:value` → a catalog reference (an unresolved external alias,
+    /// any `scheme:value` → a catalog reference (an unresolved external alias,
     /// e.g. `openalex:`/`doi:`/`isbn:`/…, or `uuid:` for a work referenced by its
     /// canonical id directly); a bare `slug` → that doc's intro node. Never fails —
     /// an unrecognized string still resolves to a doc-level id. `^anchor` is
@@ -55,7 +55,7 @@ impl Serialize for Endpoint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let s = match self {
             Endpoint::Node(id) => format!("node:{}", id.0),
-            Endpoint::Catalog(a) => format!("{}:{}", a.namespace, a.value),
+            Endpoint::Catalog(a) => format!("{}:{}", a.scheme, a.value),
         };
         serializer.serialize_str(&s)
     }
@@ -68,7 +68,7 @@ impl<'de> Deserialize<'de> for Endpoint {
             Some(rest) => Endpoint::Node(NodeId(rest.to_string())),
             None => match parse_alias(&s) {
                 Some(alias) => Endpoint::Catalog(alias),
-                None => Endpoint::Catalog(Alias { namespace: String::new(), value: s }),
+                None => Endpoint::Catalog(Alias { scheme: String::new(), value: s }),
             },
         })
     }

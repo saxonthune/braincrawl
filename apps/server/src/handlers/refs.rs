@@ -29,7 +29,7 @@ impl FetchHandler for RefsHandler {
         let alias = parse_alias(&job.target_id).ok_or_else(|| {
             DomainError::Backend(format!("invalid target_id: {}", job.target_id))
         })?;
-        if alias.namespace != "doi" {
+        if alias.scheme != "doi" {
             return Err(DomainError::Backend(format!(
                 "RefsHandler requires a doi: target_id, got {}",
                 job.target_id
@@ -81,8 +81,8 @@ impl FetchHandler for RefsHandler {
         let edges: Vec<EdgeInput> = all_cited
             .iter()
             .map(|cited| EdgeInput {
-                src: Alias { namespace: "doi".to_string(), value: doi.clone() },
-                dst: Alias { namespace: "doi".to_string(), value: cited.clone() },
+                src: Alias { scheme: "doi".to_string(), value: doi.clone() },
+                dst: Alias { scheme: "doi".to_string(), value: cited.clone() },
                 relation: "cites".to_string(),
                 source: "crossref+opencitations".to_string(),
                 attrs: None,
@@ -185,7 +185,7 @@ fn build_client() -> Result<reqwest::Client, DomainError> {
 fn parse_alias(s: &str) -> Option<Alias> {
     let pos = s.find(':')?;
     Some(Alias {
-        namespace: s[..pos].to_string(),
+        scheme: s[..pos].to_string(),
         value: s[pos + 1..].to_string(),
     })
 }

@@ -56,7 +56,7 @@ fn extract_text_from_missing_role_names_that_role_in_error() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.0/from-role"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/from-role"}],
             "attrs": {}
         }))
         .unwrap();
@@ -94,7 +94,7 @@ fn chunk_from_missing_role_names_that_role_in_error() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.0/chunk-from-role"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/chunk-from-role"}],
             "attrs": {}
         }))
         .unwrap();
@@ -128,7 +128,7 @@ fn extract_text_from_reaches_the_read() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.0/scan-role"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/scan-role"}],
             "attrs": {}
         }))
         .unwrap();

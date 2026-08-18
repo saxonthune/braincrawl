@@ -1,15 +1,15 @@
 use serde_json::Value;
 
-/// Build doi-namespaced EdgeInput JSON values for a slice of cited DOIs.
-/// Both src and dst use the "doi" namespace; `source` identifies the provider.
+/// Build EdgeInput JSON values in the `doi` scheme for a slice of cited DOIs.
+/// Both src and dst use the "doi" scheme; `source` identifies the provider.
 pub fn doi_edges(citing_doi: &str, cited_dois: &[String], source: &str) -> Vec<Value> {
     let fetched_at = rfc3339_now();
     cited_dois
         .iter()
         .map(|cited| {
             serde_json::json!({
-                "src": {"namespace": "doi", "value": citing_doi},
-                "dst": {"namespace": "doi", "value": cited},
+                "src": {"scheme": "doi", "value": citing_doi},
+                "dst": {"scheme": "doi", "value": cited},
                 "relation": "cites",
                 "source": source,
                 "attrs": null,
@@ -71,9 +71,9 @@ mod tests {
         let edges = doi_edges("10.1000/citing", &["10.2000/cited".to_string()], "crossref");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert_eq!(e["src"]["namespace"].as_str(), Some("doi"));
+        assert_eq!(e["src"]["scheme"].as_str(), Some("doi"));
         assert_eq!(e["src"]["value"].as_str(), Some("10.1000/citing"));
-        assert_eq!(e["dst"]["namespace"].as_str(), Some("doi"));
+        assert_eq!(e["dst"]["scheme"].as_str(), Some("doi"));
         assert_eq!(e["dst"]["value"].as_str(), Some("10.2000/cited"));
         assert_eq!(e["relation"].as_str(), Some("cites"));
         assert_eq!(e["source"].as_str(), Some("crossref"));

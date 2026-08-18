@@ -79,7 +79,7 @@ Pushing maps an OpenAlex entity onto the store's node model. The mapping is thin
 because a node's `attrs` is free-form JSON — the trimmed record is the payload;
 only identity and kind are extracted:
 
-| OpenAlex entity | Node kind | Alias namespaces extracted |
+| OpenAlex entity | Node kind | Alias schemes extracted |
 |---|---|---|
 | works | `Work` | `openalex`, `doi`, `pmid`, `pmcid`, `mag` |
 | authors | `Author` | `openalex`, `orcid` |

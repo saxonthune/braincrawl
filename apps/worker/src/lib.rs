@@ -208,7 +208,7 @@ impl DurableObject for WorkDurableObject {
 fn parse_alias(id_str: &str) -> Option<Alias> {
     let pos = id_str.find(':')?;
     Some(Alias {
-        namespace: id_str[..pos].to_string(),
+        scheme: id_str[..pos].to_string(),
         value: id_str[pos + 1..].to_string(),
     })
 }
@@ -380,7 +380,7 @@ async fn handle_have(mut req: Request, store: &WorkerStore) -> worker::Result<Re
         Ok(present) => {
             let ids: Vec<String> = present
                 .iter()
-                .map(|a| format!("{}:{}", a.namespace, a.value))
+                .map(|a| format!("{}:{}", a.scheme, a.value))
                 .collect();
             Response::from_json(&ids)
         }
@@ -452,7 +452,7 @@ async fn handle_search_works(url: &Url, store: &WorkerStore) -> worker::Result<R
 async fn handle_get_work(id_str: &str, store: &WorkerStore) -> worker::Result<Response> {
     let a = match parse_alias(id_str) {
         Some(a) => a,
-        None => return bad_request("expected namespace:value"),
+        None => return bad_request("expected scheme:value"),
     };
     match store.get_work(a).await {
         Ok(Some(view)) => Response::from_json(&view),
@@ -468,7 +468,7 @@ async fn handle_get_edges(
 ) -> worker::Result<Response> {
     let a = match parse_alias(id_str) {
         Some(a) => a,
-        None => return bad_request("expected namespace:value"),
+        None => return bad_request("expected scheme:value"),
     };
     let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
     let dir = match params.get("dir").map(|s| s.as_str()) {
@@ -497,7 +497,7 @@ async fn handle_list_artifacts(
 ) -> worker::Result<Response> {
     let a = match parse_alias(id_str) {
         Some(a) => a,
-        None => return bad_request("expected namespace:value"),
+        None => return bad_request("expected scheme:value"),
     };
     let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
     let role = match params.get("role").map(|s| parse_artifact_role(s)) {
@@ -525,7 +525,7 @@ async fn handle_get_content(
 ) -> worker::Result<Response> {
     let a = match parse_alias(id_str) {
         Some(a) => a,
-        None => return bad_request("expected namespace:value"),
+        None => return bad_request("expected scheme:value"),
     };
     let kind = match parse_artifact_role(role_str) {
         Some(k) => k,
@@ -552,7 +552,7 @@ async fn handle_put_content(
 ) -> worker::Result<Response> {
     let a = match parse_alias(id_str) {
         Some(a) => a,
-        None => return bad_request("expected namespace:value"),
+        None => return bad_request("expected scheme:value"),
     };
     let kind = match parse_artifact_role(role_str) {
         Some(k) => k,

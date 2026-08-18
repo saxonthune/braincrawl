@@ -51,7 +51,7 @@ type EdgeAssertions = BTreeMap<String, EdgeAssertionRow>;
 struct MemStoreInner {
     /// node table: canonical_id.0 → row
     nodes: HashMap<String, NodeRow>,
-    /// alias table: (namespace, value) → canonical_id.0
+    /// alias table: (scheme, value) → canonical_id.0
     aliases: HashMap<(String, String), String>,
     /// node_assertion: (canonical_id.0, source) → row
     node_assertions: HashMap<(String, String), NodeAssertionRow>,
@@ -251,7 +251,7 @@ impl MetadataStore for MemStore {
         let inner = self.inner.borrow();
         Ok(inner
             .aliases
-            .get(&(alias.namespace.clone(), alias.value.clone()))
+            .get(&(alias.scheme.clone(), alias.value.clone()))
             .map(|id| CanonicalId(id.clone())))
     }
 
@@ -262,7 +262,7 @@ impl MetadataStore for MemStore {
         candidate: &CanonicalId,
     ) -> Result<CanonicalId, DomainError> {
         let mut inner = self.inner.borrow_mut();
-        let key = (alias.namespace.clone(), alias.value.clone());
+        let key = (alias.scheme.clone(), alias.value.clone());
         match inner.aliases.get(&key).cloned() {
             Some(existing) => Ok(CanonicalId(existing)),
             None => {
@@ -444,7 +444,7 @@ impl MetadataStore for MemStore {
             .iter()
             .filter(|(_, cid)| **cid == id.0)
             .map(|((ns, val), _)| Alias {
-                namespace: ns.clone(),
+                scheme: ns.clone(),
                 value: val.clone(),
             })
             .collect();
@@ -631,7 +631,7 @@ impl MetadataStore for MemStore {
             .filter(|a| {
                 inner
                     .aliases
-                    .contains_key(&(a.namespace.clone(), a.value.clone()))
+                    .contains_key(&(a.scheme.clone(), a.value.clone()))
             })
             .cloned()
             .collect();
@@ -751,7 +751,7 @@ impl MetadataStore for MemStore {
                     .aliases
                     .iter()
                     .filter(|(_, cid)| *cid == *id)
-                    .map(|((ns, val), _)| Alias { namespace: ns.clone(), value: val.clone() })
+                    .map(|((ns, val), _)| Alias { scheme: ns.clone(), value: val.clone() })
                     .collect();
                 let assertions: Vec<ExportAssertion> = inner
                     .node_assertions

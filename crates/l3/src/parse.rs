@@ -552,7 +552,7 @@ schema: research
         let catalog_link = graph.links.iter().find(|l| l.kind == "catalog").unwrap();
         assert_eq!(catalog_link.source, Endpoint::Node(NodeId("r-aaa1".to_string())));
         assert!(
-            matches!(&catalog_link.target, Endpoint::Catalog(a) if a.namespace == "openalex" && a.value == "W1")
+            matches!(&catalog_link.target, Endpoint::Catalog(a) if a.scheme == "openalex" && a.value == "W1")
         );
 
         let implicit_contradicts = graph.links.iter().find(|l| l.recorded_in.as_ref().map(|i| i.0.as_str()) == Some("r-bbb2") && l.kind == "contradicts" && matches!(l.source, Endpoint::Node(_))).unwrap();
@@ -562,7 +562,7 @@ schema: research
         let explicit = graph
             .links
             .iter()
-            .find(|l| matches!(&l.source, Endpoint::Catalog(a) if a.namespace == "openalex" && a.value == "W1"))
+            .find(|l| matches!(&l.source, Endpoint::Catalog(a) if a.scheme == "openalex" && a.value == "W1"))
             .unwrap();
         assert_eq!(explicit.target, Endpoint::Node(NodeId("r-bbb2".to_string())));
         assert_eq!(explicit.properties.get("why").and_then(Value::as_str), Some("method, mismatch"));
@@ -580,12 +580,12 @@ schema: research
     }
 
     #[test]
-    fn resolve_any_namespace_as_catalog() {
+    fn resolve_any_scheme_as_catalog() {
         assert!(
-            matches!(Endpoint::resolve("isbn:9780521179799"), Endpoint::Catalog(a) if a.namespace == "isbn" && a.value == "9780521179799")
+            matches!(Endpoint::resolve("isbn:9780521179799"), Endpoint::Catalog(a) if a.scheme == "isbn" && a.value == "9780521179799")
         );
         assert!(
-            matches!(Endpoint::resolve("uuid:0f9a1b2c-0000-0000-0000-000000000000"), Endpoint::Catalog(a) if a.namespace == "uuid" && a.value == "0f9a1b2c-0000-0000-0000-000000000000")
+            matches!(Endpoint::resolve("uuid:0f9a1b2c-0000-0000-0000-000000000000"), Endpoint::Catalog(a) if a.scheme == "uuid" && a.value == "0f9a1b2c-0000-0000-0000-000000000000")
         );
         assert_eq!(
             Endpoint::resolve("some-doc-slug"),

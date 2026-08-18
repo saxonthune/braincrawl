@@ -129,7 +129,7 @@ fn aliases_paper_doi_is_bare_value() {
     let aliases = extract_aliases(Entity::Papers, &paper);
     let map: std::collections::HashMap<&str, &str> = aliases
         .iter()
-        .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+        .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
         .collect();
     // DOI merge guarantee: bare value (no https://doi.org/ prefix)
     assert_eq!(
@@ -148,7 +148,7 @@ fn aliases_author_s2author_and_orcid() {
     let aliases = extract_aliases(Entity::Authors, &author);
     let map: std::collections::HashMap<&str, &str> = aliases
         .iter()
-        .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+        .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
         .collect();
     assert_eq!(map.get("s2author"), Some(&"1741101"));
     assert_eq!(map.get("orcid"), Some(&"0000-0001-6187-6610"));
@@ -186,9 +186,9 @@ fn edges_have_cites_relation_and_semanticscholar_source() {
     let e = &edges[0];
     assert_eq!(e["relation"].as_str(), Some("cites"));
     assert_eq!(e["source"].as_str(), Some("semanticscholar"));
-    assert_eq!(e["src"]["namespace"].as_str(), Some("doi"));
+    assert_eq!(e["src"]["scheme"].as_str(), Some("doi"));
     assert_eq!(e["src"]["value"].as_str(), Some("10.1000/citing"));
-    assert_eq!(e["dst"]["namespace"].as_str(), Some("doi"));
+    assert_eq!(e["dst"]["scheme"].as_str(), Some("doi"));
     assert_eq!(e["dst"]["value"].as_str(), Some("10.7717/peerj.4375"));
     assert!(e["fetched_at"].as_str().is_some());
 }
@@ -203,7 +203,7 @@ fn edges_split_s2_prefix_correctly() {
     ];
     let edges = to_edges(&pairs);
     let e = &edges[0];
-    assert_eq!(e["src"]["namespace"].as_str(), Some("s2"));
+    assert_eq!(e["src"]["scheme"].as_str(), Some("s2"));
     assert_eq!(e["src"]["value"].as_str(), Some("649def34f8be52c8b66281af98ae884c09aef38b"));
 }
 

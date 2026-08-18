@@ -28,7 +28,7 @@ fn make_store() -> Store<MemStore, MemBlobStore, MemStore, MemResolver, LocalCoo
 
 fn alias(ns: &str, val: &str) -> Alias {
     Alias {
-        namespace: ns.to_string(),
+        scheme: ns.to_string(),
         value: val.to_string(),
     }
 }

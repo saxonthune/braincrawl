@@ -41,7 +41,7 @@ async fn test_put_and_get_work() {
     let body = serde_json::json!({
         "source": "openalex",
         "kind": "Work",
-        "aliases": [{"namespace": "doi", "value": "10.99/smoke"}],
+        "aliases": [{"scheme": "doi", "value": "10.99/smoke"}],
         "attrs": {"title": "Smoke Test Paper"}
     });
     let res = client
@@ -100,7 +100,7 @@ async fn test_have() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.0/known"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/known"}],
             "attrs": {}
         }))
         .send()
@@ -133,7 +133,7 @@ async fn test_content_roundtrip() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.1"}],
+            "aliases": [{"scheme": "doi", "value": "10.1"}],
             "attrs": {}
         }))
         .send()
@@ -184,7 +184,7 @@ async fn test_stats_endpoint() {
         .json(&serde_json::json!({
             "source": "openalex",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.1/described"}],
+            "aliases": [{"scheme": "doi", "value": "10.1/described"}],
             "attrs": {"title": "Described"}
         }))
         .send()
@@ -195,8 +195,8 @@ async fn test_stats_endpoint() {
     client
         .put(format!("{base}/edges"))
         .json(&serde_json::json!([{
-            "src": {"namespace": "doi", "value": "10.1/described"},
-            "dst": {"namespace": "doi", "value": "10.1/stub"},
+            "src": {"scheme": "doi", "value": "10.1/described"},
+            "dst": {"scheme": "doi", "value": "10.1/stub"},
             "relation": "cites",
             "source": "openalex",
             "attrs": null,
@@ -249,7 +249,7 @@ async fn test_large_content_put() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.2/large"}],
+            "aliases": [{"scheme": "doi", "value": "10.2/large"}],
             "attrs": {}
         }))
         .send()
@@ -295,7 +295,7 @@ async fn test_neighborhood_endpoint() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.1/src"}],
+            "aliases": [{"scheme": "doi", "value": "10.1/src"}],
             "attrs": {"title": "Source"}
         }))
         .send()
@@ -307,7 +307,7 @@ async fn test_neighborhood_endpoint() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.1/dst"}],
+            "aliases": [{"scheme": "doi", "value": "10.1/dst"}],
             "attrs": {"title": "Dest"}
         }))
         .send()
@@ -318,8 +318,8 @@ async fn test_neighborhood_endpoint() {
     client
         .put(format!("{base}/edges"))
         .json(&serde_json::json!([{
-            "src": {"namespace": "doi", "value": "10.1/src"},
-            "dst": {"namespace": "doi", "value": "10.1/dst"},
+            "src": {"scheme": "doi", "value": "10.1/src"},
+            "dst": {"scheme": "doi", "value": "10.1/dst"},
             "relation": "cites",
             "source": "test",
             "attrs": null,
@@ -388,7 +388,7 @@ async fn test_work_get_carries_artifacts() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.3/artifacted"}],
+            "aliases": [{"scheme": "doi", "value": "10.3/artifacted"}],
             "attrs": {}
         }))
         .send()
@@ -439,7 +439,7 @@ async fn test_work_get_no_artifacts() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.3/bare"}],
+            "aliases": [{"scheme": "doi", "value": "10.3/bare"}],
             "attrs": {}
         }))
         .send()
@@ -473,7 +473,7 @@ async fn test_list_artifacts_distinguishes_empty_from_unknown() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.3/known-but-bare"}],
+            "aliases": [{"scheme": "doi", "value": "10.3/known-but-bare"}],
             "attrs": {}
         }))
         .send()
@@ -515,7 +515,7 @@ async fn test_list_artifacts_rejects_unparseable_role() {
         .json(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.3/roled"}],
+            "aliases": [{"scheme": "doi", "value": "10.3/roled"}],
             "attrs": {}
         }))
         .send()

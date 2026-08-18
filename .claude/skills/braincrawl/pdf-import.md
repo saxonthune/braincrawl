@@ -7,6 +7,20 @@ per file is: a canonical Catalog record, the bytes stored as `fulltext`, a
 renamed source file. The shared machinery (server, CLI, layers) is in
 `SKILL.md`; read that first.
 
+## The books-articles archive (source and destination)
+
+The human PDF archive lives at `~/Documents/books-articles/`. Its `drop-zone/`
+subdirectory holds works **staged for import**; the parent holds the **finished** works —
+those already keyed in the store, canonically named. A PDF-import session, by default:
+
+1. reads each file in `~/Documents/books-articles/drop-zone/`,
+2. runs the import below (identify → land record → put/extract/paginate/anchor),
+3. renames the file (§5) and moves it up into `~/Documents/books-articles/`,
+4. leaves drop-zone empty of finished works.
+
+A file belongs in the parent once the store holds its `fulltext`, `text`, and `pages`. That
+directory carries its own `CLAUDE.md` stating the same contract.
+
 ## 1. Identify the work — read the PDF, never trust the filename
 
 Open the PDF's first pages (title page, copyright page) before anything else.

@@ -72,11 +72,11 @@ fn all_queries_prepare() {
     let in_1 = format!("SELECT canonical_id FROM alias WHERE canonical_id IN {}", in_list(1));
     let in_3 = format!("SELECT canonical_id FROM alias WHERE canonical_id IN {}", in_list(3));
     let pair_1 = format!(
-        "SELECT namespace, value FROM alias WHERE (namespace, value) IN {}",
+        "SELECT scheme, value FROM alias WHERE (scheme, value) IN {}",
         alias_pair_list(1)
     );
     let pair_3 = format!(
-        "SELECT namespace, value FROM alias WHERE (namespace, value) IN {}",
+        "SELECT scheme, value FROM alias WHERE (scheme, value) IN {}",
         alias_pair_list(3)
     );
     stmts.push(("in_list(1)", &in_1));
@@ -189,7 +189,7 @@ fn happy_path() {
     // present_aliases / have.
     conn.execute(alias::INSERT_IGNORE, params!["isbn", "978-0-00-000000-0", "n2"]).unwrap();
     let have_sql = format!(
-        "SELECT namespace, value FROM alias WHERE (namespace, value) IN {}",
+        "SELECT scheme, value FROM alias WHERE (scheme, value) IN {}",
         alias_pair_list(2)
     );
     let mut stmt = conn.prepare(&have_sql).unwrap();

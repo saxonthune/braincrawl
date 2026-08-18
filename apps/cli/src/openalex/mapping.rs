@@ -115,8 +115,8 @@ pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
             let citing_bare = strip_openalex_url(citing).to_string();
             let cited_bare = strip_openalex_url(cited).to_string();
             serde_json::json!({
-                "src": {"namespace": "openalex", "value": citing_bare},
-                "dst": {"namespace": "openalex", "value": cited_bare},
+                "src": {"scheme": "openalex", "value": citing_bare},
+                "dst": {"scheme": "openalex", "value": cited_bare},
                 "relation": "cites",
                 "source": "openalex",
                 "attrs": null,
@@ -140,7 +140,7 @@ pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)])
                 let aliases: Vec<Alias> = aliases_val
                     .iter()
                     .map(|v| Alias {
-                        namespace: v["namespace"].as_str().unwrap_or("").to_string(),
+                        scheme: v["scheme"].as_str().unwrap_or("").to_string(),
                         value: v["value"].as_str().unwrap_or("").to_string(),
                     })
                     .collect();
@@ -161,8 +161,8 @@ pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)])
             let citing_bare = strip_openalex_url(citing).to_string();
             let cited_bare = strip_openalex_url(cited).to_string();
             EdgeInput {
-                src: Alias { namespace: "openalex".to_string(), value: citing_bare },
-                dst: Alias { namespace: "openalex".to_string(), value: cited_bare },
+                src: Alias { scheme: "openalex".to_string(), value: citing_bare },
+                dst: Alias { scheme: "openalex".to_string(), value: cited_bare },
                 relation: "cites".to_string(),
                 source: "openalex".to_string(),
                 attrs: serde_json::Value::Null,
@@ -176,8 +176,8 @@ pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)])
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn alias(namespace: &str, value: &str) -> Value {
-    serde_json::json!({"namespace": namespace, "value": value})
+fn alias(scheme: &str, value: &str) -> Value {
+    serde_json::json!({"scheme": scheme, "value": value})
 }
 
 fn strip_openalex_url(s: &str) -> &str {
@@ -230,7 +230,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Works, &record);
         let ns_vals: Vec<(&str, &str)> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert!(ns_vals.contains(&("openalex", "W2741809807")));
         assert!(ns_vals.contains(&("doi", "10.7717/peerj.4375")));
@@ -247,7 +247,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Authors, &record);
         let ns_vals: Vec<(&str, &str)> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert!(ns_vals.contains(&("openalex", "A5023888391")));
         assert!(ns_vals.contains(&("orcid", "0000-0001-6187-6610")));
@@ -283,7 +283,7 @@ mod tests {
         let edges = to_edges(&pairs);
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert_eq!(e["src"]["namespace"].as_str(), Some("openalex"));
+        assert_eq!(e["src"]["scheme"].as_str(), Some("openalex"));
         assert_eq!(e["src"]["value"].as_str(), Some("W111"));
         assert_eq!(e["dst"]["value"].as_str(), Some("W222"));
         assert_eq!(e["relation"].as_str(), Some("cites"));
@@ -312,7 +312,7 @@ mod tests {
         ];
         let em = to_emission(&[], &pairs);
         assert_eq!(em.edges.len(), 1);
-        assert_eq!(em.edges[0].src.namespace, "openalex");
+        assert_eq!(em.edges[0].src.scheme, "openalex");
         assert_eq!(em.edges[0].src.value, "W111");
         assert_eq!(em.edges[0].dst.value, "W222");
         assert_eq!(em.edges[0].relation, "cites");

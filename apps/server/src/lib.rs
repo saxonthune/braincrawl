@@ -194,7 +194,7 @@ pub struct NeighborhoodHttpRequest {
 fn parse_alias(id_str: &str) -> Option<Alias> {
     let pos = id_str.find(':')?;
     Some(Alias {
-        namespace: id_str[..pos].to_string(),
+        scheme: id_str[..pos].to_string(),
         value: id_str[pos + 1..].to_string(),
     })
 }
@@ -293,7 +293,7 @@ async fn handler_have(
         Ok(present) => {
             let ids: Vec<String> = present
                 .iter()
-                .map(|a| format!("{}:{}", a.namespace, a.value))
+                .map(|a| format!("{}:{}", a.scheme, a.value))
                 .collect();
             Json(ids).into_response()
         }
@@ -397,7 +397,7 @@ async fn handler_works_get(
     // /works/*id  — plain GET work
     let a = match parse_alias(&path) {
         Some(a) => a,
-        None => return (StatusCode::BAD_REQUEST, "expected namespace:value").into_response(),
+        None => return (StatusCode::BAD_REQUEST, "expected scheme:value").into_response(),
     };
     let result = run_blocking(move || async move {
         let view = store.get_work(a.clone()).await?;

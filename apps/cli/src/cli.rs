@@ -23,7 +23,11 @@ pub struct GlobalArgs {
     /// Return all results, ignoring limit
     #[arg(long, global = true)]
     pub all: bool,
-    /// Comma-separated list of fields to include in output
+    /// Comma-separated keys to project from each result row. Keys are the row's own
+    /// top-level fields (a provider row exposes provider-native keys; a catalog row
+    /// exposes canonical_id, attrs, ...). `id`/`canonical_id` both name the work's
+    /// identity — the canonical id for a catalog row — and `title` reads attrs.title.
+    /// An unrecognized key yields an empty column rather than an error.
     #[arg(long, value_delimiter = ',', global = true)]
     pub fields: Vec<String>,
     /// Return full record (all fields)

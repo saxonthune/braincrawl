@@ -95,8 +95,8 @@ pub fn to_edges(pairs: &[(String, String)]) -> Vec<Value> {
             let (src_ns, src_val) = split_alias(citing);
             let (dst_ns, dst_val) = split_alias(cited);
             serde_json::json!({
-                "src": {"namespace": src_ns, "value": src_val},
-                "dst": {"namespace": dst_ns, "value": dst_val},
+                "src": {"scheme": src_ns, "value": src_val},
+                "dst": {"scheme": dst_ns, "value": dst_val},
                 "relation": "cites",
                 "source": "semanticscholar",
                 "attrs": null,
@@ -120,7 +120,7 @@ pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)])
                 let aliases: Vec<Alias> = aliases_val
                     .iter()
                     .map(|v| Alias {
-                        namespace: v["namespace"].as_str().unwrap_or("").to_string(),
+                        scheme: v["scheme"].as_str().unwrap_or("").to_string(),
                         value: v["value"].as_str().unwrap_or("").to_string(),
                     })
                     .collect();
@@ -141,8 +141,8 @@ pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)])
             let (src_ns, src_val) = split_alias(citing);
             let (dst_ns, dst_val) = split_alias(cited);
             EdgeInput {
-                src: Alias { namespace: src_ns.to_string(), value: src_val.to_string() },
-                dst: Alias { namespace: dst_ns.to_string(), value: dst_val.to_string() },
+                src: Alias { scheme: src_ns.to_string(), value: src_val.to_string() },
+                dst: Alias { scheme: dst_ns.to_string(), value: dst_val.to_string() },
                 relation: "cites".to_string(),
                 source: "semanticscholar".to_string(),
                 attrs: serde_json::Value::Null,
@@ -156,8 +156,8 @@ pub fn to_emission(records: &[(Entity, Value)], edge_pairs: &[(String, String)])
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn alias(namespace: &str, value: &str) -> Value {
-    serde_json::json!({"namespace": namespace, "value": value})
+fn alias(scheme: &str, value: &str) -> Value {
+    serde_json::json!({"scheme": scheme, "value": value})
 }
 
 fn strip_doi_url(s: &str) -> &str {
@@ -169,7 +169,7 @@ fn strip_orcid_url(s: &str) -> &str {
 }
 
 /// Split an `ns:value` alias on the first `:`.
-/// Falls back to namespace "s2" if no colon is present.
+/// Falls back to scheme "s2" if no colon is present.
 fn split_alias(alias: &str) -> (&str, &str) {
     if let Some(pos) = alias.find(':') {
         (&alias[..pos], &alias[pos + 1..])
@@ -207,7 +207,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Papers, &record);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         // DOI merge guarantee: bare value, not URL-prefixed
         assert_eq!(map.get("doi"), Some(&"10.7717/peerj.4375"),
@@ -228,7 +228,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Papers, &record);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert_eq!(map.get("doi"), Some(&"10.1000/test"),
             "https://doi.org/ prefix must be stripped from DOI");
@@ -245,7 +245,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Authors, &record);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert_eq!(map.get("s2author"), Some(&"1741101"));
         assert_eq!(map.get("orcid"), Some(&"0000-0001-6187-6610"));
@@ -262,7 +262,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Authors, &record);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert_eq!(map.get("orcid"), Some(&"0000-0001-6187-6610"),
             "https://orcid.org/ prefix must be stripped");
@@ -301,9 +301,9 @@ mod tests {
         let edges = to_edges(&pairs);
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert_eq!(e["src"]["namespace"].as_str(), Some("doi"));
+        assert_eq!(e["src"]["scheme"].as_str(), Some("doi"));
         assert_eq!(e["src"]["value"].as_str(), Some("10.1000/citing"));
-        assert_eq!(e["dst"]["namespace"].as_str(), Some("s2"));
+        assert_eq!(e["dst"]["scheme"].as_str(), Some("s2"));
         assert_eq!(e["dst"]["value"].as_str(), Some("649def34f8be52c8b66281af98ae884c09aef38b"));
         assert_eq!(e["relation"].as_str(), Some("cites"));
         assert_eq!(e["source"].as_str(), Some("semanticscholar"));
@@ -319,7 +319,7 @@ mod tests {
         let aliases = extract_aliases(Entity::Papers, &record);
         let map: std::collections::HashMap<&str, &str> = aliases
             .iter()
-            .map(|a| (a["namespace"].as_str().unwrap(), a["value"].as_str().unwrap()))
+            .map(|a| (a["scheme"].as_str().unwrap(), a["value"].as_str().unwrap()))
             .collect();
         assert_eq!(map.get("corpusid"), Some(&"99999"));
     }
@@ -331,9 +331,9 @@ mod tests {
         ];
         let em = to_emission(&[], &pairs);
         assert_eq!(em.edges.len(), 1);
-        assert_eq!(em.edges[0].src.namespace, "doi");
+        assert_eq!(em.edges[0].src.scheme, "doi");
         assert_eq!(em.edges[0].src.value, "10.1000/a");
-        assert_eq!(em.edges[0].dst.namespace, "s2");
+        assert_eq!(em.edges[0].dst.scheme, "s2");
         assert_eq!(em.edges[0].relation, "cites");
         assert_eq!(em.edges[0].source, "semanticscholar");
         assert!(!em.edges[0].fetched_at.is_empty());

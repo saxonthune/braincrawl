@@ -310,7 +310,7 @@ no H1:
   `- tags: #a #b` turns each `#`-token into a label.
 - A link line is `- kind [[target]]` (implicit source) or `- [[src]] kind [[dst]]`, with
   optional trailing `{props}`. A target is a node anchor `^r-…`, a bare `slug` (that doc's
-  intro node), or any `namespace:value` catalog reference (`openalex:`/`doi:`/`isbn:`/
+  intro node), or any `scheme:value` catalog reference (`openalex:`/`doi:`/`isbn:`/
   `pmid:`/…, or `uuid:` for a work — e.g. a book — that has no external id, referenced by
   its canonical id directly). `catalog` names a work-link; `contradicts` is the blessed word
   for a claim-link (never `refutes`); `supports`/`builds-on`/`relates-to`/`bridges`/

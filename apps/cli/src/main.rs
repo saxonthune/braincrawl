@@ -1171,7 +1171,7 @@ fn human_bytes(bytes: u64) -> String {
 
 fn resolve_doi(store: &StoreClient, id: &str) -> Result<String, Box<dyn std::error::Error>> {
     if let Some(a) = braincrawl_cli::alias::parse(id) {
-        if a.namespace == "doi" {
+        if a.scheme == "doi" {
             return Ok(a.value.to_lowercase());
         }
     }

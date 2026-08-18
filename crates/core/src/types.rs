@@ -8,7 +8,7 @@ pub struct CanonicalId(pub String);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Alias {
-    pub namespace: String,
+    pub scheme: String,
     pub value: String,
 }
 

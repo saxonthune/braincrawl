@@ -12,9 +12,9 @@
 //!   Id  : IdGen
 //! ```
 //!
-//! ## Alias namespace priority for coordinator lock key
+//! ## Alias scheme priority for coordinator lock key
 //!
-//! When multiple aliases are present, the one with the highest-priority namespace is
+//! When multiple aliases are present, the one with the highest-priority scheme is
 //! used as the lock key.  Priority (lowest number = highest priority):
 //!
 //! | Priority | Namespace        |
@@ -572,8 +572,8 @@ where
 // Private helpers
 // ---------------------------------------------------------------------------
 
-/// Alias namespace priority (lower = stronger; used for coordinator lock key).
-fn namespace_priority(ns: &str) -> u8 {
+/// Alias scheme priority (lower = stronger; used for coordinator lock key).
+fn scheme_priority(ns: &str) -> u8 {
     match ns {
         "doi" => 0,
         "pmid" => 1,
@@ -589,8 +589,8 @@ fn namespace_priority(ns: &str) -> u8 {
 fn strongest_alias_key(aliases: &[Alias]) -> String {
     aliases
         .iter()
-        .min_by_key(|a| (namespace_priority(&a.namespace), a.value.as_str()))
-        .map(|a| format!("{}:{}", a.namespace, a.value))
+        .min_by_key(|a| (scheme_priority(&a.scheme), a.value.as_str()))
+        .map(|a| format!("{}:{}", a.scheme, a.value))
         .unwrap_or_else(|| "unknown".to_string())
 }
 

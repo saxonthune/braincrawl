@@ -46,7 +46,7 @@ fn put_works_body() -> serde_json::Value {
     serde_json::json!({
         "source": "test",
         "kind": "Work",
-        "aliases": [{"namespace": "doi", "value": "10.0/auth-test"}],
+        "aliases": [{"scheme": "doi", "value": "10.0/auth-test"}],
         "attrs": {}
     })
 }

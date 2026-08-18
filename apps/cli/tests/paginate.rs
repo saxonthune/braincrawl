@@ -52,7 +52,7 @@ fn put_work_with_pdf(client: &StoreClient, id: &str) {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": id}],
+            "aliases": [{"scheme": "doi", "value": id}],
             "attrs": {}
         }))
         .unwrap();
@@ -153,7 +153,7 @@ fn paginate_refuses_a_non_pdf_source() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"namespace": "doi", "value": "10.0/paginate-not-pdf"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/paginate-not-pdf"}],
             "attrs": {}
         }))
         .unwrap();

@@ -13,7 +13,7 @@ fn alias_splits_on_first_colon() {
     )
     .unwrap();
     assert_eq!(record.aliases.len(), 1);
-    assert_eq!(record.aliases[0].namespace, "isbn");
+    assert_eq!(record.aliases[0].scheme, "isbn");
     assert_eq!(record.aliases[0].value, "9780691215105");
 }
 

@@ -4,7 +4,7 @@
 //! source of truth.  `resolve` checks KV before hitting D1; `remember` writes
 //! the resolved canonical id into KV so subsequent resolves are cache hits.
 //!
-//! Key format: `"{namespace}:{value}"` — matches the alias identity used in
+//! Key format: `"{scheme}:{value}"` — matches the alias identity used in
 //! the rest of the system.
 
 #![allow(dead_code)]
@@ -27,10 +27,10 @@ pub struct KvResolver;
 #[cfg(not(feature = "cloudflare"))]
 #[async_trait(?Send)]
 impl IdResolver for KvResolver {
-    async fn resolve(&self, _namespace: &str, _value: &str) -> Result<Option<CanonicalId>, DomainError> {
+    async fn resolve(&self, _scheme: &str, _value: &str) -> Result<Option<CanonicalId>, DomainError> {
         Err(DomainError::Backend("KvResolver: cloudflare feature not enabled".into()))
     }
-    async fn remember(&self, _canonical: &CanonicalId, _namespace: &str, _value: &str) -> Result<(), DomainError> {
+    async fn remember(&self, _canonical: &CanonicalId, _scheme: &str, _value: &str) -> Result<(), DomainError> {
         Err(DomainError::Backend("KvResolver: cloudflare feature not enabled".into()))
     }
 }
@@ -54,10 +54,10 @@ impl KvResolver {
 impl IdResolver for KvResolver {
     async fn resolve(
         &self,
-        namespace: &str,
+        scheme: &str,
         value: &str,
     ) -> Result<Option<CanonicalId>, DomainError> {
-        let key = format!("{namespace}:{value}");
+        let key = format!("{scheme}:{value}");
         let text = self.kv.get(&key).text().await.map_err(be)?;
         Ok(text.map(CanonicalId))
     }
@@ -65,10 +65,10 @@ impl IdResolver for KvResolver {
     async fn remember(
         &self,
         canonical: &CanonicalId,
-        namespace: &str,
+        scheme: &str,
         value: &str,
     ) -> Result<(), DomainError> {
-        let key = format!("{namespace}:{value}");
+        let key = format!("{scheme}:{value}");
         self.kv
             .put(&key, canonical.0.as_str())
             .map_err(be)?

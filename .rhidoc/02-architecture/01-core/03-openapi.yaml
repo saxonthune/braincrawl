@@ -1,6 +1,6 @@
 # braincrawl store API — brief sketch (host doc: doc02.01.03)
-# Every {id} is `namespace:value` (e.g. doi:10.1126/x, openalex:W1234, guid:...).
-# Any namespace resolves to one canonical GUID internally (doc02.01.02).
+# Every {id} is `scheme:value` (e.g. doi:10.1126/x, openalex:W1234, guid:...).
+# Any scheme resolves to one canonical GUID internally (doc02.01.02).
 openapi: 3.1.0
 info:
   title: braincrawl store API
@@ -68,7 +68,7 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer }
   schemas:
-    Alias:        { type: object, properties: { namespace: { type: string }, value: { type: string } }, required: [namespace, value] }
+    Alias:        { type: object, properties: { scheme: { type: string }, value: { type: string } }, required: [scheme, value] }
     Resolved:     { type: object, properties: { canonical_id: { type: string } } }
     WorkRecord:   # the provider record; aliases is the id block, never stripped
       type: object

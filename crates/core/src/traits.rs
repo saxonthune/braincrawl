@@ -49,7 +49,7 @@ pub trait ArtifactStore {
 pub trait MetadataStore {
     async fn get_alias(&self, alias: &Alias) -> Result<Option<CanonicalId>, DomainError>;
 
-    /// Get-or-create on the UNIQUE(namespace,value) constraint.
+    /// Get-or-create on the UNIQUE(scheme,value) constraint.
     /// INSERT … ON CONFLICT DO NOTHING then SELECT; returns the winner's id.
     async fn get_or_create_alias(
         &self,
@@ -153,13 +153,13 @@ pub trait MetadataStore {
 pub trait IdResolver {
     async fn resolve(
         &self,
-        namespace: &str,
+        scheme: &str,
         value: &str,
     ) -> Result<Option<CanonicalId>, DomainError>;
     async fn remember(
         &self,
         canonical: &CanonicalId,
-        namespace: &str,
+        scheme: &str,
         value: &str,
     ) -> Result<(), DomainError>;
 }

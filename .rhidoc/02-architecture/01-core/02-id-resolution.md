@@ -23,7 +23,7 @@ in the code is this UUID, never a provider id.
 
 Each external id is an element, each `node` is an equivalence class, and the UUID is
 the class representative. The `alias` table (`doc02.01.01`) is the union-find parent
-map, and `UNIQUE (namespace, value)` is the structural invariant: one external id
+map, and `UNIQUE (scheme, value)` is the structural invariant: one external id
 belongs to exactly one class and can never fork.
 
 Resolution operates on the **id bundle** a provider record carries — not a bare id.
@@ -32,7 +32,7 @@ A provider record (an OpenAlex work, say) names several ids at once
 
 `resolve(record) → uuid`:
 
-1. Extract the bundle `{(namespace, value), …}` from the record.
+1. Extract the bundle `{(scheme, value), …}` from the record.
 2. Look each up in `alias`; collect the set `U` of distinct UUIDs hit.
 3. `|U| == 0` → generate a UUID, insert the node and all aliases.
 4. `|U| == 1` → use it; insert any aliases not yet present.

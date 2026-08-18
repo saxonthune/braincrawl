@@ -31,25 +31,25 @@ impl Default for MemResolver {
 impl IdResolver for MemResolver {
     async fn resolve(
         &self,
-        namespace: &str,
+        scheme: &str,
         value: &str,
     ) -> Result<Option<CanonicalId>, DomainError> {
         Ok(self
             .inner
             .borrow()
-            .get(&(namespace.to_string(), value.to_string()))
+            .get(&(scheme.to_string(), value.to_string()))
             .cloned())
     }
 
     async fn remember(
         &self,
         canonical: &CanonicalId,
-        namespace: &str,
+        scheme: &str,
         value: &str,
     ) -> Result<(), DomainError> {
         self.inner
             .borrow_mut()
-            .insert((namespace.to_string(), value.to_string()), canonical.clone());
+            .insert((scheme.to_string(), value.to_string()), canonical.clone());
         Ok(())
     }
 }

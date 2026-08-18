@@ -60,7 +60,7 @@ impl FetchHandler for FulltextHandler {
             let doi = work
                 .aliases
                 .iter()
-                .find(|a| a.namespace == "doi")
+                .find(|a| a.scheme == "doi")
                 .map(|a| a.value.clone());
 
             if let (Some(doi), Some(email)) = (doi, &self.unpaywall_email) {
@@ -201,7 +201,7 @@ fn build_client() -> Result<reqwest::Client, DomainError> {
 fn parse_alias(s: &str) -> Option<Alias> {
     let pos = s.find(':')?;
     Some(Alias {
-        namespace: s[..pos].to_string(),
+        scheme: s[..pos].to_string(),
         value: s[pos + 1..].to_string(),
     })
 }

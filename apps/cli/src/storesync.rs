@@ -26,7 +26,7 @@ const EDGE_BATCH: usize = 8;
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 struct WireAlias {
-    namespace: String,
+    scheme: String,
     value: String,
 }
 
@@ -87,7 +87,7 @@ const ALIAS_PREFERENCE: [&str; 2] = ["openalex", "doi"];
 /// else whichever alias comes first.
 fn choose_alias(aliases: &[WireAlias]) -> Option<&WireAlias> {
     for ns in ALIAS_PREFERENCE {
-        if let Some(a) = aliases.iter().find(|a| a.namespace == ns) {
+        if let Some(a) = aliases.iter().find(|a| a.scheme == ns) {
             return Some(a);
         }
     }
@@ -95,7 +95,7 @@ fn choose_alias(aliases: &[WireAlias]) -> Option<&WireAlias> {
 }
 
 fn alias_key(a: &WireAlias) -> String {
-    format!("{}:{}", a.namespace, a.value)
+    format!("{}:{}", a.scheme, a.value)
 }
 
 fn have_batched(client: &StoreClient, ids: &[String]) -> Result<HashSet<String>, String> {

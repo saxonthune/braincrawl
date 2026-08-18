@@ -152,7 +152,7 @@ pub fn resolve_artifact_url(
 
     // Unpaywall fallback (Auto) or explicit request (Unpaywall)
     if matches!(from, Source::Auto | Source::Unpaywall) {
-        match (extract_doi(work), unpaywall_email) {
+        match (crate::alias::alias_of(work, "doi"), unpaywall_email) {
             (Some(doi), Some(email)) => {
                 if let Some(url) = query_unpaywall(&doi, email)? {
                     return Ok(Some((url, "unpaywall")));
@@ -190,19 +190,6 @@ pub fn resolve_oa_url_from_attrs(work: &serde_json::Value) -> Option<String> {
         if let Some(s) = url_ptr.as_str() {
             if !s.is_empty() {
                 return Some(s.to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Extract the bare DOI value from a WorkView's aliases list.
-pub fn extract_doi(work: &serde_json::Value) -> Option<String> {
-    let aliases = work["aliases"].as_array()?;
-    for alias in aliases {
-        if alias["namespace"].as_str() == Some("doi") {
-            if let Some(v) = alias["value"].as_str() {
-                return Some(v.to_string());
             }
         }
     }
@@ -400,28 +387,4 @@ mod tests {
         assert_eq!(sniff_mime(b"not a pdf"), "application/octet-stream");
     }
 
-    // ── DOI extraction ────────────────────────────────────────────────────────
-
-    #[test]
-    fn extracts_doi_from_aliases() {
-        let work = json!({
-            "attrs": {},
-            "aliases": [
-                {"namespace": "openalex", "value": "W123"},
-                {"namespace": "doi", "value": "10.1234/test"}
-            ]
-        });
-        assert_eq!(extract_doi(&work), Some("10.1234/test".to_string()));
-    }
-
-    #[test]
-    fn returns_none_when_no_doi() {
-        let work = json!({
-            "attrs": {},
-            "aliases": [
-                {"namespace": "openalex", "value": "W123"}
-            ]
-        });
-        assert_eq!(extract_doi(&work), None);
-    }
 }

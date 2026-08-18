@@ -9,8 +9,8 @@ pub fn to_emission(citing_doi: &str, cited_dois: &[String], skipped: usize) -> E
     let edges: Vec<EdgeInput> = cited_dois
         .iter()
         .map(|cited| EdgeInput {
-            src: Alias { namespace: "doi".to_string(), value: citing_doi.to_string() },
-            dst: Alias { namespace: "doi".to_string(), value: cited.clone() },
+            src: Alias { scheme: "doi".to_string(), value: citing_doi.to_string() },
+            dst: Alias { scheme: "doi".to_string(), value: cited.clone() },
             relation: "cites".to_string(),
             source: "crossref".to_string(),
             attrs: Value::Null,
@@ -35,9 +35,9 @@ mod tests {
         assert_eq!(em.records.len(), 0);
         assert_eq!(em.edges.len(), 1);
         let e = &em.edges[0];
-        assert_eq!(e.src.namespace, "doi");
+        assert_eq!(e.src.scheme, "doi");
         assert_eq!(e.src.value, "10.1000/citing");
-        assert_eq!(e.dst.namespace, "doi");
+        assert_eq!(e.dst.scheme, "doi");
         assert_eq!(e.dst.value, "10.2000/cited");
         assert_eq!(e.relation, "cites");
         assert_eq!(e.source, "crossref");

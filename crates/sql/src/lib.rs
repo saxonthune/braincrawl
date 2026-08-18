@@ -33,6 +33,8 @@ pub const MIGRATION_0005: &str =
     include_str!("../../../migrations/0005_drop_artifact_rights.sql");
 pub const MIGRATION_0006: &str =
     include_str!("../../../migrations/0006_artifact_derived_from.sql");
+pub const MIGRATION_0007: &str =
+    include_str!("../../../migrations/0007_rename_alias_namespace_to_scheme.sql");
 
 /// Ordered `(name, sql)` pairs for startup application by backends.
 pub fn migrations() -> &'static [(&'static str, &'static str)] {
@@ -43,6 +45,7 @@ pub fn migrations() -> &'static [(&'static str, &'static str)] {
         ("0004_rename_payloads_to_artifacts", MIGRATION_0004),
         ("0005_drop_artifact_rights", MIGRATION_0005),
         ("0006_artifact_derived_from", MIGRATION_0006),
+        ("0007_rename_alias_namespace_to_scheme", MIGRATION_0007),
     ]
 }
 
@@ -50,25 +53,25 @@ pub fn migrations() -> &'static [(&'static str, &'static str)] {
 
 pub mod alias {
     /// Insert an alias; silently ignores PK conflicts (get-or-create step 1).
-    /// Params: (namespace, value, canonical_id)
+    /// Params: (scheme, value, canonical_id)
     pub const INSERT_IGNORE: &str = "\
-        INSERT INTO alias (namespace, value, canonical_id) \
+        INSERT INTO alias (scheme, value, canonical_id) \
         VALUES (?, ?, ?) \
-        ON CONFLICT(namespace, value) DO NOTHING";
+        ON CONFLICT(scheme, value) DO NOTHING";
 
     /// Resolve alias → canonical_id (get-or-create step 2 / plain lookup).
-    /// Params: (namespace, value)
+    /// Params: (scheme, value)
     pub const GET: &str = "\
-        SELECT canonical_id FROM alias WHERE namespace = ? AND value = ?";
+        SELECT canonical_id FROM alias WHERE scheme = ? AND value = ?";
 
-    /// List all (namespace, value) aliases for a canonical_id.
+    /// List all (scheme, value) aliases for a canonical_id.
     /// Params: (canonical_id)
     pub const LIST_BY_NODE: &str = "\
-        SELECT namespace, value FROM alias WHERE canonical_id = ?";
+        SELECT scheme, value FROM alias WHERE canonical_id = ?";
 
     // ── merge (loser → survivor) ───────────────────────────────────────────
 
-    /// Merge step 1: delete loser aliases that would violate UNIQUE(namespace, value)
+    /// Merge step 1: delete loser aliases that would violate UNIQUE(scheme, value)
     /// if repointed to the survivor (i.e. the survivor already owns that alias).
     /// Params: (loser_canonical_id, survivor_canonical_id)
     pub const MERGE_DELETE_CONFLICTS: &str = "\
@@ -76,7 +79,7 @@ pub mod alias {
         WHERE canonical_id = ? \
           AND EXISTS ( \
             SELECT 1 FROM alias AS s \
-            WHERE s.namespace = alias.namespace \
+            WHERE s.scheme = alias.scheme \
               AND s.value = alias.value \
               AND s.canonical_id = ? \
           )";
@@ -461,12 +464,12 @@ pub mod export {
         WHERE is_current = 1 AND (canonical_id, role) > (?, ?) \
         ORDER BY canonical_id, role LIMIT ?";
 
-    /// Aliases for a page of nodes: `SELECT canonical_id, namespace, value FROM
+    /// Aliases for a page of nodes: `SELECT canonical_id, scheme, value FROM
     /// alias WHERE canonical_id IN <in_list(n)>`. Built at runtime because the
     /// id count varies; bind the page's canonical_ids in order.
     pub fn aliases_for_nodes(n: usize) -> String {
         format!(
-            "SELECT canonical_id, namespace, value FROM alias WHERE canonical_id IN {}",
+            "SELECT canonical_id, scheme, value FROM alias WHERE canonical_id IN {}",
             crate::in_list(n)
         )
     }
@@ -662,13 +665,13 @@ pub fn in_list(n: usize) -> String {
     s
 }
 
-/// Build a `(?, ?), (?, ?), …` placeholder fragment with `n` (namespace, value) pairs.
+/// Build a `(?, ?), (?, ?), …` placeholder fragment with `n` (scheme, value) pairs.
 ///
 /// Splice into the `present_aliases` ("have") query:
 ///
 /// ```text
-/// SELECT namespace, value FROM alias
-/// WHERE (namespace, value) IN <alias_pair_list(n)>
+/// SELECT scheme, value FROM alias
+/// WHERE (scheme, value) IN <alias_pair_list(n)>
 /// ```
 ///
 /// Bind params as `(ns0, val0, ns1, val1, …)`.

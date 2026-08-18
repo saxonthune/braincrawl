@@ -21,7 +21,7 @@ One markdown file per item under the consolidated store. A worked example is
   each `#`-token is a node label, not a property.
 - **Link line** — `- kind [[target]]` (source is the enclosing node) or `- [[src]] kind
   [[dst]]`, with an optional trailing `{props}`. A target is a node anchor `^r-…`, a bare
-  `slug` (that doc's intro node), or any `namespace:value` catalog reference
+  `slug` (that doc's intro node), or any `scheme:value` catalog reference
   (`openalex:`/`doi:`/`isbn:`/`pmid:`/…, or `uuid:` for a work referenced by its canonical
   id directly). A `[[wikilink]]` inside a property value is prose, not a link.
 - **Anchors are store-global.** `assign-ids` keeps every `^r-…` unique across the whole store,

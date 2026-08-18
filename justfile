@@ -22,6 +22,12 @@ upgrade:
         just web-build
     fi
     systemctl --user restart braincrawl-server
+    # restart returns when systemd forks the process, not when it has bound the
+    # socket — poll /health so the doctor below doesn't race the startup.
+    for _ in $(seq 1 50); do
+        curl -fsS http://127.0.0.1:8787/health >/dev/null 2>&1 && break
+        sleep 0.2
+    done
     braincrawl doctor || true
 
 # Start the shared server (systemd user service)

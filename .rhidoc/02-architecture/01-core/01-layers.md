@@ -28,8 +28,8 @@ own concern, resolved by braincrawl on the consumer's behalf; see Id Resolution
 (`doc02.01.02`) for how external ids converge onto one UUID.
 
 The backing store lives in the metadata DB: an **alias multimap**
-(`canonical_id → {namespace, value}[]`) and a flat **KV** resolver projection
-(`namespace:value → canonical_id`). The citation graph and `payloads` rows store
+(`canonical_id → {scheme, value}[]`) and a flat **KV** resolver projection
+(`scheme:value → canonical_id`). The citation graph and `payloads` rows store
 **UUIDs only**. A `dst_id` with no backing `works` row is a catalog entry with no
 metadata yet — a citation target braincrawl knows exists but has not fetched.
 

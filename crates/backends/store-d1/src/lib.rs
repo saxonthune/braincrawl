@@ -429,7 +429,7 @@ impl MetadataStore for D1Store {
         let stmt = prep(
             &self.db,
             braincrawl_sql::alias::GET,
-            &[s(&alias.namespace), s(&alias.value)],
+            &[s(&alias.scheme), s(&alias.value)],
         )?;
         let row = stmt.first::<Row>(None).await.map_err(be)?;
         Ok(row.map(|r| CanonicalId(r.canonical_id)))
@@ -445,12 +445,12 @@ impl MetadataStore for D1Store {
         let insert = prep(
             &self.db,
             braincrawl_sql::alias::INSERT_IGNORE,
-            &[s(&alias.namespace), s(&alias.value), s(&candidate.0)],
+            &[s(&alias.scheme), s(&alias.value), s(&candidate.0)],
         )?;
         let select = prep(
             &self.db,
             braincrawl_sql::alias::GET,
-            &[s(&alias.namespace), s(&alias.value)],
+            &[s(&alias.scheme), s(&alias.value)],
         )?;
         let results = self.db.batch(vec![insert, select]).await.map_err(be)?;
         let rows = results
@@ -576,7 +576,7 @@ impl MetadataStore for D1Store {
         #[derive(serde::Deserialize)]
         struct AssertionRow { source: String, attrs: String, fetched_at: String }
         #[derive(serde::Deserialize)]
-        struct AliasRow { namespace: String, value: String }
+        struct AliasRow { scheme: String, value: String }
 
         let node_stmt = prep(&self.db, braincrawl_sql::node::SELECT, &[s(&id.0)])?;
         let assn_stmt = prep(&self.db, braincrawl_sql::node_assertion::SELECT_BY_NODE, &[s(&id.0)])?;
@@ -614,7 +614,7 @@ impl MetadataStore for D1Store {
             .results::<AliasRow>()
             .map_err(be)?
             .into_iter()
-            .map(|r| Alias { namespace: r.namespace, value: r.value })
+            .map(|r| Alias { scheme: r.scheme, value: r.value })
             .collect();
 
         Ok(Some((kind, assertions, aliases)))
@@ -781,24 +781,24 @@ impl MetadataStore for D1Store {
             return Ok(Vec::new());
         }
         #[derive(serde::Deserialize)]
-        struct Row { namespace: String, value: String }
+        struct Row { scheme: String, value: String }
         // Two bound params per pair; production D1 caps ~100 params per statement.
         const PAIRS_PER_CHUNK: usize = 45;
         let mut out = Vec::new();
         for chunk in aliases.chunks(PAIRS_PER_CHUNK) {
             let pair_list = braincrawl_sql::alias_pair_list(chunk.len());
             let query = format!(
-                "SELECT namespace, value FROM alias WHERE (namespace, value) IN {pair_list}"
+                "SELECT scheme, value FROM alias WHERE (scheme, value) IN {pair_list}"
             );
             let params: Vec<JsValue> = chunk
                 .iter()
-                .flat_map(|a| [s(&a.namespace), s(&a.value)])
+                .flat_map(|a| [s(&a.scheme), s(&a.value)])
                 .collect();
             let stmt = prep(&self.db, &query, &params)?;
             let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
             out.extend(
                 rows.into_iter()
-                    .map(|r| Alias { namespace: r.namespace, value: r.value }),
+                    .map(|r| Alias { scheme: r.scheme, value: r.value }),
             );
         }
         Ok(out)
@@ -892,7 +892,7 @@ impl MetadataStore for D1Store {
         #[derive(serde::Deserialize)]
         struct NodeRow { canonical_id: String, kind: String }
         #[derive(serde::Deserialize)]
-        struct AliasRow { canonical_id: String, namespace: String, value: String }
+        struct AliasRow { canonical_id: String, scheme: String, value: String }
         #[derive(serde::Deserialize)]
         struct AssertionRow { canonical_id: String, source: String, attrs: String, fetched_at: String }
 
@@ -933,7 +933,7 @@ impl MetadataStore for D1Store {
                     aliases_by_node
                         .entry(r.canonical_id)
                         .or_default()
-                        .push(Alias { namespace: r.namespace, value: r.value });
+                        .push(Alias { scheme: r.scheme, value: r.value });
                 }
             } else {
                 for r in result.results::<AssertionRow>().map_err(be)? {

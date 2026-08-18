@@ -46,7 +46,7 @@ pub struct WorkRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Alias {
-    pub namespace: String,
+    pub scheme: String,
     pub value: String,
 }
 
@@ -95,10 +95,10 @@ pub fn build_manual_work_record(
 
     let mut parsed_aliases = Vec::with_capacity(aliases.len());
     for a in aliases {
-        let Some((namespace, value)) = a.split_once(':') else {
+        let Some((scheme, value)) = a.split_once(':') else {
             return Err(format!("invalid alias '{a}': expected ns:value form"));
         };
-        parsed_aliases.push(Alias { namespace: namespace.to_string(), value: value.to_string() });
+        parsed_aliases.push(Alias { scheme: scheme.to_string(), value: value.to_string() });
     }
 
     let mut attrs = serde_json::Map::new();
@@ -187,8 +187,8 @@ mod tests {
             source: "openalex".to_string(),
             kind: "Work".to_string(),
             aliases: vec![
-                Alias { namespace: "openalex".to_string(), value: "W123".to_string() },
-                Alias { namespace: "doi".to_string(), value: "10.1000/test".to_string() },
+                Alias { scheme: "openalex".to_string(), value: "W123".to_string() },
+                Alias { scheme: "doi".to_string(), value: "10.1000/test".to_string() },
             ],
             attrs: json!({"title": "Test paper"}),
         };
@@ -197,8 +197,8 @@ mod tests {
             "source": "openalex",
             "kind": "Work",
             "aliases": [
-                {"namespace": "openalex", "value": "W123"},
-                {"namespace": "doi", "value": "10.1000/test"}
+                {"scheme": "openalex", "value": "W123"},
+                {"scheme": "doi", "value": "10.1000/test"}
             ],
             "attrs": {"title": "Test paper"}
         });
@@ -208,8 +208,8 @@ mod tests {
     #[test]
     fn edge_input_serialized_shape() {
         let e = EdgeInput {
-            src: Alias { namespace: "openalex".to_string(), value: "W111".to_string() },
-            dst: Alias { namespace: "openalex".to_string(), value: "W222".to_string() },
+            src: Alias { scheme: "openalex".to_string(), value: "W111".to_string() },
+            dst: Alias { scheme: "openalex".to_string(), value: "W222".to_string() },
             relation: "cites".to_string(),
             source: "openalex".to_string(),
             attrs: serde_json::Value::Null,
@@ -217,8 +217,8 @@ mod tests {
         };
         let v = serde_json::to_value(&e).unwrap();
         let expected = json!({
-            "src": {"namespace": "openalex", "value": "W111"},
-            "dst": {"namespace": "openalex", "value": "W222"},
+            "src": {"scheme": "openalex", "value": "W111"},
+            "dst": {"scheme": "openalex", "value": "W222"},
             "relation": "cites",
             "source": "openalex",
             "attrs": null,
@@ -233,7 +233,7 @@ mod tests {
             records: vec![WorkRecord {
                 source: "semanticscholar".to_string(),
                 kind: "Work".to_string(),
-                aliases: vec![Alias { namespace: "s2".to_string(), value: "abc123".to_string() }],
+                aliases: vec![Alias { scheme: "s2".to_string(), value: "abc123".to_string() }],
                 attrs: serde_json::Value::Null,
             }],
             edges: vec![],
@@ -253,14 +253,14 @@ mod tests {
                 source: "openalex".to_string(),
                 kind: "Work".to_string(),
                 aliases: vec![
-                    Alias { namespace: "openalex".to_string(), value: "W123".to_string() },
-                    Alias { namespace: "doi".to_string(), value: "10.1000/test".to_string() },
+                    Alias { scheme: "openalex".to_string(), value: "W123".to_string() },
+                    Alias { scheme: "doi".to_string(), value: "10.1000/test".to_string() },
                 ],
                 attrs: json!({"title": "Test paper"}),
             }],
             edges: vec![EdgeInput {
-                src: Alias { namespace: "openalex".to_string(), value: "W111".to_string() },
-                dst: Alias { namespace: "openalex".to_string(), value: "W222".to_string() },
+                src: Alias { scheme: "openalex".to_string(), value: "W111".to_string() },
+                dst: Alias { scheme: "openalex".to_string(), value: "W222".to_string() },
                 relation: "cites".to_string(),
                 source: "openalex".to_string(),
                 attrs: serde_json::Value::Null,

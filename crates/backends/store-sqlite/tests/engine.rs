@@ -11,7 +11,7 @@ use braincrawl_store_sqlite::SqliteStore;
 
 fn alias(ns: &str, val: &str) -> Alias {
     Alias {
-        namespace: ns.to_string(),
+        scheme: ns.to_string(),
         value: val.to_string(),
     }
 }
