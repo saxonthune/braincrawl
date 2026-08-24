@@ -167,6 +167,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         edges: vec![],
                         skipped_unmappable: 0,
                     };
+                    if opts.emission {
+                        println!("{}", serde_json::to_string_pretty(&emission)?);
+                    }
+                    if opts.skip_push {
+                        return Ok(());
+                    }
                     let summary = push_emission(&client, &emission);
                     report_push_summary(&summary);
                     if !summary.errors.is_empty() {
@@ -174,6 +180,81 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     for id in &summary.pushed_ids {
                         println!("{id}");
+                    }
+                }
+                CatalogCmd::Rm { id, dry_run, yes } => {
+                    let plan = match client.delete_work(&id, true)? {
+                        Some(p) => p,
+                        None => {
+                            eprintln!("no work with id '{id}'");
+                            std::process::exit(1);
+                        }
+                    };
+                    let f = |v: &serde_json::Value, k: &str| {
+                        v.get(k).and_then(|x| x.as_u64()).unwrap_or(0)
+                    };
+                    let work_id =
+                        plan.get("work_id").and_then(|x| x.as_str()).unwrap_or(&id).to_string();
+                    eprintln!("delete {work_id}");
+                    eprintln!(
+                        "  {} aliases, {} artifacts ({} blobs), {} edges, {} merge-redirect nodes",
+                        f(&plan, "aliases"),
+                        f(&plan, "artifacts"),
+                        f(&plan, "artifacts"),
+                        f(&plan, "edges"),
+                        f(&plan, "redirect_nodes"),
+                    );
+
+                    if dry_run {
+                        return Ok(());
+                    }
+
+                    if !yes {
+                        use std::io::IsTerminal as _;
+                        if std::io::stdin().is_terminal() {
+                            eprint!("delete this work and everything above? [y/N] ");
+                            std::io::stderr().flush().ok();
+                            let mut line = String::new();
+                            std::io::stdin().read_line(&mut line)?;
+                            let ans = line.trim().to_ascii_lowercase();
+                            if ans != "y" && ans != "yes" {
+                                eprintln!("aborted");
+                                return Ok(());
+                            }
+                        } else {
+                            return Err(
+                                "refusing to delete without --yes in a non-interactive session"
+                                    .into(),
+                            );
+                        }
+                    }
+
+                    let done = client
+                        .delete_work(&id, false)?
+                        .ok_or("work vanished before delete")?;
+                    eprintln!(
+                        "deleted {}: {} aliases, {} artifacts, {} edges, {} merge-redirect nodes, {} blobs",
+                        done.get("work_id").and_then(|x| x.as_str()).unwrap_or(&id),
+                        f(&done, "aliases"),
+                        f(&done, "artifacts"),
+                        f(&done, "edges"),
+                        f(&done, "redirect_nodes"),
+                        f(&done, "blobs_deleted"),
+                    );
+                    if let Some(orphans) =
+                        done.get("blob_orphans").and_then(|x| x.as_array())
+                    {
+                        if !orphans.is_empty() {
+                            eprintln!(
+                                "warning: {} blob(s) could not be deleted (orphaned bytes to sweep):",
+                                orphans.len()
+                            );
+                            for o in orphans {
+                                if let Some(k) = o.as_str() {
+                                    eprintln!("  {k}");
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -640,17 +721,8 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
         }
     }
 
-    let bytes = match store.get_content(&args.id, &args.from)? {
-        ContentOutcome::Bytes { bytes, mime } => {
-            if !mime.contains("pdf") && !bytes.starts_with(b"%PDF") {
-                return Err(format!(
-                    "{} artifact for {} is not a PDF (mime={})",
-                    args.from, args.id, mime
-                )
-                .into());
-            }
-            bytes
-        }
+    let (bytes, mime) = match store.get_content(&args.id, &args.from)? {
+        ContentOutcome::Bytes { bytes, mime } => (bytes, mime),
         ContentOutcome::Absent => {
             return Err(format!(
                 "no {} artifact in store for {}; run library fetch first",
@@ -663,7 +735,25 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
         }
     };
 
-    let raw_pages = pdf_text::extract_pages(&bytes)?;
+    // A PDF carries its own page grid; a text source does not, so the operator's
+    // --separator rule defines it. This is the path that still works when the PDF
+    // extractor cannot read a file (extract text externally, put it, paginate it).
+    let raw_pages = if mime.contains("pdf") || bytes.starts_with(b"%PDF") {
+        pdf_text::extract_pages(&bytes)?
+    } else {
+        let text = String::from_utf8(bytes).map_err(|_| {
+            format!("{} artifact for {} is neither a PDF nor UTF-8 text", args.from, args.id)
+        })?;
+        let split = args.separator.split(&text).into_iter().map(pdf_text::normalize).collect::<Vec<_>>();
+        if split.len() <= 1 {
+            eprintln!(
+                "separator produced {} page(s) from the {} artifact — the text may not carry this delimiter; check --separator",
+                split.len(),
+                args.from
+            );
+        }
+        split
+    };
     let page_count = raw_pages.len();
     let anchored = !args.anchors.is_empty();
     let records = if anchored {
@@ -677,19 +767,19 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
         let gap_pages: usize = breaks
             .iter()
             .map(|b| match b {
-                pages::FolioBreak::Gap { pdf_pages } => pdf_pages.len(),
+                pages::FolioBreak::Gap { page_indices } => page_indices.len(),
                 pages::FolioBreak::Contradiction { .. } => 0,
             })
             .sum();
         let contradictions: Vec<usize> = breaks
             .iter()
             .filter_map(|b| match b {
-                pages::FolioBreak::Contradiction { pdf_page, .. } => Some(*pdf_page),
+                pages::FolioBreak::Contradiction { page_index, .. } => Some(*page_index),
                 pages::FolioBreak::Gap { .. } => None,
             })
             .collect();
         eprintln!(
-            "folio breaks: {} gap page(s), {} contradiction(s) at pdf page(s) {:?}",
+            "folio breaks: {} gap page(s), {} contradiction(s) at artifact-page(s) {:?}",
             gap_pages,
             contradictions.len(),
             contradictions
@@ -710,7 +800,7 @@ fn run_paginate(store: &StoreClient, args: &PaginateArgs) -> Result<(), Box<dyn 
             "no folio could be read from any of the {page_count} page(s) of {}. \
              Declare the mapping instead, e.g. --anchor 1=1 --anchor 2=3 \
              (each anchor governs pages up to the next). \
-             Pass --allow-no-folios to store a pages artifact addressable only by pdf page.",
+             Pass --allow-no-folios to store a pages artifact addressable only by artifact-page.",
             args.from
         )
         .into());
@@ -844,26 +934,26 @@ fn run_read(store: &StoreClient, args: &ReadArgs) -> Result<(), Box<dyn std::err
 
     let locator = if let Some(printed) = &args.printed {
         Locator::Printed(parse_range(printed))
-    } else if let Some(pdf) = &args.pdf {
-        Locator::Pdf(parse_range(pdf))
+    } else if let Some(artifact_page) = &args.artifact_page {
+        Locator::ArtifactPage(parse_range(artifact_page))
     } else if let Some(section) = &args.section {
         Locator::Section { id: section.clone(), head: args.first, tail: args.last }
     } else if let Some(find) = &args.find {
         Locator::Quote(find.clone())
     } else {
-        unreachable!("clap enforces exactly one of --printed/--pdf/--section/--find")
+        unreachable!("clap enforces exactly one of --printed/--artifact-page/--section/--find")
     };
 
     let span = locator::resolve(&locator, &pages_artifact, outline_artifact.as_ref())?;
 
-    let by_pdf_page: std::collections::HashMap<usize, &pages::PageRecord> =
-        pages_artifact.pages.iter().map(|p| (p.pdf_page, p)).collect();
+    let by_page_index: std::collections::HashMap<usize, &pages::PageRecord> =
+        pages_artifact.pages.iter().map(|p| (p.page_index, p)).collect();
 
-    for pdf_page in &span.pdf_pages {
-        let Some(record) = by_pdf_page.get(pdf_page) else { continue };
+    for page_index in &span.page_indices {
+        let Some(record) = by_page_index.get(page_index) else { continue };
         match &record.folio {
-            Some(folio) => println!("=== p.{folio} (pdf {pdf_page}) ==="),
-            None => println!("=== pdf {pdf_page} (no folio) ==="),
+            Some(folio) => println!("=== p.{folio} (artifact-page {page_index}) ==="),
+            None => println!("=== artifact-page {page_index} (no folio) ==="),
         }
         println!("{}", record.text);
     }
@@ -1048,7 +1138,7 @@ fn render_stats(value: &serde_json::Value, opts: &OutputOpts) {
     let _ = writeln!(out, "  described:      {}", n("works_described"));
     let _ = writeln!(out, "  stubs:          {}", n("works_stub"));
     let _ = writeln!(out, "nodes (live):     {}", n("nodes_total"));
-    let _ = writeln!(out, "tombstones:       {}", n("tombstones"));
+    let _ = writeln!(out, "merge redirects:  {}", n("merge_redirects"));
     let _ = writeln!(out, "edges:            {}", n("edges_total"));
     let _ = writeln!(out);
     tally(&mut out, "nodes by kind", "nodes_by_kind");

@@ -36,9 +36,9 @@
 use crate::{
     traits::{BlobStore, Clock, Coordinator, IdGen, IdResolver, MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput, EdgeView, GraphStats,
-        Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, Artifact, ArtifactRole,
-        WorkRecord, WorkSearchFilter, WorkView,
+        Alias, CanonicalId, ContentOutcome, DeleteReport, DomainError, EdgeDir, EdgeInput,
+        EdgeView, GraphStats, Neighborhood, NeighborhoodEdge, NeighborhoodNode, NodeKind, Artifact,
+        ArtifactRole, WorkRecord, WorkSearchFilter, WorkView,
     },
 };
 
@@ -256,6 +256,53 @@ where
         };
         self.artifacts.record(&descriptor).await?;
         Ok(descriptor)
+    }
+
+    /// Delete a work and its entire redirect network — the live node, every
+    /// merge-redirect node forwarding into it, and everything those own (aliases,
+    /// assertions, artifacts and their blobs, citation edges). With `dry_run`,
+    /// compute and return the blast radius without changing anything.
+    ///
+    /// Blob bytes are deleted after the metadata transaction commits, so they
+    /// cannot roll back with it; a blob that fails to delete is reported in
+    /// `blob_orphans` (its rows are already gone) rather than failing the delete.
+    pub async fn delete_work(&self, id: Alias, dry_run: bool) -> Result<DeleteReport, DomainError> {
+        let canonical = self.resolve_alias_to_live(&id).await?;
+        let plan = self.meta.plan_delete_work(&canonical).await?;
+        let redirect_nodes = plan.network.len().saturating_sub(1) as u64;
+
+        if dry_run {
+            return Ok(DeleteReport {
+                work_id: canonical.0,
+                redirect_nodes,
+                aliases: plan.alias_count,
+                artifacts: plan.artifact_count,
+                edges: plan.edge_count,
+                blobs_deleted: 0,
+                blob_orphans: Vec::new(),
+                dry_run: true,
+            });
+        }
+
+        let keys = self.meta.delete_work_network(&canonical).await?;
+        let mut blob_orphans = Vec::new();
+        let mut blobs_deleted = 0u64;
+        for key in &keys {
+            match self.blob.delete(key).await {
+                Ok(()) => blobs_deleted += 1,
+                Err(_) => blob_orphans.push(key.clone()),
+            }
+        }
+        Ok(DeleteReport {
+            work_id: canonical.0,
+            redirect_nodes,
+            aliases: plan.alias_count,
+            artifacts: plan.artifact_count,
+            edges: plan.edge_count,
+            blobs_deleted,
+            blob_orphans,
+            dry_run: false,
+        })
     }
 
     /// Retrieve content.

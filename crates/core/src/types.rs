@@ -205,7 +205,7 @@ pub struct Tally {
 
 /// Aggregate counts over the whole metadata network.
 ///
-/// "Live" everywhere means `merged_into IS NULL` — tombstones are excluded
+/// "Live" everywhere means `merged_into IS NULL` — merge redirects are excluded
 /// from the headline counts and reported separately.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GraphStats {
@@ -219,8 +219,8 @@ pub struct GraphStats {
     pub nodes_total: u64,
     /// Live node counts by kind, descending by count.
     pub nodes_by_kind: Vec<Tally>,
-    /// Tombstones (nodes merged into a survivor).
-    pub tombstones: u64,
+    /// Merge redirects (nodes merged into a survivor).
+    pub merge_redirects: u64,
     /// Total deduped edges.
     pub edges_total: u64,
     /// Edge counts by relation, descending by count.
@@ -239,6 +239,36 @@ pub struct GraphStats {
 pub enum EdgeDir {
     Forward,
     Backward,
+}
+
+/// The redirect network a work delete will remove, computed without mutating.
+/// `network` is the live node plus every merge-redirect node forwarding into it;
+/// the counts and `r2_keys` cover everything those nodes own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DeletePlan {
+    pub network: Vec<CanonicalId>,
+    pub alias_count: u64,
+    pub artifact_count: u64,
+    pub edge_count: u64,
+    /// Blob keys the deleted artifacts point at; the use-case removes them from
+    /// the blob store after the metadata transaction commits.
+    pub r2_keys: Vec<String>,
+}
+
+/// What a work delete did (or, when `dry_run`, would do). `redirect_nodes` is the
+/// merge-redirect count folded into the delete — the network size minus the live
+/// node. `blob_orphans` are blob keys whose bytes failed to delete after the SQL
+/// commit; the rows are gone, so these are swept later, not a failed delete.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DeleteReport {
+    pub work_id: String,
+    pub redirect_nodes: u64,
+    pub aliases: u64,
+    pub artifacts: u64,
+    pub edges: u64,
+    pub blobs_deleted: u64,
+    pub blob_orphans: Vec<String>,
+    pub dry_run: bool,
 }
 
 #[derive(Error, Debug)]

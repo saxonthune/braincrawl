@@ -475,6 +475,29 @@ async fn handler_works_put(
     StatusCode::NOT_FOUND.into_response()
 }
 
+/// DELETE /works/*path  — delete a work and its whole merge-redirect network,
+/// with everything it owns (aliases, artifacts + blobs, edges). `?dry_run=1`
+/// returns the blast radius without changing anything.
+async fn handler_works_delete(
+    State(store): State<Arc<LocalStore>>,
+    Path(path): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let a = match parse_alias(&path) {
+        Some(a) => a,
+        None => return (StatusCode::BAD_REQUEST, "expected scheme:value").into_response(),
+    };
+    let dry_run = matches!(
+        params.get("dry_run").map(|s| s.as_str()),
+        Some("1") | Some("true")
+    );
+    let result = run_blocking(move || async move { store.delete_work(a, dry_run).await }).await;
+    match result {
+        Ok(report) => Json(report).into_response(),
+        Err(e) => (domain_status(&e), e.to_string()).into_response(),
+    }
+}
+
 /// GET /works — store-side work search.
 ///
 /// Query params: `author`, `title` (case-insensitive substrings), `year`,
@@ -695,7 +718,10 @@ pub fn make_app(
     // The wildcard route accepts arbitrarily large request bodies (book-sized
     // PDFs), so disable the default 2 MB body limit on it alone.
     let works_wildcard = Router::new()
-        .route("/works/*path", get(handler_works_get).put(handler_works_put))
+        .route(
+            "/works/*path",
+            get(handler_works_get).put(handler_works_put).delete(handler_works_delete),
+        )
         .layer(DefaultBodyLimit::disable());
 
     let (changes_tx, _rx) = tokio::sync::broadcast::channel(16);

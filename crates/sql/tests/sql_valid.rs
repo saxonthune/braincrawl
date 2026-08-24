@@ -24,7 +24,7 @@ fn all_queries_prepare() {
         ("alias::MERGE_REPOINT", alias::MERGE_REPOINT),
         // node
         ("node::INSERT_IGNORE", node::INSERT_IGNORE),
-        ("node::TOMBSTONE", node::TOMBSTONE),
+        ("node::MERGE_REDIRECT", node::MERGE_REDIRECT),
         ("node::SELECT_MERGED_INTO", node::SELECT_MERGED_INTO),
         ("node::SELECT", node::SELECT),
         // node_assertion
@@ -61,7 +61,7 @@ fn all_queries_prepare() {
         ("stats::WORKS", stats::WORKS),
         ("stats::WORKS_DESCRIBED", stats::WORKS_DESCRIBED),
         ("stats::NODES_TOTAL", stats::NODES_TOTAL),
-        ("stats::TOMBSTONES", stats::TOMBSTONES),
+        ("stats::MERGE_REDIRECTS", stats::MERGE_REDIRECTS),
         ("stats::EDGES_TOTAL", stats::EDGES_TOTAL),
         ("stats::NODES_BY_KIND", stats::NODES_BY_KIND),
         ("stats::EDGES_BY_RELATION", stats::EDGES_BY_RELATION),
@@ -181,7 +181,7 @@ fn happy_path() {
     assert_eq!(ver, 1);
     assert_eq!(is_curr, 1);
 
-    // Resolve live (no tombstone yet).
+    // Resolve live (no merge redirect yet).
     let merged_into: Option<String> =
         conn.query_row(node::SELECT_MERGED_INTO, params!["n1"], |r| r.get(0)).unwrap();
     assert!(merged_into.is_none());
@@ -227,8 +227,8 @@ fn merge_alias_and_node_assertion() {
     conn.execute(node_assertion::UPSERT, params!["survivor", "openalex", r#"{"x":1}"#, ts1]).unwrap();
 
     // --- Merge steps ---
-    // Tombstone.
-    conn.execute(node::TOMBSTONE, params!["survivor", "loser"]).unwrap();
+    // Redirect loser to survivor.
+    conn.execute(node::MERGE_REDIRECT, params!["survivor", "loser"]).unwrap();
     // Alias merge: delete loser's doi/10.1/a conflict (survivor already owns it).
     conn.execute(alias::MERGE_DELETE_CONFLICTS, params!["loser", "survivor"]).unwrap();
     conn.execute(alias::MERGE_REPOINT, params!["survivor", "loser"]).unwrap();
@@ -236,7 +236,7 @@ fn merge_alias_and_node_assertion() {
     conn.execute(node_assertion::MERGE_UPSERT, params!["survivor", "loser"]).unwrap();
     conn.execute(node_assertion::MERGE_DELETE_LOSER, params!["loser"]).unwrap();
 
-    // Verify: loser is tombstoned.
+    // Verify: loser now redirects to survivor.
     let merged: Option<String> =
         conn.query_row(node::SELECT_MERGED_INTO, params!["loser"], |r| r.get(0)).unwrap();
     assert_eq!(merged.as_deref(), Some("survivor"));

@@ -67,14 +67,15 @@ When step 5 (or a later bridging record) establishes that two UUIDs are one reso
    `edge_assertion`, and `payloads` from the loser to the survivor, folding any
    primary-key collisions (duplicate edges collapse; same-source assertions keep the
    newest `fetched_at`).
-3. **Tombstone the loser with a `merged_into` pointer** (loser UUID → survivor UUID).
-   The tombstone is never deleted, because consumers may still hold the old UUID.
-   Resolution follows the `merged_into` chain (with path compression) to the live
-   representative. This redirect is the union-find forest persisted to the metadata DB.
+3. **Record a merge redirect for the loser with a `merged_into` pointer** (loser
+   UUID → survivor UUID). The merge redirect is never deleted by merge, because
+   consumers may still hold the old UUID. Resolution follows the `merged_into` chain
+   (with path compression) to the live representative. This redirect is the union-find
+   forest persisted to the metadata DB.
 
 Merges are therefore idempotent and order-independent: the moment a bridging record
 appears, two classes converge permanently and every consumer holding the old UUID
-auto-resolves through the tombstone.
+auto-resolves through the merge redirect.
 
 ## The convergence boundary
 
@@ -105,6 +106,6 @@ committed; it never auto-merges. Keeping it as a distinct path ensures probabili
 matching can never corrupt the deterministic core.
 
 A work no provider describes — a book is the ordinary case, typically carrying an ISBN
-and no DOI or OpenAlex id — is entered by hand with `catalog add`. It mints the node
-and its aliases directly, so the work becomes nameable without waiting on a fetch that
-will never succeed.
+and no DOI or OpenAlex id — is entered by hand with `catalog add`. It creates the L2
+work and its aliases directly, so the work becomes nameable without waiting on a fetch
+that will never succeed.

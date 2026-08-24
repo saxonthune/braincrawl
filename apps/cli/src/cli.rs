@@ -247,7 +247,7 @@ pub enum LibraryCmd {
     Paginate(PaginateArgs),
     #[command(name = "outline", about = "Store a hand-authored table of contents as an outline artifact")]
     Outline(OutlineArgs),
-    #[command(name = "read", about = "Print page text for a printed range, PDF range, outline section, or quote search")]
+    #[command(name = "read", about = "Print page text for a printed range, artifact-page range, outline section, or quote search")]
     Read(ReadArgs),
     #[command(name = "list", about = "List every artifact a work holds — role, version, size, mime, provenance")]
     List(LibraryListArgs),
@@ -263,12 +263,17 @@ pub struct PaginateArgs {
     /// Artifact role slug to store the pages artifact at
     #[arg(long, default_value = "pages")]
     pub role: String,
-    /// Declare that a pdf page bears a printed folio, as `<pdf_page>=<folio>`
+    /// Declare that a page bears a printed folio, as `<page_index>=<folio>`
     /// (repeatable). Each anchor governs pages from itself up to the next one,
     /// so `--anchor 1=1 --anchor 2=3` describes a book whose folio 2 is absent.
     /// Given any anchor, folios are taken from these facts and never guessed.
-    #[arg(long = "anchor", value_name = "PDF_PAGE=FOLIO")]
+    #[arg(long = "anchor", value_name = "PAGE_INDEX=FOLIO")]
     pub anchors: Vec<crate::pages::FolioAnchor>,
+    /// How to cut a text source into pages (ignored for a PDF source, which
+    /// carries its own page grid): `form-feed` (default), `blank-lines:<n>`,
+    /// or `regex:<pattern>` (a new page starts at each line matching it).
+    #[arg(long, default_value = "form-feed")]
+    pub separator: crate::pages::PageSeparator,
     /// Re-paginate even if the role already holds an artifact
     #[arg(long)]
     pub force: bool,
@@ -302,29 +307,29 @@ pub struct ReadArgs {
     /// Printed page range, e.g. 9-12 or 9
     #[arg(
         long,
-        conflicts_with_all = ["pdf", "section", "find"],
-        required_unless_present_any = ["pdf", "section", "find"]
+        conflicts_with_all = ["artifact_page", "section", "find"],
+        required_unless_present_any = ["artifact_page", "section", "find"]
     )]
     pub printed: Option<String>,
-    /// PDF page range, e.g. 16-19 or 16
+    /// Artifact-page range — the page as the source artifact orders it, e.g. 16-19 or 16
     #[arg(
-        long,
+        long = "artifact-page",
         conflicts_with_all = ["printed", "section", "find"],
         required_unless_present_any = ["printed", "section", "find"]
     )]
-    pub pdf: Option<String>,
+    pub artifact_page: Option<String>,
     /// Outline section id, e.g. ch01
     #[arg(
         long,
-        conflicts_with_all = ["printed", "pdf", "find"],
-        required_unless_present_any = ["printed", "pdf", "find"]
+        conflicts_with_all = ["printed", "artifact_page", "find"],
+        required_unless_present_any = ["printed", "artifact_page", "find"]
     )]
     pub section: Option<String>,
     /// Text to search for across page text
     #[arg(
         long,
-        conflicts_with_all = ["printed", "pdf", "section"],
-        required_unless_present_any = ["printed", "pdf", "section"]
+        conflicts_with_all = ["printed", "artifact_page", "section"],
+        required_unless_present_any = ["printed", "artifact_page", "section"]
     )]
     pub find: Option<String>,
     /// With --section, take only the first N pages of it
@@ -476,7 +481,7 @@ pub enum CatalogCmd {
         #[arg(long = "with-artifact")]
         with_artifact: Option<String>,
     },
-    /// Mint a work in the catalog by hand, for a source no provider has a record for
+    /// Create an L2 work by hand, for a source no provider has a record for
     Add {
         /// Aliases in ns:value form; at least one required (e.g. isbn:9780691215105)
         #[arg(long = "alias", required = true)]
@@ -491,8 +496,21 @@ pub enum CatalogCmd {
         #[arg(long)]
         year: Option<u32>,
         /// Node kind (default: Work)
-        #[arg(long, default_value = "work")]
+        #[arg(long, default_value = "Work")]
         kind: String,
+    },
+    /// Delete a work and everything it owns — aliases, artifacts, blobs, citation
+    /// edges, and its whole merge-redirect network. Prints the blast radius and
+    /// asks before deleting.
+    Rm {
+        /// Work to delete, as an alias (ns:value) or a braincrawl guid
+        id: String,
+        /// Print the blast radius and exit without deleting
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+        /// Skip the confirmation prompt (for scripting)
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
     },
 }
 

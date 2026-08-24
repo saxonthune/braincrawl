@@ -214,7 +214,7 @@ async fn test_stats_endpoint() {
     assert_eq!(body["works_described"], 1);
     assert_eq!(body["works_stub"], 1);
     assert_eq!(body["nodes_total"], 2);
-    assert_eq!(body["tombstones"], 0);
+    assert_eq!(body["merge_redirects"], 0);
     assert_eq!(body["edges_total"], 1);
 
     // Grouped breakdowns are arrays of {key, count}.

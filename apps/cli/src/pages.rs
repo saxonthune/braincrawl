@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PageRecord {
-    pub pdf_page: usize,
+    pub page_index: usize,
     pub folio: Option<String>,
     pub text: String,
 }
@@ -20,13 +20,103 @@ pub struct Pages {
     pub pages: Vec<PageRecord>,
 }
 
+/// How a text artifact's page grid is defined — the structural analog of a
+/// folio anchor. A PDF carries its own page grid; a text artifact does not, so
+/// the operator declares the boundary rule that cuts the text into pages.
+#[derive(Debug, Clone)]
+pub enum PageSeparator {
+    /// Split on the form-feed character (`\x0c`) — what `pdftotext` and most
+    /// extractors write at each page boundary.
+    FormFeed,
+    /// Split wherever at least this many consecutive blank lines occur.
+    BlankLines(usize),
+    /// Start a new page at each line matching this pattern (a running header, a
+    /// bare page number). The matching line becomes the first line of the page.
+    Regex(regex::Regex),
+}
+
+impl std::str::FromStr for PageSeparator {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "form-feed" {
+            return Ok(Self::FormFeed);
+        }
+        if let Some(n) = s.strip_prefix("blank-lines:") {
+            let n: usize = n
+                .parse()
+                .map_err(|_| format!("separator '{s}': '{n}' is not a line count"))?;
+            if n == 0 {
+                return Err(format!("separator '{s}': blank-lines count must be at least 1"));
+            }
+            return Ok(Self::BlankLines(n));
+        }
+        if let Some(pat) = s.strip_prefix("regex:") {
+            let re = regex::Regex::new(pat)
+                .map_err(|e| format!("separator '{s}': invalid regex: {e}"))?;
+            return Ok(Self::Regex(re));
+        }
+        Err(format!(
+            "separator '{s}': expected 'form-feed', 'blank-lines:<n>', or 'regex:<pattern>'"
+        ))
+    }
+}
+
+impl PageSeparator {
+    /// Cut `text` into pages by this rule. Empty text yields no pages.
+    pub fn split(&self, text: &str) -> Vec<String> {
+        match self {
+            Self::FormFeed => text.split_terminator('\u{000C}').map(str::to_string).collect(),
+            Self::BlankLines(n) => split_on_blank_lines(text, *n),
+            Self::Regex(re) => split_at_matching_line(text, re),
+        }
+    }
+}
+
+fn split_on_blank_lines(text: &str, n: usize) -> Vec<String> {
+    let mut pages = Vec::new();
+    let mut current = String::new();
+    let mut blank_run = 0usize;
+    for line in text.split_inclusive('\n') {
+        if line.trim().is_empty() {
+            blank_run += 1;
+        } else {
+            if blank_run >= n && !current.trim().is_empty() {
+                pages.push(std::mem::take(&mut current));
+            }
+            blank_run = 0;
+        }
+        current.push_str(line);
+    }
+    if !current.trim().is_empty() {
+        pages.push(current);
+    }
+    pages
+}
+
+fn split_at_matching_line(text: &str, re: &regex::Regex) -> Vec<String> {
+    let mut pages = Vec::new();
+    let mut current = String::new();
+    for line in text.split_inclusive('\n') {
+        let content = line.strip_suffix('\n').unwrap_or(line);
+        if re.is_match(content) && !current.is_empty() {
+            pages.push(std::mem::take(&mut current));
+        }
+        current.push_str(line);
+    }
+    if !current.is_empty() {
+        pages.push(current);
+    }
+    pages
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum FolioBreak {
-    /// One or more consecutive pdf pages with no detected folio, bounded by
+    /// One or more consecutive pages with no detected folio, bounded by
     /// consistent folios on either side (or the start/end of the book).
-    Gap { pdf_pages: Vec<usize> },
+    Gap { page_indices: Vec<usize> },
     /// A detected folio inconsistent with the sequence its neighbours establish.
-    Contradiction { pdf_page: usize, folio: String },
+    Contradiction { page_index: usize, folio: String },
 }
 
 /// A raw folio candidate token found on a page, before sequence resolution.
@@ -42,16 +132,16 @@ enum CandidateKind {
     Roman(u64),
 }
 
-/// An operator-supplied fact: PDF page `pdf_page` bears printed folio `folio`.
+/// An operator-supplied fact: the page at `page_index` bears printed folio `folio`.
 ///
-/// Parsed from `--anchor <pdf_page>=<folio>`. Unlike a single global offset, a
+/// Parsed from `--anchor <page_index>=<folio>`. Unlike a single global offset, a
 /// list of anchors describes a piecewise mapping: front matter in roman
 /// numerals, an unnumbered plate section, or a scan whose first leaf is folio 1
 /// while its second is folio 3 all break a constant offset but are exactly
 /// describable as a handful of anchors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolioAnchor {
-    pub pdf_page: usize,
+    pub page_index: usize,
     pub folio: String,
 }
 
@@ -61,13 +151,13 @@ impl std::str::FromStr for FolioAnchor {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (page, folio) = s
             .split_once('=')
-            .ok_or_else(|| format!("anchor '{s}' is not in <pdf_page>=<folio> form"))?;
-        let pdf_page: usize = page
+            .ok_or_else(|| format!("anchor '{s}' is not in <page_index>=<folio> form"))?;
+        let page_index: usize = page
             .trim()
             .parse()
-            .map_err(|_| format!("anchor '{s}': '{page}' is not a pdf page number"))?;
-        if pdf_page == 0 {
-            return Err(format!("anchor '{s}': pdf pages are numbered from 1"));
+            .map_err(|_| format!("anchor '{s}': '{page}' is not a page index"))?;
+        if page_index == 0 {
+            return Err(format!("anchor '{s}': page indices are numbered from 1"));
         }
         let folio = folio.trim();
         if folio.is_empty() {
@@ -78,7 +168,7 @@ impl std::str::FromStr for FolioAnchor {
                 "anchor '{s}': folio '{folio}' is neither an arabic number nor a lowercase roman numeral"
             ));
         }
-        Ok(FolioAnchor { pdf_page, folio: folio.to_string() })
+        Ok(FolioAnchor { page_index, folio: folio.to_string() })
     }
 }
 
@@ -120,53 +210,53 @@ fn u64_to_roman(mut value: u64) -> String {
 
 /// Assign folios from operator-supplied anchors rather than from the page text.
 ///
-/// Anchors are sorted by PDF page and each governs the run of pages from itself
+/// Anchors are sorted by page index and each governs the run of pages from itself
 /// up to (not including) the next anchor, incrementing by one per page in its
 /// own numeral system. Pages before the first anchor get no folio — the
 /// operator has said nothing about them, and guessing backwards would reinstate
 /// exactly the inference anchoring exists to replace.
 pub fn anchor_folios(pages: &[String], anchors: &[FolioAnchor]) -> Vec<PageRecord> {
     let mut sorted: Vec<&FolioAnchor> = anchors.iter().collect();
-    sorted.sort_by_key(|a| a.pdf_page);
+    sorted.sort_by_key(|a| a.page_index);
 
     pages
         .iter()
         .enumerate()
         .map(|(i, text)| {
-            let pdf_page = i + 1;
-            let governing = sorted.iter().rev().find(|a| a.pdf_page <= pdf_page);
+            let page_index = i + 1;
+            let governing = sorted.iter().rev().find(|a| a.page_index <= page_index);
             let folio = governing.and_then(|a| {
                 let kind = folio_kind(&a.folio)?;
                 let base = match kind {
                     CandidateKind::Arabic(n) | CandidateKind::Roman(n) => n,
                 };
-                let value = base + (pdf_page - a.pdf_page) as u64;
+                let value = base + (page_index - a.page_index) as u64;
                 Some(render_folio(kind, value))
             });
-            PageRecord { pdf_page, folio, text: text.clone() }
+            PageRecord { page_index, folio, text: text.clone() }
         })
         .collect()
 }
 
-/// One stretch of pages over which the folio advances by one per PDF page
+/// One stretch of pages over which the folio advances by one per page
 /// without changing numeral system.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolioRun {
-    pub first_pdf_page: usize,
-    pub last_pdf_page: usize,
+    pub first_page_index: usize,
+    pub last_page_index: usize,
     pub first_folio: String,
     pub last_folio: String,
 }
 
 impl std::fmt::Display for FolioRun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.first_pdf_page == self.last_pdf_page {
-            write!(f, "pdf {} = folio {}", self.first_pdf_page, self.first_folio)
+        if self.first_page_index == self.last_page_index {
+            write!(f, "artifact-page {} = folio {}", self.first_page_index, self.first_folio)
         } else {
             write!(
                 f,
-                "pdf {}-{} = folio {}-{}",
-                self.first_pdf_page, self.last_pdf_page, self.first_folio, self.last_folio
+                "artifact-page {}-{} = folio {}-{}",
+                self.first_page_index, self.last_page_index, self.first_folio, self.last_folio
             )
         }
     }
@@ -174,7 +264,7 @@ impl std::fmt::Display for FolioRun {
 
 /// Collapse a folio assignment into runs, so the operator can eyeball the whole
 /// mapping as a few lines instead of one line per page. A run breaks wherever
-/// the PDF page skips, the numeral system changes, or the folio fails to
+/// the page index skips, the numeral system changes, or the folio fails to
 /// advance by exactly one — which is precisely where a mapping needs checking.
 pub fn folio_runs(records: &[PageRecord]) -> Vec<FolioRun> {
     let mut runs: Vec<FolioRun> = Vec::new();
@@ -193,23 +283,23 @@ pub fn folio_runs(records: &[PageRecord]) -> Vec<FolioRun> {
             CandidateKind::Arabic(n) | CandidateKind::Roman(n) => n,
         };
         let continues = matches!(prev, Some((page, prev_kind, prev_value))
-            if page + 1 == r.pdf_page
+            if page + 1 == r.page_index
                 && std::mem::discriminant(&prev_kind) == std::mem::discriminant(&kind)
                 && prev_value + 1 == value);
 
         if continues {
             let run = runs.last_mut().expect("a continuing run has a predecessor");
-            run.last_pdf_page = r.pdf_page;
+            run.last_page_index = r.page_index;
             run.last_folio = folio.clone();
         } else {
             runs.push(FolioRun {
-                first_pdf_page: r.pdf_page,
-                last_pdf_page: r.pdf_page,
+                first_page_index: r.page_index,
+                last_page_index: r.page_index,
                 first_folio: folio.clone(),
                 last_folio: folio.clone(),
             });
         }
-        prev = Some((r.pdf_page, kind, value));
+        prev = Some((r.page_index, kind, value));
     }
     runs
 }
@@ -284,14 +374,14 @@ fn candidates_for_page(text: &str) -> Vec<Candidate> {
     candidates
 }
 
-/// Detect a per-page folio by sequence agreement across consecutive PDF pages.
+/// Detect a per-page folio by sequence agreement across consecutive pages.
 ///
 /// A candidate on page N is accepted if its numeric value is exactly one more
 /// than the accepted value on the nearest preceding page that has one (arabic
 /// and roman sequences are tracked independently since front matter and body
 /// use different numerals). Where no candidate agrees, `folio` is `None`.
 ///
-/// A correctly detected folio series has a constant `folio value - pdf page
+/// A correctly detected folio series has a constant `folio value - page
 /// index` offset, since the folio increments by one per consecutive page.
 /// So for each numeral kind, every candidate votes for the offset it implies;
 /// the offset with the most distinct pages behind it is taken as the true
@@ -342,7 +432,7 @@ pub fn detect_folios(pages: &[String]) -> Vec<PageRecord> {
                     accepted_offsets.get(&is_roman) == Some(&(value - i as i64))
                 })
                 .map(|c| c.value.clone());
-            PageRecord { pdf_page: i + 1, folio, text: text.clone() }
+            PageRecord { page_index: i + 1, folio, text: text.clone() }
         })
         .collect()
 }
@@ -359,7 +449,7 @@ pub fn validate_folios(records: &[PageRecord]) -> Vec<FolioBreak> {
 
     let flush_gap = |breaks: &mut Vec<FolioBreak>, run: &mut Vec<usize>| {
         if !run.is_empty() {
-            breaks.push(FolioBreak::Gap { pdf_pages: std::mem::take(run) });
+            breaks.push(FolioBreak::Gap { page_indices: std::mem::take(run) });
         }
     };
 
@@ -372,11 +462,11 @@ pub fn validate_folios(records: &[PageRecord]) -> Vec<FolioBreak> {
         if let Some(candidate) = candidates.first() {
             flush_gap(&mut breaks, &mut gap_run);
             breaks.push(FolioBreak::Contradiction {
-                pdf_page: record.pdf_page,
+                page_index: record.page_index,
                 folio: candidate.value.clone(),
             });
         } else {
-            gap_run.push(record.pdf_page);
+            gap_run.push(record.page_index);
         }
     }
     flush_gap(&mut breaks, &mut gap_run);
@@ -449,8 +539,8 @@ mod tests {
 
     #[test]
     fn anchor_parses_page_and_folio() {
-        assert_eq!(anchor("2=3"), FolioAnchor { pdf_page: 2, folio: "3".into() });
-        assert_eq!(anchor(" 4 = xii "), FolioAnchor { pdf_page: 4, folio: "xii".into() });
+        assert_eq!(anchor("2=3"), FolioAnchor { page_index: 2, folio: "3".into() });
+        assert_eq!(anchor(" 4 = xii "), FolioAnchor { page_index: 4, folio: "xii".into() });
     }
 
     #[test]
@@ -510,8 +600,8 @@ mod tests {
         let recs = anchor_folios(&pages, &[anchor("1=1"), anchor("2=3")]);
         let runs = folio_runs(&recs);
         assert_eq!(runs.len(), 2);
-        assert_eq!(runs[0].to_string(), "pdf 1 = folio 1");
-        assert_eq!(runs[1].to_string(), "pdf 2-3 = folio 3-4");
+        assert_eq!(runs[0].to_string(), "artifact-page 1 = folio 1");
+        assert_eq!(runs[1].to_string(), "artifact-page 2-3 = folio 3-4");
     }
 
     #[test]
@@ -520,26 +610,26 @@ mod tests {
         let recs = anchor_folios(&pages, &[anchor("1=5")]);
         let runs = folio_runs(&recs);
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].to_string(), "pdf 1-3 = folio 5-7");
+        assert_eq!(runs[0].to_string(), "artifact-page 1-3 = folio 5-7");
     }
 
     #[test]
     fn validate_folios_reports_gap() {
         let records = vec![
-            PageRecord { pdf_page: 1, folio: Some("7".into()), text: String::new() },
-            PageRecord { pdf_page: 2, folio: None, text: String::new() },
-            PageRecord { pdf_page: 3, folio: None, text: String::new() },
-            PageRecord { pdf_page: 4, folio: Some("10".into()), text: String::new() },
+            PageRecord { page_index: 1, folio: Some("7".into()), text: String::new() },
+            PageRecord { page_index: 2, folio: None, text: String::new() },
+            PageRecord { page_index: 3, folio: None, text: String::new() },
+            PageRecord { page_index: 4, folio: Some("10".into()), text: String::new() },
         ];
         let breaks = validate_folios(&records);
-        assert_eq!(breaks, vec![FolioBreak::Gap { pdf_pages: vec![2, 3] }]);
+        assert_eq!(breaks, vec![FolioBreak::Gap { page_indices: vec![2, 3] }]);
     }
 
     #[test]
     fn validate_folios_reports_no_breaks_for_clean_sequence() {
         let records = vec![
-            PageRecord { pdf_page: 1, folio: Some("7".into()), text: String::new() },
-            PageRecord { pdf_page: 2, folio: Some("8".into()), text: String::new() },
+            PageRecord { page_index: 1, folio: Some("7".into()), text: String::new() },
+            PageRecord { page_index: 2, folio: Some("8".into()), text: String::new() },
         ];
         assert!(validate_folios(&records).is_empty());
     }
@@ -553,6 +643,41 @@ mod tests {
         ];
         let records = detect_folios(&pages);
         let breaks = validate_folios(&records);
-        assert_eq!(breaks, vec![FolioBreak::Contradiction { pdf_page: 2, folio: "999".into() }]);
+        assert_eq!(breaks, vec![FolioBreak::Contradiction { page_index: 2, folio: "999".into() }]);
+    }
+
+    #[test]
+    fn form_feed_separator_splits_on_the_terminator() {
+        let sep: PageSeparator = "form-feed".parse().unwrap();
+        assert_eq!(sep.split("a\u{0c}b\u{0c}c"), vec!["a", "b", "c"]);
+        // A trailing form feed (pdftotext's convention) yields no empty final page.
+        assert_eq!(sep.split("a\u{0c}b\u{0c}"), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn blank_lines_separator_splits_on_the_threshold() {
+        let sep: PageSeparator = "blank-lines:2".parse().unwrap();
+        let pages = sep.split("page one\n\n\npage two\n");
+        assert_eq!(pages.len(), 2);
+        assert!(pages[0].contains("page one"));
+        assert!(pages[1].contains("page two"));
+        // A single blank line does not reach the threshold.
+        assert_eq!(sep.split("a\n\nb").len(), 1);
+    }
+
+    #[test]
+    fn regex_separator_starts_a_page_at_each_matching_line() {
+        let sep: PageSeparator = "regex:^Page \\d+".parse().unwrap();
+        let pages = sep.split("Page 1\nbody\nPage 2\nmore body\n");
+        assert_eq!(pages.len(), 2);
+        assert!(pages[0].starts_with("Page 1"));
+        assert!(pages[1].starts_with("Page 2"));
+    }
+
+    #[test]
+    fn separator_rejects_unknown_and_malformed_forms() {
+        assert!("pages-by".parse::<PageSeparator>().is_err());
+        assert!("blank-lines:0".parse::<PageSeparator>().is_err());
+        assert!("regex:[".parse::<PageSeparator>().is_err());
     }
 }

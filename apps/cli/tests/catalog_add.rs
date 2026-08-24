@@ -75,16 +75,20 @@ fn source_is_manual() {
 }
 
 #[test]
-fn kind_is_lowercased() {
-    let record = build_manual_work_record(
-        &["isbn:9780691215105".to_string()],
-        "A Test Book".to_string(),
-        vec![],
-        None,
-        "Work",
-    )
-    .unwrap();
-    assert_eq!(record.kind, "work");
+fn kind_is_canonical_case_regardless_of_input() {
+    // The server's NodeKind enum accepts only `Work`; any casing of --kind (and
+    // the default) must serialize to it, not lowercase `work`.
+    for input in ["work", "Work", "WORK"] {
+        let record = build_manual_work_record(
+            &["isbn:9780691215105".to_string()],
+            "A Test Book".to_string(),
+            vec![],
+            None,
+            input,
+        )
+        .unwrap();
+        assert_eq!(record.kind, "Work", "kind from --kind {input}");
+    }
 }
 
 #[test]
@@ -98,5 +102,5 @@ fn unknown_kind_is_rejected() {
     )
     .unwrap_err();
     assert!(err.contains("bogus"), "error should name the bad kind: {err}");
-    assert!(err.contains("work"), "error should list accepted kinds: {err}");
+    assert!(err.contains("Work"), "error should list accepted kinds: {err}");
 }

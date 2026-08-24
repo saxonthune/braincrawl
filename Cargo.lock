@@ -274,6 +274,7 @@ dependencies = [
  "l3",
  "pdf-extract",
  "quick-xml",
+ "regex",
  "reqwest",
  "rusqlite",
  "serde",

@@ -25,7 +25,7 @@ use braincrawl_core::{
     },
 };
 #[cfg(feature = "cloudflare")]
-use braincrawl_core::types::{ExportAssertion, Tally};
+use braincrawl_core::types::{DeletePlan, ExportAssertion, Tally};
 
 // ── shared helpers (no worker deps) ──────────────────────────────────────────
 
@@ -184,6 +184,35 @@ pub struct D1Store {
 impl D1Store {
     pub fn new(db: worker::D1Database) -> Self {
         Self { db }
+    }
+
+    /// The `root` id plus every node whose `merged_into` forwards into it (BFS
+    /// over merge redirects). `root` must be a live node.
+    async fn network_ids_d1(&self, root: &str) -> Result<Vec<String>, DomainError> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            canonical_id: String,
+        }
+        let mut seen = vec![root.to_string()];
+        let mut frontier = vec![root.to_string()];
+        while !frontier.is_empty() {
+            let params: Vec<JsValue> = frontier.iter().map(|x| s(x)).collect();
+            let stmt = prep(
+                &self.db,
+                &braincrawl_sql::delete::select_redirects_into(frontier.len()),
+                &params,
+            )?;
+            let rows = stmt.all().await.map_err(be)?.results::<Row>().map_err(be)?;
+            let mut next = Vec::new();
+            for r in rows {
+                if !seen.contains(&r.canonical_id) {
+                    seen.push(r.canonical_id.clone());
+                    next.push(r.canonical_id);
+                }
+            }
+            frontier = next;
+        }
+        Ok(seen)
     }
 }
 
@@ -525,7 +554,7 @@ impl MetadataStore for D1Store {
             let stmts: Vec<worker::D1PreparedStatement> = chain
                 .iter()
                 .map(|intermediate| {
-                    prep(&self.db, braincrawl_sql::node::TOMBSTONE, &[s(&cur), s(intermediate)])
+                    prep(&self.db, braincrawl_sql::node::MERGE_REDIRECT, &[s(&cur), s(intermediate)])
                 })
                 .collect::<Result<_, _>>()?;
             self.db.batch(stmts).await.map_err(be)?;
@@ -533,13 +562,105 @@ impl MetadataStore for D1Store {
         Ok(CanonicalId(cur))
     }
 
+    async fn plan_delete_work(&self, id: &CanonicalId) -> Result<DeletePlan, DomainError> {
+        #[derive(serde::Deserialize)]
+        struct CountRow {
+            count: i64,
+        }
+        #[derive(serde::Deserialize)]
+        struct KeyRow {
+            r2_key: String,
+        }
+        let network = self.network_ids_d1(&id.0).await?;
+        let n = network.len();
+        let net: Vec<JsValue> = network.iter().map(|x| s(x)).collect();
+        let mut edge_params = net.clone();
+        edge_params.extend(net.iter().cloned());
+
+        let alias_count = prep(&self.db, &braincrawl_sql::delete::count_aliases(n), &net)?
+            .first::<CountRow>(None)
+            .await
+            .map_err(be)?
+            .map(|r| r.count)
+            .unwrap_or(0) as u64;
+        let artifact_count = prep(&self.db, &braincrawl_sql::delete::count_artifacts(n), &net)?
+            .first::<CountRow>(None)
+            .await
+            .map_err(be)?
+            .map(|r| r.count)
+            .unwrap_or(0) as u64;
+        let edge_count =
+            prep(&self.db, &braincrawl_sql::delete::count_edges(n), &edge_params)?
+                .first::<CountRow>(None)
+                .await
+                .map_err(be)?
+                .map(|r| r.count)
+                .unwrap_or(0) as u64;
+
+        let stmt = prep(&self.db, &braincrawl_sql::delete::select_r2_keys(n), &net)?;
+        let r2_keys: Vec<String> = stmt
+            .all()
+            .await
+            .map_err(be)?
+            .results::<KeyRow>()
+            .map_err(be)?
+            .into_iter()
+            .map(|r| r.r2_key)
+            .collect();
+
+        Ok(DeletePlan {
+            network: network.into_iter().map(CanonicalId).collect(),
+            alias_count,
+            artifact_count,
+            edge_count,
+            r2_keys,
+        })
+    }
+
+    async fn delete_work_network(&self, id: &CanonicalId) -> Result<Vec<String>, DomainError> {
+        #[derive(serde::Deserialize)]
+        struct KeyRow {
+            r2_key: String,
+        }
+        let network = self.network_ids_d1(&id.0).await?;
+        let n = network.len();
+        let net: Vec<JsValue> = network.iter().map(|x| s(x)).collect();
+        let mut edge_params = net.clone();
+        edge_params.extend(net.iter().cloned());
+
+        let stmt = prep(&self.db, &braincrawl_sql::delete::select_r2_keys(n), &net)?;
+        let keys: Vec<String> = stmt
+            .all()
+            .await
+            .map_err(be)?
+            .results::<KeyRow>()
+            .map_err(be)?
+            .into_iter()
+            .map(|r| r.r2_key)
+            .collect();
+
+        // One atomic D1 batch, child rows before nodes; clear merged_into so the
+        // node delete cannot violate the self-referencing FK.
+        let stmts = vec![
+            prep(&self.db, &braincrawl_sql::delete::delete_edge_assertions(n), &edge_params)?,
+            prep(&self.db, &braincrawl_sql::delete::delete_edges(n), &edge_params)?,
+            prep(&self.db, &braincrawl_sql::delete::delete_node_assertions(n), &net)?,
+            prep(&self.db, &braincrawl_sql::delete::delete_artifacts(n), &net)?,
+            prep(&self.db, &braincrawl_sql::delete::delete_aliases(n), &net)?,
+            prep(&self.db, &braincrawl_sql::delete::clear_merged_into(n), &net)?,
+            prep(&self.db, &braincrawl_sql::delete::delete_nodes(n), &net)?,
+        ];
+        self.db.batch(stmts).await.map_err(be)?;
+        Ok(keys)
+    }
+
     async fn merge(&self, survivor: &CanonicalId, loser: &CanonicalId) -> Result<(), DomainError> {
         let sv = &survivor.0;
         let ls = &loser.0;
         // All 16 merge steps executed as a single atomic D1 batch (doc02.04 ordering).
         let stmts = vec![
-            // 1. Tombstone loser.
-            prep(&self.db, braincrawl_sql::node::TOMBSTONE, &[s(sv), s(ls)])?,
+            // 1. Redirect loser to survivor.
+            prep(&self.db, braincrawl_sql::node::MERGE_REDIRECT, &[s(sv), s(ls)])?,
             // 2. Alias merge.
             prep(&self.db, braincrawl_sql::alias::MERGE_DELETE_CONFLICTS, &[s(ls), s(sv)])?,
             prep(&self.db, braincrawl_sql::alias::MERGE_REPOINT, &[s(sv), s(ls)])?,
@@ -591,7 +712,7 @@ impl MetadataStore for D1Store {
             Some(r) => r,
         };
         if node_row.merged_into.is_some() {
-            return Ok(None); // tombstoned
+            return Ok(None); // merge redirect
         }
         let kind = parse_node_kind(&node_row.kind)?;
 
@@ -819,7 +940,7 @@ impl MetadataStore for D1Store {
                 prep(&self.db, q::WORKS, &[])?,
                 prep(&self.db, q::WORKS_DESCRIBED, &[])?,
                 prep(&self.db, q::NODES_TOTAL, &[])?,
-                prep(&self.db, q::TOMBSTONES, &[])?,
+                prep(&self.db, q::MERGE_REDIRECTS, &[])?,
                 prep(&self.db, q::EDGES_TOTAL, &[])?,
                 prep(&self.db, q::LIBRARY_BYTES, &[])?,
                 prep(&self.db, q::NODES_BY_KIND, &[])?,
@@ -844,7 +965,7 @@ impl MetadataStore for D1Store {
         let works = count("works")?;
         let works_described = count("works_described")?;
         let nodes_total = count("nodes_total")?;
-        let tombstones = count("tombstones")?;
+        let merge_redirects = count("merge_redirects")?;
         let edges_total = count("edges_total")?;
         let library_bytes = count("library_bytes")?;
 
@@ -869,7 +990,7 @@ impl MetadataStore for D1Store {
             works_stub: works.saturating_sub(works_described),
             nodes_total,
             nodes_by_kind,
-            tombstones,
+            merge_redirects,
             edges_total,
             edges_by_relation,
             assertions_by_source,

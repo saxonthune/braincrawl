@@ -12,11 +12,31 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportAssertion,
+        Alias, CanonicalId, DeletePlan, DomainError, EdgeDir, EdgeView, ExportAssertion,
         ExportEdgeAssertion, ExportNode, GraphStats, NodeKind, Artifact, ArtifactRole, Tally,
         WorkSearchFilter,
     },
 };
+
+/// The `root` id plus every node whose `merged_into` forwards into it (BFS over
+/// merge redirects). `root` must be a live node.
+fn network_ids_mem(inner: &MemStoreInner, root: &str) -> Vec<String> {
+    let mut seen: Vec<String> = vec![root.to_string()];
+    let mut frontier: Vec<String> = vec![root.to_string()];
+    while !frontier.is_empty() {
+        let mut next = Vec::new();
+        for (cid, row) in &inner.nodes {
+            if let Some(m) = &row.merged_into {
+                if frontier.contains(&m.0) && !seen.contains(cid) {
+                    seen.push(cid.clone());
+                    next.push(cid.clone());
+                }
+            }
+        }
+        frontier = next;
+    }
+    seen
+}
 
 // ---------------------------------------------------------------------------
 // Internal row types (mirror SQL tables)
@@ -25,7 +45,7 @@ use braincrawl_core::{
 struct NodeRow {
     kind: NodeKind,
     created_at: String,
-    /// Tombstone pointer; None means live.
+    /// Merge-redirect pointer; None means live.
     merged_into: Option<CanonicalId>,
 }
 
@@ -313,8 +333,56 @@ impl MetadataStore for MemStore {
         inner.resolve_live_sync(&id.0).map(CanonicalId)
     }
 
+    async fn plan_delete_work(&self, id: &CanonicalId) -> Result<DeletePlan, DomainError> {
+        let inner = self.inner.borrow();
+        let network = network_ids_mem(&inner, &id.0);
+        let net: std::collections::HashSet<String> = network.iter().cloned().collect();
+
+        let alias_count = inner.aliases.values().filter(|c| net.contains(*c)).count() as u64;
+        let mut artifact_count = 0u64;
+        let mut r2_keys = Vec::new();
+        for ((cid, _role), versions) in &inner.artifacts {
+            if net.contains(cid) {
+                artifact_count += versions.len() as u64;
+                r2_keys.extend(versions.iter().map(|a| a.r2_key.clone()));
+            }
+        }
+        let edge_count = inner
+            .edges
+            .keys()
+            .filter(|(src, dst, _)| net.contains(src) || net.contains(dst))
+            .count() as u64;
+
+        Ok(DeletePlan {
+            network: network.into_iter().map(CanonicalId).collect(),
+            alias_count,
+            artifact_count,
+            edge_count,
+            r2_keys,
+        })
+    }
+
+    async fn delete_work_network(&self, id: &CanonicalId) -> Result<Vec<String>, DomainError> {
+        let mut inner = self.inner.borrow_mut();
+        let net: std::collections::HashSet<String> =
+            network_ids_mem(&inner, &id.0).into_iter().collect();
+
+        let mut keys = Vec::new();
+        for ((cid, _role), versions) in &inner.artifacts {
+            if net.contains(cid) {
+                keys.extend(versions.iter().map(|a| a.r2_key.clone()));
+            }
+        }
+        inner.edges.retain(|(src, dst, _), _| !net.contains(src) && !net.contains(dst));
+        inner.node_assertions.retain(|(cid, _), _| !net.contains(cid));
+        inner.artifacts.retain(|(cid, _), _| !net.contains(cid));
+        inner.aliases.retain(|_, cid| !net.contains(cid));
+        inner.nodes.retain(|cid, _| !net.contains(cid));
+        Ok(keys)
+    }
+
     /// Repoints aliases/assertions/edges/artifacts from loser to survivor, folds PK
-    /// collisions, tombstones the loser.
+    /// collisions, records a merge redirect for the loser.
     async fn merge(
         &self,
         survivor: &CanonicalId,
@@ -322,7 +390,7 @@ impl MetadataStore for MemStore {
     ) -> Result<(), DomainError> {
         let mut inner = self.inner.borrow_mut();
 
-        // 1. Tombstone loser.
+        // 1. Redirect loser to survivor.
         if let Some(row) = inner.nodes.get_mut(&loser.0) {
             row.merged_into = Some(survivor.clone());
         }
@@ -660,12 +728,12 @@ impl MetadataStore for MemStore {
         };
 
         let mut nodes_total = 0u64;
-        let mut tombstones = 0u64;
+        let mut merge_redirects = 0u64;
         let mut works = 0u64;
         let mut nodes_by_kind: HashMap<String, u64> = HashMap::new();
         for row in inner.nodes.values() {
             if row.merged_into.is_some() {
-                tombstones += 1;
+                merge_redirects += 1;
                 continue;
             }
             nodes_total += 1;
@@ -711,7 +779,7 @@ impl MetadataStore for MemStore {
             works_stub: works.saturating_sub(works_described),
             nodes_total,
             nodes_by_kind: into_tallies(nodes_by_kind),
-            tombstones,
+            merge_redirects,
             edges_total,
             edges_by_relation: into_tallies(edges_by_relation),
             assertions_by_source: into_tallies(assertions_by_source),

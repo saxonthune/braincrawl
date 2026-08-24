@@ -11,15 +11,16 @@
 
 -- node: the canonical resource. A node with no assertions is a stub — a known
 -- identifier with no metadata yet (first-class, per the open-world model).
--- A node with merged_into set is a tombstone: it was found to be the same
+-- A node with merged_into set is a merge redirect: it was found to be the same
 -- resource as another node and repointed to the survivor (doc02.01.02).
--- Tombstones are never deleted — consumers may still hold the old GUID — and
--- resolution follows the merged_into chain (path-compressed) to the live node.
+-- Merge redirects are never deleted by merge — consumers may still hold the old
+-- GUID — and resolution follows the merged_into chain (path-compressed) to the
+-- live node.
 CREATE TABLE node (
   canonical_id TEXT PRIMARY KEY,         -- braincrawl GUID
   kind         TEXT NOT NULL,            -- 'work' | 'author' | 'venue' | 'concept' | 'topic'
   created_at   TEXT NOT NULL,
-  merged_into  TEXT REFERENCES node (canonical_id)   -- NULL for live nodes; survivor GUID for tombstones
+  merged_into  TEXT REFERENCES node (canonical_id)   -- NULL for live nodes; survivor GUID for merge redirects
 );
 
 -- alias: the namespaced multimap backing id resolution. Every external id is an

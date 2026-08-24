@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{JobEnqueuer, JobQueue, MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportAssertion,
+        Alias, CanonicalId, DeletePlan, DomainError, EdgeDir, EdgeView, ExportAssertion,
         ExportEdgeAssertion, ExportNode, GraphStats, Job, JobId, JobKind, JobSpec, NodeKind,
         Artifact, ArtifactRole, Tally, WorkSearchFilter,
     },
@@ -57,6 +57,32 @@ fn be(e: rusqlite::Error) -> DomainError {
 
 fn is_no_rows(e: &rusqlite::Error) -> bool {
     matches!(e, rusqlite::Error::QueryReturnedNoRows)
+}
+
+/// The `root` node plus every node whose `merged_into` chain forwards into it,
+/// found by breadth-first walk over merge redirects. `root` must be a live node.
+fn network_ids(conn: &Connection, root: &CanonicalId) -> Result<Vec<CanonicalId>, DomainError> {
+    let mut seen: Vec<String> = vec![root.0.clone()];
+    let mut frontier: Vec<String> = vec![root.0.clone()];
+    while !frontier.is_empty() {
+        let q = braincrawl_sql::delete::select_redirects_into(frontier.len());
+        let mut stmt = conn.prepare(&q).map_err(be)?;
+        let children: Vec<String> = stmt
+            .query_map(rusqlite::params_from_iter(frontier.iter()), |r| r.get::<_, String>(0))
+            .map_err(be)?
+            .collect::<Result<_, _>>()
+            .map_err(be)?;
+        drop(stmt);
+        let mut next = Vec::new();
+        for c in children {
+            if !seen.contains(&c) {
+                seen.push(c.clone());
+                next.push(c);
+            }
+        }
+        frontier = next;
+    }
+    Ok(seen.into_iter().map(CanonicalId).collect())
 }
 
 /// Map a row in `SELECT_CURRENT`/`LIST_*` column order to an `Artifact`.
@@ -393,7 +419,7 @@ impl MetadataStore for SqliteStore {
         }
         // Path-compress: point all intermediate nodes directly to the live root.
         for intermediate in &chain {
-            conn.execute(braincrawl_sql::node::TOMBSTONE, params![cur, intermediate])
+            conn.execute(braincrawl_sql::node::MERGE_REDIRECT, params![cur, intermediate])
                 .map_err(be)?;
         }
         Ok(CanonicalId(cur))
@@ -407,8 +433,8 @@ impl MetadataStore for SqliteStore {
         let conn = self.conn.lock().unwrap();
         conn.execute_batch("BEGIN IMMEDIATE;").map_err(be)?;
         let result: Result<(), DomainError> = (|| {
-            // 1. Tombstone loser.
-            conn.execute(braincrawl_sql::node::TOMBSTONE, params![survivor.0, loser.0])
+            // 1. Redirect loser to survivor.
+            conn.execute(braincrawl_sql::node::MERGE_REDIRECT, params![survivor.0, loser.0])
                 .map_err(be)?;
             // 2. Alias merge.
             conn.execute(
@@ -493,6 +519,115 @@ impl MetadataStore for SqliteStore {
         })();
         match result {
             Ok(()) => conn.execute_batch("COMMIT;").map_err(be),
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    async fn plan_delete_work(&self, id: &CanonicalId) -> Result<DeletePlan, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let network = network_ids(&conn, id)?;
+        let n = network.len();
+        let net: Vec<&str> = network.iter().map(|c| c.0.as_str()).collect();
+
+        let alias_count = conn
+            .query_row(
+                &braincrawl_sql::delete::count_aliases(n),
+                rusqlite::params_from_iter(net.iter()),
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(be)? as u64;
+        let artifact_count = conn
+            .query_row(
+                &braincrawl_sql::delete::count_artifacts(n),
+                rusqlite::params_from_iter(net.iter()),
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(be)? as u64;
+        let mut edge_params: Vec<&str> = net.clone();
+        edge_params.extend(net.iter().copied());
+        let edge_count = conn
+            .query_row(
+                &braincrawl_sql::delete::count_edges(n),
+                rusqlite::params_from_iter(edge_params.iter()),
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(be)? as u64;
+
+        let mut stmt = conn.prepare(&braincrawl_sql::delete::select_r2_keys(n)).map_err(be)?;
+        let r2_keys: Vec<String> = stmt
+            .query_map(rusqlite::params_from_iter(net.iter()), |r| r.get::<_, String>(0))
+            .map_err(be)?
+            .collect::<Result<_, _>>()
+            .map_err(be)?;
+
+        Ok(DeletePlan { network, alias_count, artifact_count, edge_count, r2_keys })
+    }
+
+    async fn delete_work_network(&self, id: &CanonicalId) -> Result<Vec<String>, DomainError> {
+        let conn = self.conn.lock().unwrap();
+        let network = network_ids(&conn, id)?;
+        let n = network.len();
+        let net: Vec<&str> = network.iter().map(|c| c.0.as_str()).collect();
+        let mut edge_params: Vec<&str> = net.clone();
+        edge_params.extend(net.iter().copied());
+
+        conn.execute_batch("BEGIN IMMEDIATE;").map_err(be)?;
+        let result: Result<Vec<String>, DomainError> = (|| {
+            let keys: Vec<String> = {
+                let mut stmt =
+                    conn.prepare(&braincrawl_sql::delete::select_r2_keys(n)).map_err(be)?;
+                let collected: Vec<String> = stmt
+                    .query_map(rusqlite::params_from_iter(net.iter()), |r| r.get::<_, String>(0))
+                    .map_err(be)?
+                    .collect::<Result<_, _>>()
+                    .map_err(be)?;
+                collected
+            };
+            conn.execute(
+                &braincrawl_sql::delete::delete_edge_assertions(n),
+                rusqlite::params_from_iter(edge_params.iter()),
+            )
+            .map_err(be)?;
+            conn.execute(
+                &braincrawl_sql::delete::delete_edges(n),
+                rusqlite::params_from_iter(edge_params.iter()),
+            )
+            .map_err(be)?;
+            conn.execute(
+                &braincrawl_sql::delete::delete_node_assertions(n),
+                rusqlite::params_from_iter(net.iter()),
+            )
+            .map_err(be)?;
+            conn.execute(
+                &braincrawl_sql::delete::delete_artifacts(n),
+                rusqlite::params_from_iter(net.iter()),
+            )
+            .map_err(be)?;
+            conn.execute(
+                &braincrawl_sql::delete::delete_aliases(n),
+                rusqlite::params_from_iter(net.iter()),
+            )
+            .map_err(be)?;
+            conn.execute(
+                &braincrawl_sql::delete::clear_merged_into(n),
+                rusqlite::params_from_iter(net.iter()),
+            )
+            .map_err(be)?;
+            conn.execute(
+                &braincrawl_sql::delete::delete_nodes(n),
+                rusqlite::params_from_iter(net.iter()),
+            )
+            .map_err(be)?;
+            Ok(keys)
+        })();
+        match result {
+            Ok(keys) => {
+                conn.execute_batch("COMMIT;").map_err(be)?;
+                Ok(keys)
+            }
             Err(e) => {
                 let _ = conn.execute_batch("ROLLBACK;");
                 Err(e)
@@ -797,7 +932,7 @@ impl MetadataStore for SqliteStore {
         let works = count(q::WORKS)?;
         let works_described = count(q::WORKS_DESCRIBED)?;
         let nodes_total = count(q::NODES_TOTAL)?;
-        let tombstones = count(q::TOMBSTONES)?;
+        let merge_redirects = count(q::MERGE_REDIRECTS)?;
         let edges_total = count(q::EDGES_TOTAL)?;
 
         let nodes_by_kind = tally(q::NODES_BY_KIND)?;
@@ -814,7 +949,7 @@ impl MetadataStore for SqliteStore {
             works_stub: works.saturating_sub(works_described),
             nodes_total,
             nodes_by_kind,
-            tombstones,
+            merge_redirects,
             edges_total,
             edges_by_relation,
             assertions_by_source,

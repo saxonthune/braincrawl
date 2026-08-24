@@ -11,8 +11,9 @@ pub struct PageRange {
 pub enum Locator {
     /// A printed folio range, e.g. p.9-12. Matches `PageRecord::folio` exactly.
     Printed(PageRange),
-    /// A raw PDF page range, e.g. pdf 16-19. Matches `PageRecord::pdf_page` exactly.
-    Pdf(PageRange),
+    /// An artifact-page range — the page as the source artifact orders it, e.g.
+    /// artifact-page 16-19. Matches `PageRecord::page_index` exactly.
+    ArtifactPage(PageRange),
     /// An outline section id, optionally trimmed to its first/last N pages.
     Section { id: String, head: Option<usize>, tail: Option<usize> },
     /// A page-text search; resolves to every page containing the needle.
@@ -21,13 +22,13 @@ pub enum Locator {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageSpan {
-    pub pdf_pages: Vec<usize>,
+    pub page_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocatorError {
     FolioNotFound { folio: String, pages_lacking_folio: usize },
-    PdfPageOutOfRange { requested: usize, page_count: usize },
+    ArtifactPageOutOfRange { requested: usize, page_count: usize },
     NoOutline,
     SectionNotFound { id: String, known: Vec<String> },
     QuoteNotFound { needle: String },
@@ -41,8 +42,8 @@ impl std::fmt::Display for LocatorError {
                 f,
                 "no page has folio '{folio}' ({pages_lacking_folio} page(s) have no detected folio)"
             ),
-            LocatorError::PdfPageOutOfRange { requested, page_count } => {
-                write!(f, "pdf page {requested} is out of range (page_count {page_count})")
+            LocatorError::ArtifactPageOutOfRange { requested, page_count } => {
+                write!(f, "artifact-page {requested} is out of range (page_count {page_count})")
             }
             LocatorError::NoOutline => write!(f, "no outline artifact provided; --section requires one"),
             LocatorError::SectionNotFound { id, known } => {
@@ -51,7 +52,7 @@ impl std::fmt::Display for LocatorError {
             LocatorError::QuoteNotFound { needle } => write!(f, "no page contains: {needle}"),
             LocatorError::PartialRange { found, missing } => write!(
                 f,
-                "found pdf page(s) {found:?}; missing: {}",
+                "found artifact-page(s) {found:?}; missing: {}",
                 missing.join(", ")
             ),
         }
@@ -65,14 +66,14 @@ impl std::error::Error for LocatorError {}
 pub fn resolve(loc: &Locator, pages: &Pages, outline: Option<&Outline>) -> Result<PageSpan, LocatorError> {
     match loc {
         Locator::Printed(range) => resolve_printed(range, pages),
-        Locator::Pdf(range) => resolve_pdf(range, pages),
+        Locator::ArtifactPage(range) => resolve_artifact_page(range, pages),
         Locator::Section { id, head, tail } => resolve_section(id, *head, *tail, pages, outline),
         Locator::Quote(needle) => resolve_quote(needle, pages),
     }
 }
 
 fn folio_page(pages: &Pages, folio: &str) -> Option<usize> {
-    pages.pages.iter().find(|p| p.folio.as_deref() == Some(folio)).map(|p| p.pdf_page)
+    pages.pages.iter().find(|p| p.folio.as_deref() == Some(folio)).map(|p| p.page_index)
 }
 
 fn resolve_printed(range: &PageRange, pages: &Pages) -> Result<PageSpan, LocatorError> {
@@ -86,25 +87,25 @@ fn resolve_printed(range: &PageRange, pages: &Pages) -> Result<PageSpan, Locator
         pages_lacking_folio: lacking,
     })?;
     let (lo, hi) = if start <= end { (start, end) } else { (end, start) };
-    Ok(PageSpan { pdf_pages: (lo..=hi).collect() })
+    Ok(PageSpan { page_indices: (lo..=hi).collect() })
 }
 
-fn resolve_pdf(range: &PageRange, pages: &Pages) -> Result<PageSpan, LocatorError> {
+fn resolve_artifact_page(range: &PageRange, pages: &Pages) -> Result<PageSpan, LocatorError> {
     let start: usize = range
         .start
         .parse()
-        .map_err(|_| LocatorError::PdfPageOutOfRange { requested: 0, page_count: pages.page_count })?;
+        .map_err(|_| LocatorError::ArtifactPageOutOfRange { requested: 0, page_count: pages.page_count })?;
     let end: usize = range
         .end
         .parse()
-        .map_err(|_| LocatorError::PdfPageOutOfRange { requested: 0, page_count: pages.page_count })?;
+        .map_err(|_| LocatorError::ArtifactPageOutOfRange { requested: 0, page_count: pages.page_count })?;
     for &p in &[start, end] {
         if p == 0 || p > pages.page_count {
-            return Err(LocatorError::PdfPageOutOfRange { requested: p, page_count: pages.page_count });
+            return Err(LocatorError::ArtifactPageOutOfRange { requested: p, page_count: pages.page_count });
         }
     }
     let (lo, hi) = if start <= end { (start, end) } else { (end, start) };
-    Ok(PageSpan { pdf_pages: (lo..=hi).collect() })
+    Ok(PageSpan { page_indices: (lo..=hi).collect() })
 }
 
 fn resolve_section(
@@ -120,7 +121,7 @@ fn resolve_section(
         known: outline.sections.iter().map(|s| s.id.clone()).collect(),
     })?;
 
-    let full: Vec<usize> = (section.start_pdf_page..=section.end_pdf_page).collect();
+    let full: Vec<usize> = (section.start_page_index..=section.end_page_index).collect();
     let trimmed = match (head, tail) {
         (Some(n), _) => full.into_iter().take(n).collect(),
         (_, Some(n)) => {
@@ -135,7 +136,7 @@ fn resolve_section(
     if !missing.is_empty() {
         return Err(LocatorError::PartialRange { found, missing });
     }
-    Ok(PageSpan { pdf_pages: found })
+    Ok(PageSpan { page_indices: found })
 }
 
 fn resolve_quote(needle: &str, pages: &Pages) -> Result<PageSpan, LocatorError> {
@@ -143,12 +144,12 @@ fn resolve_quote(needle: &str, pages: &Pages) -> Result<PageSpan, LocatorError> 
         .pages
         .iter()
         .filter(|p| p.text.contains(needle))
-        .map(|p| p.pdf_page)
+        .map(|p| p.page_index)
         .collect();
     if found.is_empty() {
         return Err(LocatorError::QuoteNotFound { needle: needle.to_string() });
     }
-    Ok(PageSpan { pdf_pages: found })
+    Ok(PageSpan { page_indices: found })
 }
 
 #[cfg(test)]
@@ -163,11 +164,11 @@ mod tests {
             page_count: 5,
             folio_method: FolioMethod::Detected,
             pages: vec![
-                PageRecord { pdf_page: 1, folio: None, text: "front matter".into() },
-                PageRecord { pdf_page: 2, folio: Some("1".into()), text: "territorialization begins".into() },
-                PageRecord { pdf_page: 3, folio: Some("2".into()), text: "more body text".into() },
-                PageRecord { pdf_page: 4, folio: Some("3".into()), text: "final content".into() },
-                PageRecord { pdf_page: 5, folio: Some("4".into()), text: "the end".into() },
+                PageRecord { page_index: 1, folio: None, text: "front matter".into() },
+                PageRecord { page_index: 2, folio: Some("1".into()), text: "territorialization begins".into() },
+                PageRecord { page_index: 3, folio: Some("2".into()), text: "more body text".into() },
+                PageRecord { page_index: 4, folio: Some("3".into()), text: "final content".into() },
+                PageRecord { page_index: 5, folio: Some("4".into()), text: "the end".into() },
             ],
         }
     }
@@ -179,8 +180,8 @@ mod tests {
                 id: "ch01".into(),
                 title: "Chapter One".into(),
                 level: 1,
-                start_pdf_page: 2,
-                end_pdf_page: 5,
+                start_page_index: 2,
+                end_page_index: 5,
             }],
         }
     }
@@ -190,7 +191,7 @@ mod tests {
         let pages = make_pages();
         let loc = Locator::Printed(PageRange { start: "1".into(), end: "3".into() });
         let span = resolve(&loc, &pages, None).unwrap();
-        assert_eq!(span.pdf_pages, vec![2, 3, 4]);
+        assert_eq!(span.page_indices, vec![2, 3, 4]);
     }
 
     #[test]
@@ -202,19 +203,19 @@ mod tests {
     }
 
     #[test]
-    fn pdf_resolves_exactly() {
+    fn artifact_page_resolves_exactly() {
         let pages = make_pages();
-        let loc = Locator::Pdf(PageRange { start: "2".into(), end: "4".into() });
+        let loc = Locator::ArtifactPage(PageRange { start: "2".into(), end: "4".into() });
         let span = resolve(&loc, &pages, None).unwrap();
-        assert_eq!(span.pdf_pages, vec![2, 3, 4]);
+        assert_eq!(span.page_indices, vec![2, 3, 4]);
     }
 
     #[test]
-    fn pdf_out_of_range_errors() {
+    fn artifact_page_out_of_range_errors() {
         let pages = make_pages();
-        let loc = Locator::Pdf(PageRange { start: "1".into(), end: "50".into() });
+        let loc = Locator::ArtifactPage(PageRange { start: "1".into(), end: "50".into() });
         let err = resolve(&loc, &pages, None).unwrap_err();
-        assert_eq!(err, LocatorError::PdfPageOutOfRange { requested: 50, page_count: 5 });
+        assert_eq!(err, LocatorError::ArtifactPageOutOfRange { requested: 50, page_count: 5 });
     }
 
     #[test]
@@ -223,7 +224,7 @@ mod tests {
         let outline = make_outline();
         let loc = Locator::Section { id: "ch01".into(), head: None, tail: None };
         let span = resolve(&loc, &pages, Some(&outline)).unwrap();
-        assert_eq!(span.pdf_pages, vec![2, 3, 4, 5]);
+        assert_eq!(span.page_indices, vec![2, 3, 4, 5]);
     }
 
     #[test]
@@ -232,7 +233,7 @@ mod tests {
         let outline = make_outline();
         let loc = Locator::Section { id: "ch01".into(), head: Some(2), tail: None };
         let span = resolve(&loc, &pages, Some(&outline)).unwrap();
-        assert_eq!(span.pdf_pages, vec![2, 3]);
+        assert_eq!(span.page_indices, vec![2, 3]);
     }
 
     #[test]
@@ -241,7 +242,7 @@ mod tests {
         let outline = make_outline();
         let loc = Locator::Section { id: "ch01".into(), head: None, tail: Some(2) };
         let span = resolve(&loc, &pages, Some(&outline)).unwrap();
-        assert_eq!(span.pdf_pages, vec![4, 5]);
+        assert_eq!(span.page_indices, vec![4, 5]);
     }
 
     #[test]
@@ -266,7 +267,7 @@ mod tests {
         let pages = make_pages();
         let loc = Locator::Quote("territorialization".into());
         let span = resolve(&loc, &pages, None).unwrap();
-        assert_eq!(span.pdf_pages, vec![2]);
+        assert_eq!(span.page_indices, vec![2]);
     }
 
     #[test]

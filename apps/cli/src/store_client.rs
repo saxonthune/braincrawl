@@ -209,6 +209,27 @@ impl StoreClient {
         Ok(Some(resp.json()?))
     }
 
+    /// DELETE /works/{alias} — delete a work and its whole merge-redirect
+    /// network (aliases, artifacts + blobs, edges). `dry_run` returns the blast
+    /// radius without changing anything. `Ok(None)` means no such work.
+    pub fn delete_work(&self, alias: &str, dry_run: bool) -> Result<Option<serde_json::Value>> {
+        let url = format!("{}/works/{}", self.base_url, alias);
+        let mut req = self.apply_auth(self.http.delete(&url));
+        if dry_run {
+            req = req.query(&[("dry_run", "1")]);
+        }
+        let resp = req.send()?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(ClientError::Server { status: status.as_u16(), url: url.clone(), body });
+        }
+        Ok(Some(resp.json()?))
+    }
+
     /// GET /works — store-side work search (no provider call).
     /// Returns the matched work JSONs from the response's `works` array.
     pub fn search_works(

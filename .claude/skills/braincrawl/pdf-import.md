@@ -84,19 +84,38 @@ extractor prints font-glyph warnings to stderr — noise, not failure; judge the
 run by its final summary line. `library list <id>` should then show `fulltext`
 with `text` and `pages` derived from it.
 
+### When the extractor cannot read the PDF
+
+`extract-text` or `paginate` may report "could not extract text from this PDF"
+(the built-in extractor cannot parse some font/page structures). It fails
+cleanly and leaves the rest of the import intact. Recover by extracting the text
+externally and paginating from it:
+
+```bash
+pdftotext "<file.pdf>" book.txt          # keeps the default form-feed page breaks
+braincrawl --text library put <id> book.txt --role text
+braincrawl --text library paginate <id> --from text
+```
+
+`paginate --from text` splits on the form-feed character `pdftotext` writes at
+each page boundary, so the page grid matches the PDF's pages and folio
+anchoring works unchanged. If the text carries a different page-break
+convention, declare it with `--separator`: `blank-lines:<n>`, or
+`regex:<pattern>` to start a page at each line matching the pattern.
+
 ## 4. Anchor the folios — printed pages must be trusted, not guessed
 
 `paginate` auto-detects printed page numbers (folios). Read its summary: many
 "page(s) with no folio" means printed-page addressing is unreliable. Fix it
 with an anchor, derived and verified — never assumed:
 
-1. Take two auto-detected pairs (`pdf 99 = folio 92`, `pdf 125 = folio 118`)
-   and confirm they imply one constant offset.
+1. Take two auto-detected pairs (`artifact-page 99 = folio 92`,
+   `artifact-page 125 = folio 118`) and confirm they imply one constant offset.
 2. Locate printed page 1 by that offset and confirm by reading it:
-   `braincrawl --text library read <id> --pdf <n>` — the page must show the
-   body's opening (an introduction's first page), and page `<n-1>` front
-   matter.
-3. Declare it: `braincrawl library paginate <id> --anchor <pdf>=1 --force`
+   `braincrawl --text library read <id> --artifact-page <n>` — the page must
+   show the body's opening (an introduction's first page), and page `<n-1>`
+   front matter.
+3. Declare it: `braincrawl library paginate <id> --anchor <page_index>=1 --force`
 4. Verify one printed read resolves: `library read <id> --printed 92`.
 
 For essay collections, also consider a hand-authored table of contents
@@ -135,8 +154,8 @@ The point of the pages artifact: reach a place in the work directly, with
 page markers fit for citation, instead of condensing the whole text.
 
 ```bash
-braincrawl --text library read <id> --printed 9-12     # printed page range
-braincrawl --text library read <id> --pdf 16           # raw PDF page
+braincrawl --text library read <id> --printed 9-12     # printed folio range
+braincrawl --text library read <id> --artifact-page 16 # page as the source artifact orders it
 braincrawl --text library read <id> --section ch01     # needs an outline artifact
 braincrawl --text library read <id> --find "assemblage" # quote search
 ```

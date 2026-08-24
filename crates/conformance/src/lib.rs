@@ -950,8 +950,8 @@ fn stats(client: &Client, base: &str, token: Option<&str>) -> Result<(), String>
     if body["nodes_total"] != 2 {
         return Err(format!("stats: expected nodes_total=2, got {}", body["nodes_total"]));
     }
-    if body["tombstones"] != 0 {
-        return Err(format!("stats: expected tombstones=0, got {}", body["tombstones"]));
+    if body["merge_redirects"] != 0 {
+        return Err(format!("stats: expected merge_redirects=0, got {}", body["merge_redirects"]));
     }
     if body["edges_total"] != 1 {
         return Err(format!("stats: expected edges_total=1, got {}", body["edges_total"]));

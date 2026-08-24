@@ -561,3 +561,115 @@ async fn test_search_works_by_author_title_year_artifact() {
     let f = WorkSearchFilter { author: Some("delanda".into()), ..Default::default() };
     assert!(s.search_works(&f, Some(ArtifactRole::Fulltext), 10).await.unwrap().is_empty());
 }
+
+// ── delete_work — cascade over the whole merge-redirect network ────────────────
+
+#[tokio::test]
+async fn test_delete_work_cascade() {
+    use braincrawl_core::types::ArtifactRole;
+
+    let dir = tempfile::tempdir().unwrap();
+    let blob_root = dir.path().join("blobs");
+    let s = make_store(dir.path());
+
+    // Two separate nodes, then a bridging record that merges them: the loser
+    // becomes a merge redirect forwarding into the survivor.
+    s.put_work(work("src_a", vec![alias("doi", "10.1/x")])).await.unwrap();
+    s.put_work(work("src_b", vec![alias("pmid", "12345")])).await.unwrap();
+    let survivor = s
+        .put_work(WorkRecord {
+            source: "crossref".to_string(),
+            kind: NodeKind::Work,
+            aliases: vec![alias("doi", "10.1/x"), alias("pmid", "12345")],
+            attrs: serde_json::json!({}),
+            fetched_at: None,
+        })
+        .await
+        .unwrap();
+
+    // Content (a blob on disk) and a citation edge out to another work.
+    s.put_content(
+        alias("doi", "10.1/x"),
+        ArtifactRole::Abstract,
+        b"abstract bytes".to_vec(),
+        "text/plain".to_string(),
+        None,
+        None,
+        "2024-01-01T00:00:00Z".to_string(),
+        None,
+    )
+    .await
+    .unwrap();
+    s.put_edges(vec![EdgeInput {
+        src: alias("doi", "10.1/x"),
+        dst: alias("doi", "10.1/cited"),
+        relation: "cites".to_string(),
+        source: "crossref".to_string(),
+        attrs: None,
+        fetched_at: "2024-01-01T00:00:00Z".to_string(),
+    }])
+    .await
+    .unwrap();
+
+    let blob_count = |root: &std::path::Path| -> usize {
+        walkdir_count(root)
+    };
+    let files_before = blob_count(&blob_root);
+    assert!(files_before > 0, "the blob is on disk before delete");
+
+    // Dry run reports the blast radius and changes nothing.
+    let plan = s.delete_work(alias("doi", "10.1/x"), true).await.unwrap();
+    assert!(plan.dry_run);
+    assert_eq!(plan.work_id, survivor.0);
+    assert_eq!(plan.redirect_nodes, 1, "the merged loser is one redirect node");
+    assert!(plan.aliases >= 2, "at least the doi and pmid aliases");
+    assert_eq!(plan.artifacts, 1);
+    assert_eq!(plan.edges, 1);
+    assert_eq!(plan.blobs_deleted, 0, "dry run deletes nothing");
+    assert!(
+        s.get_work(alias("doi", "10.1/x")).await.unwrap().is_some(),
+        "dry run must leave the work in place"
+    );
+    assert_eq!(blob_count(&blob_root), files_before, "dry run leaves the blob on disk");
+
+    // Real delete removes the whole network, its rows, and its blobs.
+    let done = s.delete_work(alias("doi", "10.1/x"), false).await.unwrap();
+    assert!(!done.dry_run);
+    assert_eq!(done.artifacts, 1);
+    assert_eq!(done.blobs_deleted, 1);
+    assert!(done.blob_orphans.is_empty());
+
+    // Both aliases — including the merge-redirect's — now resolve to nothing.
+    assert!(s.get_work(alias("doi", "10.1/x")).await.unwrap().is_none());
+    assert!(s.get_work(alias("pmid", "12345")).await.unwrap().is_none());
+    assert!(matches!(
+        s.get_content(alias("doi", "10.1/x"), ArtifactRole::Abstract).await.unwrap(),
+        ContentOutcome::Absent
+    ));
+    assert_eq!(blob_count(&blob_root), 0, "blob bytes removed from disk");
+
+    // Deleting an unknown work is a clean not-found.
+    assert!(matches!(
+        s.delete_work(alias("doi", "10.1/gone"), true).await,
+        Err(braincrawl_core::types::DomainError::NotFound)
+    ));
+}
+
+/// Count regular files anywhere under `root` (blob store layout is nested).
+fn walkdir_count(root: &std::path::Path) -> usize {
+    let mut n = 0;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(p) = stack.pop() {
+        if let Ok(rd) = std::fs::read_dir(&p) {
+            for entry in rd.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.is_file() {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
+}

@@ -83,7 +83,7 @@ fn paginate_stores_a_pages_artifact() {
     let pages: serde_json::Value = serde_json::from_slice(&output.stdout).expect("pages artifact should be JSON");
     assert_eq!(pages["page_count"], 1);
     assert_eq!(pages["source_role"], "fulltext");
-    assert_eq!(pages["pages"][0]["pdf_page"], 1);
+    assert_eq!(pages["pages"][0]["page_index"], 1);
     assert!(pages["pages"][0]["text"].as_str().unwrap().contains("Hello braincrawl"));
 }
 
@@ -120,7 +120,7 @@ fn paginate_takes_folios_from_anchors() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("pdf 1 = folio 42"), "expected the mapping to be printed, got: {stderr}");
+    assert!(stderr.contains("artifact-page 1 = folio 42"), "expected the mapping to be printed, got: {stderr}");
 
     let output = run_cli(&base, &["library", "get", "doi:10.0/paginate-anchored", "--role", "pages"]);
     assert!(output.status.success());
@@ -144,7 +144,7 @@ fn paginate_rejects_a_malformed_anchor() {
 }
 
 #[test]
-fn paginate_refuses_a_non_pdf_source() {
+fn paginate_splits_a_text_source_on_form_feed() {
     let dir = tempfile::tempdir().unwrap();
     let base = start_server(dir.path());
     let client = StoreClient::new(&base);
@@ -153,18 +153,49 @@ fn paginate_refuses_a_non_pdf_source() {
         .put_work(&serde_json::json!({
             "source": "test",
             "kind": "Work",
-            "aliases": [{"scheme": "doi", "value": "10.0/paginate-not-pdf"}],
+            "aliases": [{"scheme": "doi", "value": "10.0/paginate-text"}],
+            "attrs": {}
+        }))
+        .unwrap();
+    // Two form-feed-separated pages, each with a leading folio, as pdftotext emits.
+    let text = "1\nfirst page body\n\u{0c}2\nsecond page body\n";
+    client
+        .put_content("doi:10.0/paginate-text", "text", text.as_bytes().to_vec(), "text/plain", Some("test"), None)
+        .unwrap();
+
+    let output = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-text", "--from", "text"]);
+    assert!(output.status.success(), "text paginate failed: {}", String::from_utf8_lossy(&output.stderr));
+
+    let output = run_cli(&base, &["library", "get", "doi:10.0/paginate-text", "--role", "pages"]);
+    assert!(output.status.success());
+    let pages: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(pages["page_count"], 2);
+    assert_eq!(pages["pages"][0]["folio"], "1");
+    assert_eq!(pages["pages"][1]["folio"], "2");
+}
+
+#[test]
+fn paginate_refuses_a_binary_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = start_server(dir.path());
+    let client = StoreClient::new(&base);
+
+    client
+        .put_work(&serde_json::json!({
+            "source": "test",
+            "kind": "Work",
+            "aliases": [{"scheme": "doi", "value": "10.0/paginate-binary"}],
             "attrs": {}
         }))
         .unwrap();
     client
-        .put_content("doi:10.0/paginate-not-pdf", "fulltext", b"not a pdf".to_vec(), "text/plain", Some("test"), None)
+        .put_content("doi:10.0/paginate-binary", "fulltext", vec![0xff, 0xfe, 0x00], "application/octet-stream", Some("test"), None)
         .unwrap();
 
-    let output = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-not-pdf"]);
+    let output = run_cli(&base, &["library", "paginate", "doi:10.0/paginate-binary"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("is not a PDF"), "expected not-a-PDF error, got: {stderr}");
+    assert!(stderr.contains("neither a PDF nor UTF-8 text"), "expected binary-source error, got: {stderr}");
 }
 
 #[test]
@@ -189,7 +220,7 @@ fn paginate_already_present_requires_force() {
 }
 
 #[test]
-fn read_prints_page_markers_for_pdf_range() {
+fn read_prints_page_markers_for_artifact_page_range() {
     let dir = tempfile::tempdir().unwrap();
     let base = start_server(dir.path());
     let client = StoreClient::new(&base);
@@ -198,9 +229,9 @@ fn read_prints_page_markers_for_pdf_range() {
     let paginate = run_cli(&base, &["library", "paginate", "doi:10.0/read-pdf-range", "--allow-no-folios"]);
     assert!(paginate.status.success());
 
-    let output = run_cli(&base, &["library", "read", "doi:10.0/read-pdf-range", "--pdf", "1-1"]);
+    let output = run_cli(&base, &["library", "read", "doi:10.0/read-pdf-range", "--artifact-page", "1-1"]);
     assert!(output.status.success(), "read failed: {}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("=== pdf 1 (no folio) ==="), "got: {stdout}");
+    assert!(stdout.contains("=== artifact-page 1 (no folio) ==="), "got: {stdout}");
     assert!(stdout.contains("Hello braincrawl"), "got: {stdout}");
 }

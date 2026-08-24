@@ -8,6 +8,8 @@ deps: []
 This glossary is a **controlled vocabulary**: one preferred term per concept, kept precise so it does not drift. Adhere to it — use the term it defines rather than a coined synonym — and contribute to it: when you need a concept it does not yet name, propose an addition here instead of inventing a term in passing.
 
 **Naming new concepts.** Names are load-bearing — every doc, type, and session inherits them — so the user chooses them. When work reaches a concept this glossary does not name, the agent lays out the naming decision (candidates, collisions with existing entries, tradeoffs) and the user commits the term here before anything fans out through it. Prefer combining existing terms over inventing a new one; a candidate must be distinct from every existing entry and specific enough to stand alone out of context. A good concept name is like a good variable name: it says what the thing is, reads clearly out of context, and does not restate its type or the obvious.
+
+**Naming CLI flags and commands.** A flag or command name should read like a good variable name: it explains what it does when set. Prefer that over a clever or abstract label. The one exception is clear prior art — an established CLI name a user already expects and would reuse (`--force`, `--dry-run`, `--verbose`); adopt the convention rather than reinvent it. Example: for the rule that cuts a text artifact into pages, `--separator` says what it sets, so it is the good name; `--pages-by` is a poor one.
 ## Facts — the grammar
 This glossary's relationships are written as **verbalized facts** (ORM-style): one affirmable subject–verb–object(–…) sentence per relationship, with an optional `predicate(role, role)` shadow where a fact wants to be linted or queried. Four kinds, one grammar:
 
@@ -24,8 +26,10 @@ braincrawl separates knowledge built once and shared — the first two layers �
 - **Library** (Layer 1) — the store of works keyed by a **canonical id** (a UUID), holding each work's artifacts.
 - **Catalog** (Layer 2) — the shared index over the library: every work's metadata, which artifacts are held and where, and the citation links between works.
 - **Research Collection** (Layer 3) — a consumer's own research, made of **Research Documents** that point at works by their canonical id in the catalog rather than copying them. A Research Document is the singular artifact: questions, selected works, findings, and links for one line of work.
-- **braincrawl store** (or sometimes just **braincrawl** as a noun) — refers to everything: L1, L2, L3.
+- **braincrawl store** — refers to everything: L1, L2, L3.
+- **braincrawl** (as a definite noun) — a user's own instance: their three stores (L1, L2, L3) together with any customization on top.
 - **L1 / L2 / L3** — shorthand for Library, Catalog, Research Documents.
+- **Layer shorthand as naming** — when a concept is directly attached to one of the layers, name it with that layer's L* shorthand rather than spelling the layer out. A work as a catalog node is an **L2 work**; a stored artifact is an **L1 artifact**.
 ## The catalog: nodes and edges
 - The catalog stores **nodes** — most commonly articles, books, and authors — and the **edges** between them.
 - The catalog is made of **catalog entries**, which form the nodes of the graph.
@@ -50,7 +54,11 @@ An **artifact** is a stored piece of content attached to a catalog entry — an 
 - `derived_from(artifact, artifact)` — an artifact says which other artifact it was derived from. Role and `derived_from` are separate facts: role names the content, `derived_from` names its lineage.
 - A work may hold more than one root artifact — two editions of the same book, for instance — each with its own derivations. Role alone does not distinguish them; `derived_from` does.
 - A **folio** is the printed page number as it appears on the page, recorded per page. It is read off the page, never computed from an offset.
+- A **page index** is a page's position in a work's page grid, counted from 1. It is distinct from the folio: the folio is what is printed on the page, the page index is where the page sits in the grid. The pages artifact and the `--anchor <page_index>=<folio>` fact both address pages by page index.
+- An **artifact page** is a page addressed by the position the source artifact orders it in — its page index — as opposed to the folio printed on it. It is the counterpart to the printed folio when reading: `library read --artifact-page 16` reaches the 16th page of the source artifact, `--printed 9` reaches the page whose printed folio is 9. The name generalizes past PDFs: a text artifact cut by a `separator` has artifact pages just as a PDF does.
+- A **separator** is the rule that cuts a text artifact into its page grid, since a text artifact — unlike a PDF — carries no page structure of its own: `form-feed` (the default, what `pdftotext` writes at each page boundary), `blank-lines:<n>`, or a `regex` matching each page's first line. A PDF source needs no separator; it brings its own grid.
 - An artifact also records its **provenance**: a source label, a source URL, and when it was fetched. Each push of the same role is kept in sequence, with the latest marked current.
+- **Creating an L2 work** — adding a work to the catalog as a new node, by hand or from a provider push. The plain verb is **create**: say *create an L2 work*, not *mint a work*.
 - An artifact attaches to a catalog entry that already exists; pushing content never creates the entry. Writing to the catalog is a separate door.
 - **`library chunk`** is a self-contained CLI tool braincrawl provides that partitions a stored fulltext into citation-carrying pieces, each carrying page provenance — a secondary derived artifact of a work.
 ## The research graph

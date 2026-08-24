@@ -9,7 +9,7 @@
 //!
 //! The `MERGE_*` queries must be run inside a single transaction, in this order:
 //!
-//! 1. `node::TOMBSTONE`
+//! 1. `node::MERGE_REDIRECT`
 //! 2. `alias::MERGE_DELETE_CONFLICTS`, `alias::MERGE_REPOINT`
 //! 3. `node_assertion::MERGE_UPSERT`, `node_assertion::MERGE_DELETE_LOSER`
 //! 4. `edge::MERGE_EA_SRC_UPSERT`, `edge::MERGE_EA_SRC_DELETE_LOSER`
@@ -101,9 +101,9 @@ pub mod node {
         VALUES (?, ?, ?) \
         ON CONFLICT(canonical_id) DO NOTHING";
 
-    /// Tombstone a node: set `merged_into` to the survivor.
-    /// Params: (survivor_canonical_id, loser_canonical_id)
-    pub const TOMBSTONE: &str = "\
+    /// Record a merge redirect: set `merged_into` to the survivor, so the loser
+    /// id forwards to it. Params: (survivor_canonical_id, loser_canonical_id)
+    pub const MERGE_REDIRECT: &str = "\
         UPDATE node SET merged_into = ? WHERE canonical_id = ?";
 
     /// Single-hop `merged_into` lookup for iterative chain walking in `resolve_live`.
@@ -487,7 +487,7 @@ pub mod export {
 // ── stats ─────────────────────────────────────────────────────────────────
 
 /// Aggregate-count queries backing the `MetadataStore::stats` summary.
-/// All exclude tombstones (`merged_into IS NOT NULL`) except where noted.
+/// All exclude merge redirects (`merged_into IS NOT NULL`) except where noted.
 /// None take parameters. Grouped queries are ordered count desc, key asc.
 pub mod stats {
     /// Live work nodes. Returns column `count`. Params: none.
@@ -504,8 +504,8 @@ pub mod stats {
     pub const NODES_TOTAL: &str = "\
         SELECT COUNT(*) AS count FROM node WHERE merged_into IS NULL";
 
-    /// Tombstones (merged nodes). Returns column `count`. Params: none.
-    pub const TOMBSTONES: &str = "\
+    /// Merge redirects (merged nodes). Returns column `count`. Params: none.
+    pub const MERGE_REDIRECTS: &str = "\
         SELECT COUNT(*) AS count FROM node WHERE merged_into IS NOT NULL";
 
     /// Total deduped edges. Returns column `count`. Params: none.
@@ -530,6 +530,89 @@ pub mod stats {
     /// `count`. Params: none.
     pub const LIBRARY_BYTES: &str =
         "SELECT COALESCE(SUM(byte_size), 0) AS count FROM artifacts";
+}
+
+// ── delete ────────────────────────────────────────────────────────────────
+
+/// Cascade delete of a work and its merge-redirect network, shared by the sqlite
+/// and D1 backends. Unlike merge (which never removes a node), these statements
+/// hard-delete rows. The caller first walks the redirect network with
+/// [`select_redirects_into`], then runs the cascade over the whole id set.
+///
+/// Run order inside one transaction, `net` = the full network id list:
+/// 1. [`select_r2_keys`] — collect blob keys before the rows vanish.
+/// 2. [`delete_edge_assertions`], [`delete_edges`] — bind `net` twice (src, dst).
+/// 3. [`delete_node_assertions`], [`delete_artifacts`], [`delete_aliases`].
+/// 4. [`clear_merged_into`] — break the self-FK so the node delete can't violate it.
+/// 5. [`delete_nodes`].
+pub mod delete {
+    use crate::in_list;
+
+    /// Nodes that forward directly into any id in the list (one BFS hop).
+    /// Returns column `canonical_id`. Params: the id list.
+    pub fn select_redirects_into(n: usize) -> String {
+        format!("SELECT canonical_id FROM node WHERE merged_into IN {}", in_list(n))
+    }
+
+    /// Blob keys of every artifact owned by the network. Params: the id list.
+    pub fn select_r2_keys(n: usize) -> String {
+        format!("SELECT r2_key FROM artifacts WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Count aliases owned by the network. Returns column `count`. Params: id list.
+    pub fn count_aliases(n: usize) -> String {
+        format!("SELECT COUNT(*) AS count FROM alias WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Count artifacts owned by the network. Returns column `count`. Params: id list.
+    pub fn count_artifacts(n: usize) -> String {
+        format!("SELECT COUNT(*) AS count FROM artifacts WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Count edges touching the network on either endpoint. Returns column
+    /// `count`. Params: the id list bound twice (src, then dst).
+    pub fn count_edges(n: usize) -> String {
+        let l = in_list(n);
+        format!("SELECT COUNT(*) AS count FROM edge WHERE src_id IN {l} OR dst_id IN {l}")
+    }
+
+    /// Params: the id list bound twice (src, then dst).
+    pub fn delete_edge_assertions(n: usize) -> String {
+        let l = in_list(n);
+        format!("DELETE FROM edge_assertion WHERE src_id IN {l} OR dst_id IN {l}")
+    }
+
+    /// Params: the id list bound twice (src, then dst).
+    pub fn delete_edges(n: usize) -> String {
+        let l = in_list(n);
+        format!("DELETE FROM edge WHERE src_id IN {l} OR dst_id IN {l}")
+    }
+
+    /// Params: the id list.
+    pub fn delete_node_assertions(n: usize) -> String {
+        format!("DELETE FROM node_assertion WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Params: the id list.
+    pub fn delete_artifacts(n: usize) -> String {
+        format!("DELETE FROM artifacts WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Params: the id list.
+    pub fn delete_aliases(n: usize) -> String {
+        format!("DELETE FROM alias WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Null out `merged_into` across the network so deleting the nodes cannot
+    /// violate the self-referencing FK. Params: the id list.
+    pub fn clear_merged_into(n: usize) -> String {
+        format!("UPDATE node SET merged_into = NULL WHERE canonical_id IN {}", in_list(n))
+    }
+
+    /// Params: the id list.
+    pub fn delete_nodes(n: usize) -> String {
+        format!("DELETE FROM node WHERE canonical_id IN {}", in_list(n))
+    }
 }
 
 // ── search ────────────────────────────────────────────────────────────────

@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 
 use crate::types::{
-    Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportEdgeAssertion, ExportNode,
-    GraphStats, Job, JobId, JobKind, JobSpec, NodeKind, Artifact, ArtifactRole, StoredBlob,
-    WorkSearchFilter,
+    Alias, CanonicalId, DeletePlan, DomainError, EdgeDir, EdgeView, ExportEdgeAssertion,
+    ExportNode, GraphStats, Job, JobId, JobKind, JobSpec, NodeKind, Artifact, ArtifactRole,
+    StoredBlob, WorkSearchFilter,
 };
 
 /// Opaque key → bytes. Knows nothing of `kind`/`version`.
@@ -76,12 +76,22 @@ pub trait MetadataStore {
     async fn resolve_live(&self, id: &CanonicalId) -> Result<CanonicalId, DomainError>;
 
     /// Repoint alias/node_assertion/edge/edge_assertion/artifacts, fold PK collisions,
-    /// tombstone the loser.
+    /// record a merge redirect for the loser.
     async fn merge(
         &self,
         survivor: &CanonicalId,
         loser: &CanonicalId,
     ) -> Result<(), DomainError>;
+
+    /// Compute the blast radius of deleting the live work `id` without mutating:
+    /// the redirect network (the node plus every merge-redirect forwarding into
+    /// it) and counts of the aliases/artifacts/edges it owns, with the blob keys.
+    async fn plan_delete_work(&self, id: &CanonicalId) -> Result<DeletePlan, DomainError>;
+
+    /// Hard-delete a work's entire redirect network and everything it owns
+    /// (aliases, node assertions, artifacts, edges) in one transaction. Returns
+    /// the blob keys removed, for the caller to delete from the blob store.
+    async fn delete_work_network(&self, id: &CanonicalId) -> Result<Vec<String>, DomainError>;
 
     /// Returns (kind, [(source, attrs, fetched_at)], aliases) for read-time merge.
     async fn read_node(
@@ -131,7 +141,7 @@ pub trait MetadataStore {
     async fn applied_migrations(&self) -> Result<Vec<String>, DomainError>;
 
     /// Enumerate live nodes (with aliases and assertions), keyset-paginated by
-    /// canonical_id. Tombstones are excluded — a sync replay only needs the
+    /// canonical_id. Merge redirects are excluded — a sync replay only needs the
     /// live representative; the destination re-merges by alias on its own.
     async fn export_nodes(
         &self,

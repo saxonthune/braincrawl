@@ -3,8 +3,8 @@ pub struct Section {
     pub id: String,
     pub title: String,
     pub level: usize,
-    pub start_pdf_page: usize,
-    pub end_pdf_page: usize,
+    pub start_page_index: usize,
+    pub end_page_index: usize,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26,13 +26,13 @@ impl std::fmt::Display for OutlineError {
         match self {
             OutlineError::DuplicateId { id } => write!(f, "duplicate section id: {id}"),
             OutlineError::InvalidRange { id, start, end } => {
-                write!(f, "section {id}: start_pdf_page {start} > end_pdf_page {end}")
+                write!(f, "section {id}: start_page_index {start} > end_page_index {end}")
             }
             OutlineError::OverlappingRanges { a, b } => {
                 write!(f, "sections {a} and {b} have overlapping page ranges")
             }
             OutlineError::OutOfBounds { id, end, page_count } => {
-                write!(f, "section {id}: end_pdf_page {end} exceeds page_count {page_count}")
+                write!(f, "section {id}: end_page_index {end} exceeds page_count {page_count}")
             }
         }
     }
@@ -50,27 +50,27 @@ pub fn validate(outline: &Outline, page_count: usize) -> Result<(), Vec<OutlineE
         if !seen_ids.insert(section.id.clone()) {
             errors.push(OutlineError::DuplicateId { id: section.id.clone() });
         }
-        if section.start_pdf_page > section.end_pdf_page {
+        if section.start_page_index > section.end_page_index {
             errors.push(OutlineError::InvalidRange {
                 id: section.id.clone(),
-                start: section.start_pdf_page,
-                end: section.end_pdf_page,
+                start: section.start_page_index,
+                end: section.end_page_index,
             });
         }
-        if section.end_pdf_page > page_count {
+        if section.end_page_index > page_count {
             errors.push(OutlineError::OutOfBounds {
                 id: section.id.clone(),
-                end: section.end_pdf_page,
+                end: section.end_page_index,
                 page_count,
             });
         }
     }
 
     let mut by_start: Vec<&Section> = outline.sections.iter().collect();
-    by_start.sort_by_key(|s| s.start_pdf_page);
+    by_start.sort_by_key(|s| s.start_page_index);
     for pair in by_start.windows(2) {
         let (a, b) = (pair[0], pair[1]);
-        if a.start_pdf_page <= a.end_pdf_page && b.start_pdf_page <= b.end_pdf_page && b.start_pdf_page <= a.end_pdf_page {
+        if a.start_page_index <= a.end_page_index && b.start_page_index <= b.end_page_index && b.start_page_index <= a.end_page_index {
             errors.push(OutlineError::OverlappingRanges { a: a.id.clone(), b: b.id.clone() });
         }
     }
@@ -87,7 +87,7 @@ mod tests {
     use super::*;
 
     fn section(id: &str, start: usize, end: usize) -> Section {
-        Section { id: id.to_string(), title: id.to_string(), level: 1, start_pdf_page: start, end_pdf_page: end }
+        Section { id: id.to_string(), title: id.to_string(), level: 1, start_page_index: start, end_page_index: end }
     }
 
     #[test]

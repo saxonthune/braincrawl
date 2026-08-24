@@ -76,7 +76,7 @@ impl Emission {
 
 /// Node kinds a hand-entered record may declare (`crates/core/src/types.rs`'s `NodeKind`,
 /// lowercased).
-const VALID_KINDS: &[&str] = &["work", "author", "venue", "concept", "topic"];
+const VALID_KINDS: &[&str] = &["Work", "Author", "Venue", "Concept", "Topic"];
 
 /// Build a `WorkRecord` for `catalog add` — hand entry for a work no provider describes
 /// (e.g. a book, named by ISBN). Mirrors what a provider's fetch path would emit, so a
@@ -88,10 +88,13 @@ pub fn build_manual_work_record(
     year: Option<u32>,
     kind: &str,
 ) -> Result<WorkRecord, String> {
-    let kind = kind.to_lowercase();
-    if !VALID_KINDS.contains(&kind.as_str()) {
-        return Err(format!("invalid kind '{kind}': expected one of {}", VALID_KINDS.join(", ")));
-    }
+    // Match case-insensitively but serialize the canonical spelling: the server's
+    // NodeKind enum has no serde rename, so only `Work`/`Author`/… deserialize.
+    let kind = VALID_KINDS
+        .iter()
+        .find(|k| k.eq_ignore_ascii_case(kind))
+        .ok_or_else(|| format!("invalid kind '{kind}': expected one of {}", VALID_KINDS.join(", ")))?
+        .to_string();
 
     let mut parsed_aliases = Vec::with_capacity(aliases.len());
     for a in aliases {

@@ -31,7 +31,20 @@ get_work(id)                           # → metadata; id = any alias or the UUI
 put_content(id, kind, bytes,           # kind = abstract | fulltext
             source, fetched_at)
 get_content(id, kind)                  # → bytes | pending | absent
+delete_work(id, dry_run)               # hard-delete the work and its merge-redirect
+                                       # network; dry_run → blast radius only
 ```
+
+`delete_work` is the one operation that removes rather than accumulates. It resolves
+`id` to the live work, then deletes that node **and its whole merge-redirect network**
+(every id that forwards into it) together with everything the network owns — aliases,
+content descriptors and their blobs, and citation edges on either endpoint. There is no
+survivor and no forwarding marker left behind: unlike a merge redirect (which is never
+deleted so a held id still resolves), a delete removes the rows outright, so an id a
+consumer still holds resolves to nothing. Blob bytes are removed after the metadata
+transaction commits; a blob that fails to delete is reported as an orphan to sweep, not
+a failed delete. `dry_run` computes and returns the blast radius without changing
+anything.
 
 Writes are **idempotent upserts**: putting the same work twice converges on one node
 rather than duplicating. Content provenance rides with each put (see
