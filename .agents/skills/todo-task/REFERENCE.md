@@ -66,7 +66,7 @@ When you manually resolve a merge conflict from an agent (auto-merge failed, so 
 
 3. **Archive the task:**
    ```bash
-   bash .claude/skills/todo-task/archive.sh {slug}
+   bash .agents/skills/todo-task/archive.sh {slug}
    ```
 
 If you skip these steps, future sessions will see stale worktrees in status output.
@@ -78,7 +78,7 @@ by hand, the run-record lingers and the chain shows as `finalizable` on the dash
 After you finish the merge, run:
 
 ```bash
-bash .claude/skills/todo-task/finalize-chain.sh <chain-name>
+bash .agents/skills/todo-task/finalize-chain.sh <chain-name>
 ```
 
 This writes the chain definition to trunk, removes the worktree and branch, and clears the

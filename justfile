@@ -119,14 +119,19 @@ install:
 # A symlink, not a copy, so the skill a session reads is always this checkout's —
 # `git pull` is then the only update step.
 #
-# Install the braincrawl skill for Claude Code into ~/.claude/skills
+# Install the braincrawl skill into the neutral global directory and provide a
+# Claude Code compatibility link.
 skill-install:
     #!/usr/bin/env bash
     set -euo pipefail
-    dest="$HOME/.claude/skills"
+    dest="$HOME/.agents/skills"
     mkdir -p "$dest"
-    ln -sfn "{{justfile_directory()}}/.claude/skills/braincrawl" "$dest/braincrawl"
-    echo "linked $dest/braincrawl -> {{justfile_directory()}}/.claude/skills/braincrawl"
+    ln -sfn "{{justfile_directory()}}/.agents/skills/braincrawl" "$dest/braincrawl"
+    claude_dest="$HOME/.claude/skills"
+    mkdir -p "$claude_dest"
+    ln -sfn "$dest/braincrawl" "$claude_dest/braincrawl"
+    echo "linked $dest/braincrawl -> {{justfile_directory()}}/.agents/skills/braincrawl"
+    echo "linked $claude_dest/braincrawl -> $dest/braincrawl"
 
 # Auto-rebuild the CLI on every source save (needs `watchexec`). Points the PATH
 # `braincrawl` at target/release via symlink, so all shells/sessions run the freshly

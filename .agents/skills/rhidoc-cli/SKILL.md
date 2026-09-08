@@ -409,7 +409,7 @@ Side effects:
   - Creates `.rhidoc.json` marker in the current directory.
   - Creates `DIRNAME/00-handbook/` (7 docs), `DIRNAME/MANIFEST.md`, `DIRNAME/AGENTS.md`.
   - Creates the empty `DIRNAME/00-handbook/07-user-handbook/` group — yours, never managed.
-  - Hydrates `.claude/skills/*/SKILL.md`.
+  - Hydrates `.agents/skills/*/SKILL.md`.
   - Records every file it wrote in the marker's `installed.files`.
   - Runs initial MANIFEST regeneration.
 
@@ -835,4 +835,3 @@ Side effects:
   the directory. Use `--keep-index` to preserve the index as a sibling file.
 - **Rename a slug**: `rhidoc rename <target> new-slug` renames on disk. Then use
   `rhidoc rewrite old-ref=new-ref` to update references if needed (rename does not rewrite refs).
-

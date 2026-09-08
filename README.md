@@ -27,7 +27,7 @@ system libraries to install.
 ```sh
 just install              # build the `braincrawl` CLI into ~/.cargo/bin
 just systemd-install-cli  # install + start the shared server, no Web UI
-just skill-install        # install the braincrawl skill for Claude Code
+just skill-install        # install the braincrawl agent skill
 just systemd-status       # active + {"service":"braincrawl","status":"ok"}
 ```
 

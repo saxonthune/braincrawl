@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Syntax-check every shell script in the skill directory with `bash -n`.
 # Run manually, or wire into CI / a pre-commit hook:
-#   bash .claude/skills/todo-task/lint-syntax.sh
+#   bash .agents/skills/todo-task/lint-syntax.sh
 # Exits non-zero if any script fails to parse.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

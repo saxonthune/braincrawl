@@ -1,6 +1,6 @@
 ---
 title: Skill
-summary: 
+summary:
 tags: []
 deps: []
 ---
@@ -10,4 +10,3 @@ deps: []
 
 | Ref | Item | Kind | Summary | Tags |
 |-----|------|------|---------|------|
-

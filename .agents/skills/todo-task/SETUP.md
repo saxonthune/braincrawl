@@ -14,10 +14,10 @@ what to allow.
 {
   "permissions": {
     "allow": [
-      "Bash(bash .claude/skills/todo-task/list-drafts.sh:*)",
-      "Bash(bash .claude/skills/todo-task/list-pending.sh:*)",
-      "Bash(bash .claude/skills/todo-task/report.sh:*)",
-      "Bash(bash .claude/skills/todo-task/status.sh:*)"
+      "Bash(bash .agents/skills/todo-task/list-drafts.sh:*)",
+      "Bash(bash .agents/skills/todo-task/list-pending.sh:*)",
+      "Bash(bash .agents/skills/todo-task/report.sh:*)",
+      "Bash(bash .agents/skills/todo-task/status.sh:*)"
     ]
   }
 }
@@ -30,7 +30,7 @@ These three are strictly read-only (`report.sh` is the sole state-reader; `statu
 of the suggested allowlist. If you want one-keystroke archiving, add it yourself:
 
 ```jsonc
-"Bash(bash .claude/skills/todo-task/archive.sh:*)"
+"Bash(bash .agents/skills/todo-task/archive.sh:*)"
 ```
 
 All other scripts (`launch.sh`, `execute-plan.sh`, `execute-chain.sh`) are left unapproved so

@@ -8,7 +8,7 @@ deps: [doc02.01.01]
 # L3 Conventions
 
 One markdown file per item under the consolidated store. A worked example is
-`.claude/skills/braincrawl/l3-example.l3.md`; the rules:
+`.agents/skills/braincrawl/l3-example.l3.md`; the rules:
 
 - **Frontmatter** — one required field (`collection check` warns if missing): `doc:`, a kebab-case
   slug that is the filename stem and primary key.

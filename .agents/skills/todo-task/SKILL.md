@@ -17,11 +17,11 @@ Route on `$ARGUMENTS[0]`. Each non-trivial mode lives in a sibling file — **re
 | `/todo-task triage {slug}` | Refine a task into an executable spec | `triage.md` |
 | `/todo-task execute {slug}` | Launch headless agent to implement a plan | `execute.md` |
 
-All files are in `.claude/skills/todo-task/`. For the lifecycle model (derive-don't-store),
+All files are in `.agents/skills/todo-task/`. For the lifecycle model (derive-don't-store),
 manual merge-conflict cleanup, deferred-chain finalization, and the invariant rules, read
 `REFERENCE.md` — needed only when reasoning about state or cleaning up a merge by hand.
 
-First-time setup: if todo-task scripts prompt for approval, read `.claude/skills/todo-task/SETUP.md` for a suggested allowlist (kept separate to avoid context pollution).
+First-time setup: if todo-task scripts prompt for approval, read `.agents/skills/todo-task/SETUP.md` for a suggested allowlist (kept separate to avoid context pollution).
 
 ---
 
@@ -32,7 +32,7 @@ First-time setup: if todo-task scripts prompt for approval, read `.claude/skills
 Run the status script with `--archive` and display results:
 
 ```bash
-bash .claude/skills/todo-task/status.sh --archive
+bash .agents/skills/todo-task/status.sh --archive
 ```
 
 `--archive` renders the board AND auto-archives clean successes and completed chains in the same step (status delegates to `archive.sh`), printing an `- Archived {slug}` line for each. Make this the default — archiving successes is routine, derived cleanup, not a decision, so never ask whether to do it. Add `--force-failed` only if the user also wants failures archived.
@@ -58,7 +58,7 @@ Launch the live dashboard — a self-refreshing TUI showing running agents, rece
 Tell the user to run it in a separate terminal (it redraws on its own; press `q` or `Ctrl-C` to exit):
 
 ```bash
-bash .claude/skills/todo-task/monitor.sh
+bash .agents/skills/todo-task/monitor.sh
 ```
 
 ---

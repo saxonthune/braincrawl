@@ -606,11 +606,11 @@ phase_finalize() {
   if [[ "${VERIFIED:-false}" == "true" && "${MERGE_STATUS:-}" == "$SM_MERGE_CLEAN" ]]; then
     echo "Done! Plan '${PLAN_SLUG}' implemented and merged successfully."
   elif [[ "${VERIFIED:-false}" == "true" ]]; then
-    echo "Plan '${PLAN_SLUG}' verified; merge outcome '${MERGE_STATUS:-}'. See: bash .claude/skills/todo-task/status.sh --archive"
+    echo "Plan '${PLAN_SLUG}' verified; merge outcome '${MERGE_STATUS:-}'. See: bash .agents/skills/todo-task/status.sh --archive"
     [[ "${MERGE_STATUS:-}" == "$SM_MERGE_SKIPPED_FLAG" ]] && exit 0
     exit 1
   else
-    echo "Plan '${PLAN_SLUG}' needs manual attention. See: bash .claude/skills/todo-task/status.sh --archive"
+    echo "Plan '${PLAN_SLUG}' needs manual attention. See: bash .agents/skills/todo-task/status.sh --archive"
     exit 1
   fi
 }

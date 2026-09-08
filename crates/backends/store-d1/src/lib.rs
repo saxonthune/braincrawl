@@ -20,12 +20,12 @@ use async_trait::async_trait;
 use braincrawl_core::{
     traits::{MetadataStore, ArtifactStore},
     types::{
-        Alias, CanonicalId, DomainError, EdgeDir, EdgeView, ExportEdgeAssertion, ExportNode,
-        GraphStats, NodeKind, Artifact, ArtifactRole, WorkSearchFilter,
+        Alias, CanonicalId, DeletePlan, DomainError, EdgeDir, EdgeView, ExportEdgeAssertion,
+        ExportNode, GraphStats, NodeKind, Artifact, ArtifactRole, WorkSearchFilter,
     },
 };
 #[cfg(feature = "cloudflare")]
-use braincrawl_core::types::{DeletePlan, ExportAssertion, Tally};
+use braincrawl_core::types::{ExportAssertion, Tally};
 
 // ── shared helpers (no worker deps) ──────────────────────────────────────────
 
@@ -118,6 +118,12 @@ impl MetadataStore for D1Store {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
     async fn merge(&self, _survivor: &CanonicalId, _loser: &CanonicalId) -> Result<(), DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
+    async fn plan_delete_work(&self, _id: &CanonicalId) -> Result<DeletePlan, DomainError> {
+        Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
+    }
+    async fn delete_work_network(&self, _id: &CanonicalId) -> Result<Vec<String>, DomainError> {
         Err(DomainError::Backend("D1Store: cloudflare feature not enabled".into()))
     }
     async fn read_node(&self, _id: &CanonicalId) -> Result<Option<(NodeKind, Vec<(String, serde_json::Value, String)>, Vec<Alias>)>, DomainError> {

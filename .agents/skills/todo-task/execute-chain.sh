@@ -340,7 +340,7 @@ if [[ "$_probe_exit" -ne 0 ]]; then
     echo "Content conflict merging ${CHAIN_BRANCH} into ${REAL_TRUNK}."
     echo "Chain branch and worktree left intact. Resolve then:"
     echo "  git merge --squash ${CHAIN_BRANCH} && git commit -m 'feat: chain-${CHAIN_NAME} (agent)'"
-    echo "After completing the merge, finalize: bash .claude/skills/todo-task/finalize-chain.sh ${CHAIN_NAME}"
+    echo "After completing the merge, finalize: bash .agents/skills/todo-task/finalize-chain.sh ${CHAIN_NAME}"
     echo ""
     echo "See: ${CHAIN_WORKTREE}/.todo-tasks/results/${CHAIN_NAME}.conflict.md"
     exit 1
@@ -377,7 +377,7 @@ else
   echo "Merge deferred — a chain-touched file is uncommitted in the working tree."
   echo "Commit or stash the overlapping change, then:"
   echo "  git merge --squash ${CHAIN_BRANCH} && git commit -m 'feat: chain-${CHAIN_NAME} (agent)'"
-  echo "After completing the merge, finalize: bash .claude/skills/todo-task/finalize-chain.sh ${CHAIN_NAME}"
+  echo "After completing the merge, finalize: bash .agents/skills/todo-task/finalize-chain.sh ${CHAIN_NAME}"
   echo ""
   echo "See: ${CHAIN_WORKTREE}/.todo-tasks/results/${CHAIN_NAME}.conflict.md"
   exit 1

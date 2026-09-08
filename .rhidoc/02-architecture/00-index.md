@@ -1,6 +1,6 @@
 ---
 title: Architecture
-summary: 
+summary:
 tags: []
 deps: []
 ---

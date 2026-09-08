@@ -329,7 +329,7 @@ l3_repo = "~/code/github/saxonthune/braincrawl-l3"   # a dedicated git repo is r
 
 The full contract — required frontmatter, the node grammar, and the reference-never-copy
 invariant — is spec'd in `.rhidoc/02-architecture/01-core/04-l3-conventions.md`
-(`doc02.01.04`), with a worked example at `.claude/skills/braincrawl/l3-example.l3.md`. Read
+(`doc02.01.04`), with a worked example at `.agents/skills/braincrawl/l3-example.l3.md`. Read
 one before writing or editing an L3 doc. The cheat-sheet below is enough for routine authoring.
 
 **Frontmatter** — two required fields: `doc:` (kebab-case slug, filename stem, primary key)

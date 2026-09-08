@@ -8,7 +8,7 @@ Refine a pending task from a rough idea into an executable spec that a headless 
 
 If no slug provided, list untriaged drafts (the inbox):
 ```bash
-bash .claude/skills/todo-task/list-drafts.sh
+bash .agents/skills/todo-task/list-drafts.sh
 ```
 
 Present tasks to the user with `AskUserQuestion`:

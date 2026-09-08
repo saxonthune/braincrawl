@@ -1,28 +1,37 @@
-## Usage
+# braincrawl Web UI
 
-```bash
-$ npm install # or pnpm install or yarn install
+The Web UI is a Solid application served by the braincrawl server at `/web`.
+The workspace uses Vite+ (`vp`) for package management, development, checks, and
+tests.
+
+## Development
+
+From this directory:
+
+```sh
+vp install
+vp dev
 ```
 
-### Learn more on the [Solid Website](https://solidjs.com) and come chat with us on our [Discord](https://discord.com/invite/solidjs)
+Open <http://localhost:5173> while the development server is running. The app
+expects the braincrawl API at the configured origin; the native server serves
+the same UI from `/web` in production.
 
-## Available Scripts
+## Checks and tests
 
-In the project directory, you can run:
+```sh
+vp check
+vp test
+```
 
-### `npm run dev`
+From the repository root, the equivalent recipes are `just web-check` and
+`just web-test`.
 
-Runs the app in the development mode.<br>
-Open [http://localhost:5173](http://localhost:5173) to view it in the browser.
+## Production build
 
-### `npm run build`
+```sh
+vp build
+```
 
-Builds the app for production to the `dist` folder.<br>
-It correctly bundles Solid in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
-
-## Deployment
-
-Learn more about deploying your application with the [documentations](https://vite.dev/guide/static-deploy.html)
+The output is written to `dist/`. The repository-level `just web-build` recipe
+builds this directory for the native server and deployment workflows.

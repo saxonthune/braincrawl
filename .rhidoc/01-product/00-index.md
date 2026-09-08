@@ -1,6 +1,6 @@
 ---
 title: Product
-summary: 
+summary:
 tags: []
 deps: []
 ---

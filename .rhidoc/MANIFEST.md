@@ -16,18 +16,6 @@ Machine-readable index for AI navigation. Read this file first, then open only t
 
 Orphaned attachments (non-md files with no corresponding root .md) are reported as warnings on stderr during regeneration and do not appear in this table.
 
-## 00-codex — Codex
-
-| Ref | File | Summary | Tags | Deps | Refs | Attachments |
-|-----|------|---------|------|------|------|-------------|
-
-| doc00.00 | `00-index.md` |  |  | — | — | — |
-| doc00.01 | `01-about.md` | Why this workspace exists, how to read it, two-sources-of-truth theory | docs, meta, theory | — | — | — |
-| doc00.02 | `02-maintenance.md` | Doc philosophy — docs convert volatile source signals into stable intent; declarative intent, banned patterns, prefer facts to prose, author freely then structure separately, when to grow detail | docs, maintenance, philosophy | — | — | — |
-| doc00.03 | `03-conventions.md` | Cross-reference syntax, frontmatter schema, file naming, writing style | docs, conventions | — | — | — |
-| doc00.04 | `04-plain-language.md` | The plain-language standard for workspace prose — named standards, contrastive rules for jargon, word senses, parts of speech, prepositions, and sentence shape; the glossary as controlled vocabulary | docs, plain-language, style, vocabulary, glossary | — | — | — |
-| doc00.05 | `05-controlled-vocabulary.md` | The workspace glossary as a controlled vocabulary — entry kinds and sentence patterns from fact-based modeling (ORM), a worked example, and the naming rule | glossary, vocabulary, facts, subtypes, naming, docs | — | — | — |
-
 ## 00-handbook — Handbook
 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |

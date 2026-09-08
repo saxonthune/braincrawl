@@ -1,6 +1,6 @@
 ---
 title: Core
-summary: 
+summary:
 tags: []
 deps: []
 ---
