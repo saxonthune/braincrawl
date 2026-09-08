@@ -7,6 +7,11 @@ per file is: a canonical Catalog record, the bytes stored as `fulltext`, a
 renamed source file. The shared machinery (server, CLI, layers) is in
 `SKILL.md`; read that first.
 
+This is a **PDF-import** workflow. Begin with the local file and its title page. A Research
+Collection survey is optional and belongs after import unless the user explicitly asks for the
+PDF to be integrated into an existing research line. The Catalog identity check in §2 is still
+required because it prevents duplicate work records before bytes are stored.
+
 ## The books-articles archive (source and destination)
 
 The human PDF archive lives at `~/Documents/books-articles/`. Its `drop-zone/`

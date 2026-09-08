@@ -1,12 +1,21 @@
 # Reading guide sessions
 
-Read `SKILL.md` first — it holds the three layers, the CLI surface, and the Research Document
-node grammar. This file covers only what a reading-guide session does differently.
+Read `SKILL.md` first — it holds the three layers, the CLI surface, the Research Document
+node grammar, and the workflow router. This file covers what a source-centered reading session
+does differently.
 
 A reading-guide session has one work at its centre. The user is reading it, or means to, and
 asks questions about specific passages. You answer from the work's own text, not from the
 Catalog. The Research Document that comes out is a record of *the user's questions and what
 the text said in reply* — it is not a summary of the book.
+
+## Route
+
+This is a **source-centered reading** workflow. Start with the work's Library artifact or the
+supplied source file, then use the page and text tools below. Do not begin with a Research
+Collection survey unless the user asks you to connect the reading to an existing collection or
+research line. If that handoff happens, state the new workflow before reading L3 and use
+`collection index` before relying on cross-document links.
 
 ## Get the work into the Library first
 

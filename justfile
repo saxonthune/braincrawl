@@ -16,7 +16,10 @@ upgrade:
     set -euo pipefail
     braincrawl doctor || true
     cargo build --release --bin braincrawl-server --bin braincrawl
-    cargo install --path apps/cli --force
+    # Keep the installed CLI on the exact dependency graph built above. Without
+    # --locked, `cargo install` ignores the workspace lockfile and may select a
+    # different (and potentially broken) transitive release.
+    cargo install --path apps/cli --force --locked
     unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/braincrawl-server.service"
     if [ -f "$unit" ] && grep -q BRAINCRAWL_WEB_ROOT "$unit"; then
         just web-build
@@ -111,7 +114,7 @@ systemd-uninstall:
 # binary. Re-run after changing the CLI to push a new build. (For hands-off dev,
 # `just watch` rebuilds on save instead; `just install` is also how you undo it.)
 install:
-    cargo install --path apps/cli --force
+    cargo install --path apps/cli --force --locked
 
 # A symlink, not a copy, so the skill a session reads is always this checkout's —
 # `git pull` is then the only update step.

@@ -1,6 +1,6 @@
 ---
 name: braincrawl
-description: "Drive the braincrawl research graph — run the local server, gather catalog entries with the CLI (OpenAlex search → follow citations → neighborhood), and maintain per-domain Research Collections as annotation-over-reference Research Documents in the consolidated `braincrawl collection` store. Use when doing accumulating, inventory-first literature research (e.g. the Mesopotamia case study) instead of one-shot deep research."
+description: "Route braincrawl research sessions by the user's question — reuse the Research Collection, map a field, test a hypothesis, read a source, import a PDF, or verify web evidence — while using the shared Library, Catalog, and Research Collection as needed."
 ---
 
 # braincrawl
@@ -10,17 +10,21 @@ braincrawl builds a **reusable academic knowledge graph** and separates *gatheri
 cheap, repeatable, any lens you choose). For the why, see `.rhidoc/01-product/02-mental-model.md`
 (the agent's role) and `.rhidoc/01-product/01-glossary.md` (the three layers, named).
 
-## Routing — pick the session flavor
+## Routing — choose the workflow for the question
 
-Read this file for the shared machinery (the three layers, the CLI, the Research Document
-grammar). Then read the file for the kind of session you are in. If none matches, this file
-alone is the default.
+Read this file for the shared machinery (the three layers, the CLI, and the Research Document
+grammar). Choose the workflow from the user's latest request and the relevant conversation
+context. Read a companion file only when that workflow calls for it. A session may hand off from
+one workflow to another when the question changes or a new evidence gap appears.
 
-| Session flavor | Read | When |
+| Workflow | Read | Start here when |
 |---|---|---|
-| **Gathering** (default) | this file | Building the Catalog against a topic — search, follow citations, rank canon, add works to a Research Document. |
-| **Reading guide** | `reading-guide.md` | The user is reading one work directly and asking questions about specific passages. Answers come from the work's own text, cited to a page. |
-| **PDF import** | `pdf-import.md` | Bringing local PDF files into the Library — identify the work, land its canonical Catalog record, store and paginate the bytes, anchor folios, rename the source file. |
+| **Existing collection** | this file | Continuing a research line, asking what the accumulated Research Collection already says, or updating a known Research Document. |
+| **Field mapping** | this file | Mapping a territory, finding the main literature, or inspecting citation coverage and clusters. |
+| **Hypothesis or rough model** | this file and, when web evidence is needed, `web-research.md` | Testing whether a proposal appears in prior research, overlaps with an existing concept, or deserves a research network. |
+| **Source-centered reading** | `reading-guide.md` | Reading one work directly and answering questions about its passages. |
+| **PDF import** | `pdf-import.md` | Bringing local PDF files into the Library and making them readable and citable. |
+| **Web verification** | `web-research.md` | Checking a supplied URL, a current claim, or a source the Catalog does not represent well. |
 
 **Your role in a session.** You are a signal converter, and you work best as the medium
 between sources of information. In a braincrawl session your job is a few general behaviors.
@@ -54,24 +58,48 @@ back up from the store at read time so a doc never drifts from the graph.
 > root, which the local server also serves over `/api/l3/docs`. Editing files is store-local
 > work; carrying docs to another store is `store sync`.
 
-## 0. Read what you already hold before pulling anything
+## 0. Choose the first evidence source
 
-**Provider pulls are the last resort, not the first move.** The Research Collection is the
-accumulated point of all prior sessions — start every question there. When the user asks
-about a topic (especially when they say "find research on X" or "what do we know about X"),
-the first action is to **survey and read the existing L3 docs**, not to pull from OpenAlex:
+Do not use one fixed read order for every question. Before taking research actions, state the
+route in one line and name the first evidence source, for example:
+
+> Workflow: hypothesis check. I will search prior art and source pages first, then compare the
+> result with the existing collection.
+
+Use these first moves:
+
+- **Existing collection** — refresh and read the relevant Research Documents, then use the
+  Catalog or Library only for an open question.
+- **Field mapping** — search the Catalog/OpenAlex and follow citation edges first; use L3 to
+  record the campaign context, selections, and gaps.
+- **Hypothesis or rough model** — search prior art and read abstracts or source pages first;
+  consult L3 after the proposal has been compared with the literature.
+- **Source-centered reading** — read the work's Library artifact or supplied PDF first; follow
+  `reading-guide.md`.
+- **PDF import** — inspect the local PDF first; follow `pdf-import.md` to resolve identity and
+  derive artifacts.
+- **Web verification** — use web search or WebFetch first; follow `web-research.md`.
+
+The existing-collection route remains the right route for "what do we already know?", "continue
+this research document", and similar requests. It is a route choice, not a prerequisite for
+every provider or Library action.
+
+At the end of a research turn, report what the selected evidence established, what remains open,
+and whether you wrote to the Research Collection.
+
+When a route consults the Research Collection, use its local index and document paths:
 
 ```bash
-braincrawl collection index                # FIRST invocation each session: refresh the manifest
+braincrawl collection index                # refresh before reading INDEX.md or cross-doc links
 braincrawl collection list --text          # scan slugs + titles for on-topic docs
 braincrawl collection path <doc>           # then Read the matching file(s) directly
 ```
 
-Run `collection index` once at the **start** of a braincrawl session, before reading `INDEX.md`.
+Run `collection index` before reading `INDEX.md` when the route uses cross-document retrieval.
 The store is written directly (the agent edits `.l3.md` files, so the manifest goes stale
-between sessions); regenerating first makes the Cross-references and Work index reflect
-what's actually on disk. It's deterministic and cheap — skip it only if you've already run
-it this session.
+between sessions); regenerating then makes the Cross-references and Work index reflect what is
+actually on disk. A source-centered, PDF-import, or web-first route can skip this step until it
+hands off to the Research Collection.
 
 For cross-doc retrieval, read `INDEX.md` at the store root (regenerated by `collection index`).
 Beyond the Documents table it carries two harvested indexes: **Cross-references** (the
@@ -83,12 +111,11 @@ than grepping. A row naming two docs is a real cross-doc overlap. The reference 
 handle for the work's canonical UUID, not the UUID itself, so a work named by two different
 aliases can still split across rows — keep one reference form per work.
 
-A single L3 doc routinely carries the whole answer — its Questions frontier, Findings, and
-domain edges are the distilled result of an earlier gathering pass. Only after reading the
-relevant docs and finding a genuine gap (a question the held docs don't reach) do you turn
-to provider pulls (§3). State the gap explicitly before pulling: name the docs you read and
-the part of the question they left open. §4 lists the other reads available once you have.
-Don't pull when the answer is already on disk.
+A single L3 doc can carry the whole answer — its Questions frontier, Findings, and domain edges
+are the distilled result of an earlier gathering pass. On the existing-collection route, state
+the gap explicitly before pulling: name the docs you read and the part of the question they left
+open. On the other routes, the first evidence may be a Catalog query, a Library artifact, a PDF,
+or a web source. Do not repeat a read when the selected evidence already answers the question.
 
 ## 1. Use the one shared server (don't start your own)
 
@@ -97,8 +124,9 @@ There is **one** braincrawl server per machine. It owns the accumulating Library
 repo points at it so gathered catalog entries compound — a second project launching its own binary would
 fork the shared store into a per-repo DB and defeat the whole accumulation thesis.
 
-**First thing, every session: run `braincrawl doctor`.** It reports whether the server is
-up, which build it is running, and whether that build matches the CLI:
+When a route needs the CLI, run `braincrawl doctor` as an operational preflight. It reports
+whether the server is up, which build it is running, and whether that build matches the CLI;
+it does not choose the research workflow or evidence source:
 
 ```bash
 braincrawl doctor
@@ -176,9 +204,10 @@ hold a lookup result (in a file, a variable, another tool) before deciding to la
 
 ## 3. Get more catalog entries (the funnel = graph traversal)
 
-This is the inventory phase. Do not verify or kill anything here — just gather.
-**Precondition: you reach this section only after §0 — the existing L3 docs don't cover the
-question, and you've named the gap.** If they do cover it, stop — the docs were the answer.
+This is the inventory phase for the **field-mapping** workflow. Do not verify or kill anything
+here — just gather. An existing-collection route may arrive here after stating its gap; a
+hypothesis or web-first route may arrive here after an initial source search. If the selected
+route's evidence already answers the question, stop gathering.
 
 ```bash
 # First search — find heavily cited works (you don't know the starting work entering a new field)
@@ -220,15 +249,15 @@ institutions, topics, keywords, publishers, funders.
 ## 4. Read by progressive disclosure
 
 The reads below differ in how much they cost and how much they tell you.
-**Answer from what the store already holds, and before each further read, say what you
-consulted and what it left open.** Don't fetch fulltext for a paper whose title already
+**Answer from the evidence source selected for the workflow, and before each handoff say what
+you consulted and what it left open.** Don't fetch fulltext for a paper whose title already
 disqualifies it; don't fetch 40 abstracts when the in-degree ranking already names the three
-that matter. Go straight to the read the question needs: these are options, and any one of
-them can be the first and only one a question requires.
+that matter. Go straight to the read the question needs: these are options, and any one of them
+can be the first and only one a question requires.
 
 - **Your L3 Research Collection** — the docs you already wrote (`collection list` → Read the
-  match). Cheapest by far and usually enough: a doc's Findings + domain edges are a prior
-  gathering phase already distilled. Exhaust this before any provider call (§0).
+  match). Cheapest by far and usually enough for the existing-collection workflow: a doc's
+  Findings + domain edges are a prior gathering phase already distilled.
 - **Catalog** — titles, authors, in-degree, citation edges. `catalog neighborhood`,
   `openalex search/find`, `cited-by`/`refs`. Often a title + who-cites-whom is enough to
   place a work or rule it out. Store-local (no provider call) once gathered.
@@ -255,6 +284,10 @@ them can be the first and only one a question requires.
   a finding actually hangs on. The Library holds fulltext "on demand" — same `library fetch`/
   `library put` + `library extract-text` + `library get --role text` path as the condensed
   summary; just read more of the extracted text.
+- **Web sources** — use search or WebFetch first for a web-verification route, for a supplied
+  URL, or when provider metadata is absent or stale. Treat the page as source evidence; use
+  `library fetch` when the goal is to acquire an open artifact, and use `catalog` when the goal
+  is to land a durable work identity.
 
 Worked loop: a temple-formation question found *nothing* in the held docs or the catalog →
 ran `openalex search "origins of the temple economy…"` → one `--abstract` read of that work
@@ -359,21 +392,19 @@ braincrawl collection reading-list [--json]    # every node with a reading prope
 write the file yourself: get the path, then use your editor/Write tool on it. braincrawl
 owns *where* the doc lives and the index; you own the bytes.
 
-Maintenance loop, each research session:
+Maintenance loop, when a route produces a Research Collection result:
 
-1. **Find the doc.** `braincrawl collection path <doc>` (or `collection new <doc>` the first time) → get
-   its absolute path, then read/edit that file.
-2. **Ask the Research Collection first.** Read your selection set. Can the open question be answered from ids
-   you already hold? `braincrawl catalog neighborhood openalex:<id> …` and `openalex get
-   <id> --abstract` read them back from the store — no re-fetch.
-3. **If not, gather more** (§3): find a starting work and follow its citations. New works land in the
-   shared store automatically (push-on-by-default).
+1. **Choose the route first.** Follow the route's first evidence source and record the open gap.
+2. **Find the doc when you need to record.** `braincrawl collection path <doc>` (or
+   `collection new <doc>` the first time) → get its absolute path, then read/edit that file.
+3. **Use the store to continue the selected route.** For example, read a held work from the
+   Catalog/Library, gather citations, or hand off from a web source to a stored artifact.
 4. **Reference the selected works in your Research Document.** Add the works that matter — by their
    `openalex:`/`doi:` reference — to your selection set with tags + a one-line note; add domain edges (`supports`/`contradicts`/`builds-on`)
    linked to your questions. Keep notes terse — they annotate, they don't restate.
 5. **Read and judge at query time, not now.** Verification is a *lens you choose later*, never an
    up-front kill-gate. Gathering stays inclusive; reading and judging happens when you query.
-6. **Reindex** (`braincrawl collection index`) if you want `INDEX.md` refreshed. The store is plain
+6. **Reindex** (`braincrawl collection index`) after edits when you want `INDEX.md` refreshed. The store is plain
    markdown under git — commit it like any repo.
 
 ### Rules that keep the Research Collection honest
