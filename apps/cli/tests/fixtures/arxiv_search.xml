@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <link href="http://arxiv.org/api/query?search_query=all%3Aconstrained+decoding&amp;start=0&amp;max_results=2" rel="self" type="application/atom+xml"/>
+  <title type="html">ArXiv Query: search_query=all:constrained decoding</title>
+  <id>http://arxiv.org/api/query?search_query=all:constrained+decoding&amp;start=0&amp;max_results=2</id>
+  <updated>2026-06-25T00:00:00-04:00</updated>
+  <opensearch:totalResults>42</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2301.07041v2</id>
+    <updated>2023-06-15T00:00:00Z</updated>
+    <published>2023-01-17T00:00:00Z</published>
+    <title>Constrained Decoding for Cross-lingual Label Projection</title>
+    <summary>
+      We study constrained decoding methods for cross-lingual label projection.
+      Our approach leverages structured prediction constraints to ensure valid
+      output sequences while maintaining high accuracy across languages.
+    </summary>
+    <author><name>Alice Researcher</name></author>
+    <author><name>Bob Scientist</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <arxiv:doi xmlns:arxiv="http://arxiv.org/schemas/atom">10.18653/v1/2023.acl-long.108</arxiv:doi>
+    <link title="pdf" href="https://arxiv.org/pdf/2301.07041v2" rel="related" type="application/pdf"/>
+    <link href="http://arxiv.org/abs/2301.07041v2" rel="alternate" type="text/html"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2206.06336v1</id>
+    <updated>2022-06-13T00:00:00Z</updated>
+    <published>2022-06-13T00:00:00Z</published>
+    <title>Efficient Guided Generation for Large Language Models</title>
+    <summary>
+      We present an efficient algorithm for guided generation (constrained decoding)
+      with large language models using finite-state automata.
+    </summary>
+    <author><name>Carol Engineer</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <link title="pdf" href="https://arxiv.org/pdf/2206.06336v1" rel="related" type="application/pdf"/>
+    <link href="http://arxiv.org/abs/2206.06336v1" rel="alternate" type="text/html"/>
+  </entry>
+</feed>

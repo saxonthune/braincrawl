@@ -1,0 +1,253 @@
+use sha2::{Digest, Sha256};
+
+/// The tenant a token resolves to (L3 isolation key; unused downstream this task).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tenant(pub String);
+
+/// Hex-encoded SHA-256 of the raw token. The raw token is never persisted.
+pub fn hash_token(token: &str) -> String {
+    let digest = Sha256::digest(token.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Parse `Authorization: Bearer <token>` → the token, or None if absent/malformed.
+pub fn parse_bearer(header: Option<&str>) -> Option<&str> {
+    let h = header?;
+    h.strip_prefix("Bearer ")
+}
+
+/// Resolution result a runtime maps to a status code.
+pub enum AuthOutcome {
+    /// → 200: token matched the allowlist.
+    Authenticated(Tenant),
+    /// → 401: missing or malformed Authorization header.
+    Unauthenticated,
+    /// → 403: well-formed bearer token not found in the allowlist.
+    Forbidden,
+}
+
+/// Allowlist abstraction. Shaped so a KV-backed impl is a later drop-in.
+pub trait Allowlist {
+    fn lookup(&self, token_hash: &str) -> Option<Tenant>;
+}
+
+/// Single shared secret → one fixed tenant. Stores only the hash of the secret.
+pub struct SharedSecret {
+    expected_hash: String,
+    tenant: Tenant,
+}
+
+impl SharedSecret {
+    /// Hashes `secret` on construction; the raw secret is not retained.
+    pub fn new(secret: &str, tenant: &str) -> Self {
+        Self {
+            expected_hash: hash_token(secret),
+            tenant: Tenant(tenant.to_string()),
+        }
+    }
+}
+
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    // XOR-accumulate without short-circuiting to avoid timing leaks.
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+impl Allowlist for SharedSecret {
+    fn lookup(&self, token_hash: &str) -> Option<Tenant> {
+        if ct_eq(self.expected_hash.as_bytes(), token_hash.as_bytes()) {
+            Some(self.tenant.clone())
+        } else {
+            None
+        }
+    }
+}
+
+/// An `AUTH_KV` entry: `SHA-256(token) → KvEntry` (doc02.05).
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct KvEntry {
+    pub tenant: String,
+    pub status: String,
+}
+
+impl KvEntry {
+    pub fn is_active(&self) -> bool {
+        self.status == "active"
+    }
+}
+
+/// Parse a KV value into a `KvEntry`. `None` on malformed JSON.
+pub fn parse_kv_entry(json: &str) -> Option<KvEntry> {
+    serde_json::from_str(json).ok()
+}
+
+/// Trim + lowercase, so `" User@Example.com "` and `user@example.com` compare equal.
+pub fn normalize_email(raw: &str) -> String {
+    raw.trim().to_lowercase()
+}
+
+/// Whether `email` (after normalizing) exact-matches an entry in the
+/// comma-separated `allowlist_csv` (each entry also normalized).
+pub fn email_allowed(allowlist_csv: &str, email: &str) -> bool {
+    let target = normalize_email(email);
+    allowlist_csv
+        .split(',')
+        .map(normalize_email)
+        .any(|entry| !entry.is_empty() && entry == target)
+}
+
+/// An `otp/<sha256(email)>` KV entry: the hash of the outstanding code and
+/// how many wrong guesses have been made against it.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct OtpRecord {
+    pub code_hash: String,
+    pub attempts: u32,
+}
+
+impl OtpRecord {
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("OtpRecord serialization is infallible")
+    }
+
+    pub fn parse(json: &str) -> Option<Self> {
+        serde_json::from_str(json).ok()
+    }
+}
+
+/// Decide an outcome from the raw Authorization header value.
+pub fn authorize(allowlist: &dyn Allowlist, header: Option<&str>) -> AuthOutcome {
+    let token = match parse_bearer(header) {
+        Some(t) => t,
+        None => return AuthOutcome::Unauthenticated,
+    };
+    let hash = hash_token(token);
+    match allowlist.lookup(&hash) {
+        Some(tenant) => AuthOutcome::Authenticated(tenant),
+        None => AuthOutcome::Forbidden,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_bearer_happy() {
+        assert_eq!(parse_bearer(Some("Bearer mytoken")), Some("mytoken"));
+    }
+
+    #[test]
+    fn parse_bearer_empty() {
+        assert_eq!(parse_bearer(None), None);
+    }
+
+    #[test]
+    fn parse_bearer_wrong_scheme() {
+        assert_eq!(parse_bearer(Some("Basic abc")), None);
+    }
+
+    #[test]
+    fn parse_bearer_bare_token_no_space() {
+        assert_eq!(parse_bearer(Some("Bearer")), None);
+    }
+
+    #[test]
+    fn hash_token_is_stable_and_64_hex_chars() {
+        let h = hash_token("hello");
+        assert_eq!(h.len(), 64);
+        assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
+        // stability: SHA-256("hello") is deterministic
+        assert_eq!(hash_token("hello"), h);
+        // different input → different hash
+        assert_ne!(hash_token("world"), h);
+    }
+
+    #[test]
+    fn authorize_authenticated() {
+        let al = SharedSecret::new("secret", "default");
+        match authorize(&al, Some("Bearer secret")) {
+            AuthOutcome::Authenticated(t) => assert_eq!(t.0, "default"),
+            _ => panic!("expected Authenticated"),
+        }
+    }
+
+    #[test]
+    fn authorize_unauthenticated_no_header() {
+        let al = SharedSecret::new("secret", "default");
+        assert!(matches!(authorize(&al, None), AuthOutcome::Unauthenticated));
+    }
+
+    #[test]
+    fn authorize_unauthenticated_malformed() {
+        let al = SharedSecret::new("secret", "default");
+        assert!(matches!(
+            authorize(&al, Some("Basic xyz")),
+            AuthOutcome::Unauthenticated
+        ));
+    }
+
+    #[test]
+    fn authorize_forbidden_wrong_token() {
+        let al = SharedSecret::new("secret", "default");
+        assert!(matches!(
+            authorize(&al, Some("Bearer wrongtoken")),
+            AuthOutcome::Forbidden
+        ));
+    }
+
+    #[test]
+    fn parse_kv_entry_active() {
+        let entry = parse_kv_entry(r#"{"tenant":"default","status":"active"}"#).unwrap();
+        assert_eq!(entry.tenant, "default");
+        assert!(entry.is_active());
+    }
+
+    #[test]
+    fn parse_kv_entry_revoked_rejected_by_is_active() {
+        let entry = parse_kv_entry(r#"{"tenant":"default","status":"revoked"}"#).unwrap();
+        assert!(!entry.is_active());
+    }
+
+    #[test]
+    fn parse_kv_entry_malformed_json() {
+        assert!(parse_kv_entry("not json").is_none());
+    }
+
+    #[test]
+    fn normalize_email_trims_and_lowercases() {
+        assert_eq!(normalize_email("  User@Example.com  "), "user@example.com");
+    }
+
+    #[test]
+    fn email_allowed_case_and_space_insensitive() {
+        let csv = " Alice@Example.com , bob@example.com";
+        assert!(email_allowed(csv, "alice@example.com"));
+        assert!(email_allowed(csv, "  BOB@EXAMPLE.COM  "));
+        assert!(!email_allowed(csv, "carol@example.com"));
+    }
+
+    #[test]
+    fn email_allowed_empty_csv_matches_nothing() {
+        assert!(!email_allowed("", "alice@example.com"));
+    }
+
+    #[test]
+    fn otp_record_round_trip() {
+        let rec = OtpRecord { code_hash: hash_token("123456"), attempts: 2 };
+        let json = rec.to_json();
+        let parsed = OtpRecord::parse(&json).unwrap();
+        assert_eq!(parsed.code_hash, rec.code_hash);
+        assert_eq!(parsed.attempts, 2);
+    }
+
+    #[test]
+    fn otp_record_parse_malformed() {
+        assert!(OtpRecord::parse("not json").is_none());
+    }
+}

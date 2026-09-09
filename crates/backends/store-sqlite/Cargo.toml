@@ -1,0 +1,20 @@
+[package]
+name = "braincrawl-store-sqlite"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+braincrawl-core = { workspace = true }
+braincrawl-sql = { path = "../../sql" }
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+braincrawl-blob-fs = { path = "../blob-fs" }
+braincrawl-coord-local = { path = "../coord-local" }
+braincrawl-resolver-mem = { path = "../resolver-mem" }
+tokio = { version = "1", features = ["rt", "macros"] }
+tempfile = "3"

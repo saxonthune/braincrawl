@@ -1,0 +1,82 @@
+---
+title: Glossary
+summary: Plain-language names for braincrawl's three layers (Library, Catalog, Research Collection), written as ORM-style verbalized facts; defines topic coverage.
+tags: [glossary, vocabulary, terms, product, facts, coverage]
+deps: []
+---
+# Glossary
+This glossary is a **controlled vocabulary**: one preferred term per concept, kept precise so it does not drift. Adhere to it — use the term it defines rather than a coined synonym — and contribute to it: when you need a concept it does not yet name, propose an addition here instead of inventing a term in passing.
+
+**Naming new concepts.** Names are load-bearing — every doc, type, and session inherits them — so the user chooses them. When work reaches a concept this glossary does not name, the agent lays out the naming decision (candidates, collisions with existing entries, tradeoffs) and the user commits the term here before anything fans out through it. Prefer combining existing terms over inventing a new one; a candidate must be distinct from every existing entry and specific enough to stand alone out of context. A good concept name is like a good variable name: it says what the thing is, reads clearly out of context, and does not restate its type or the obvious.
+
+**Naming CLI flags and commands.** A flag or command name should read like a good variable name: it explains what it does when set. Prefer that over a clever or abstract label. The one exception is clear prior art — an established CLI name a user already expects and would reuse (`--force`, `--dry-run`, `--verbose`); adopt the convention rather than reinvent it. Example: for the rule that cuts a text artifact into pages, `--separator` says what it sets, so it is the good name; `--pages-by` is a poor one.
+## Facts — the grammar
+This glossary's relationships are written as **verbalized facts** (ORM-style): one affirmable subject–verb–object(–…) sentence per relationship, with an optional `predicate(role, role)` shadow where a fact wants to be linted or queried. Four kinds, one grammar:
+
+- **Entity** — a term. *Catalog is-a shared index over Library.*
+- **Split** — a partition by a criterion. *Knowledge splits into shared and owned, by ownership.*
+- **Relation** — an n-ary directional fact. `pushes-to(provider, braincrawl-store)`, `pulls-from(provider, source)`.
+- **Derived** — a fact computed from other facts. `coverage(topic) := count{ artifact : relates-to(artifact, topic) }`.
+
+Facts are n-ary and native: a fact may bind two, three, or four roles without reifying into triples. A property a fact can compute is never stored as a standing status — that copy would drift; state the base fact and derive the quantity at read time. Not every entry is written as a fact.
+
+## The three layers
+braincrawl separates knowledge built once and shared — the first two layers — from a consumer's own research, the third.
+
+- **Library** (Layer 1) — the store of works keyed by a **canonical id** (a UUID), holding each work's artifacts.
+- **Catalog** (Layer 2) — the shared index over the library: every work's metadata, which artifacts are held and where, and the citation links between works.
+- **Research Collection** (Layer 3) — a consumer's own research, made of **Research Documents** that point at works by their canonical id in the catalog rather than copying them. A Research Document is the singular artifact: questions, selected works, findings, and links for one line of work.
+- **braincrawl store** — refers to everything: L1, L2, L3.
+- **braincrawl** (as a definite noun) — a user's own instance: their three stores (L1, L2, L3) together with any customization on top.
+- **L1 / L2 / L3** — shorthand for Library, Catalog, Research Documents.
+- **Layer shorthand as naming** — when a concept is directly attached to one of the layers, name it with that layer's L* shorthand rather than spelling the layer out. A work as a catalog node is an **L2 work**; a stored artifact is an **L1 artifact**.
+## The catalog: nodes and edges
+- The catalog stores **nodes** — most commonly articles, books, and authors — and the **edges** between them.
+- The catalog is made of **catalog entries**, which form the nodes of the graph.
+- A **citation** is the primary edge between catalog entries — one work citing another.
+- A **canonical id** is a work's single, braincrawl-generated identity — a **UUID**, opaque and provider-neutral. It is *the* identity of a work across every layer: L1 keys artifacts by it, L2 keys nodes by it, L3 references works by it. No external scheme — not even an OpenAlex `W…` id — is ever the canonical id. (`CanonicalId` in the code is this UUID.)
+- An **identifier** (or **alias**) is one external identification of a work — a DOI, ISBN, OCLC, PMID, or OpenAlex id — that braincrawl maps to a canonical id. An alias is a `(scheme, value)` pair: the **scheme** names which external identification system the value belongs to (`doi`, `isbn`, `oclc`, `pmid`, `openalex`), and the **value** is the identifier within it (`10.1000/xyz`, `W2954913396`). A scheme is one fixed format, not a set of names — each scheme carries its own syntax — so `scheme:value` reads as a compact identifier (`openalex:W2954913396`). braincrawl routes every alias naming the same work to one canonical id (`doc02.01.02`).
+- **Identity** is its own concern — resolving every alias to one canonical id. Both the Library and the Catalog depend on it; neither owns it.
+## Topics and coverage
+- A **topic** (or question) is what works are *about* — an OpenAlex concept/topic, or a consumer's research question.
+- `relates-to(artifact, topic)` — an artifact bears on a topic.
+- `has-entries-on(catalog, topic)` — the catalog holds entries on a topic, or it does not.
+- **Coverage** — `coverage(topic) := count{ artifact : relates-to(artifact, topic) }`. Coverage is a *number* — the count of artifacts related to a topic — not a state. "Thin" or "strong" coverage merely describes that number. `has-entries-on` and `coverage` are looked up from the store at read time, never written into a Research Document (where they would drift — see the L3 reference-never-copy invariant).
+## Graph traversal
+- **Fetching citations** — following a work's citation edges to pull related works into the Catalog: forward with `cited-by`, backward with `refs`. The plain names for the action are **fetch citations** and **search citations**; the opening lookup for a heavily cited work is a **search**. There is no other name for it — not "snowball", "seed", or "coverage push".
+- **Heavily cited work** — a work with high in-degree, the plain name for an important node. Say **work** or **heavily cited work**, not "hub" or "keystone".
+- **Citation scatter** — a heavily-cited source is referenced by works across many unrelated domains, so following its forward citations (`cited-by`) by raw influence pulls in off-topic works and marches out of the field. It is a single-hop property of an influential node, not a gradual wandering — and not to be called **drift**, which in braincrawl means a copy diverging from its source of truth.
+- **Topic-gating** — the control for scatter: filter forward expansion by an OpenAlex concept/topic so the citing works stay in-domain. Rank canon by in-degree *within* the topic-gated subgraph, not by global citation count.
+## The library: artifacts
+An **artifact** is a stored piece of content attached to a catalog entry — an abstract, a fulltext, an LLM-summary projection, or another asset.
+
+- An artifact's **role** says what the content is: `abstract`, `fulltext`, or a custom slug such as `map`. Its **mime** says how the bytes are encoded — `application/pdf`, `image/png`. The two are independent.
+- `derived_from(artifact, artifact)` — an artifact says which other artifact it was derived from. Role and `derived_from` are separate facts: role names the content, `derived_from` names its lineage.
+- A work may hold more than one root artifact — two editions of the same book, for instance — each with its own derivations. Role alone does not distinguish them; `derived_from` does.
+- A **folio** is the printed page number as it appears on the page, recorded per page. It is read off the page, never computed from an offset.
+- A **page index** is a page's position in a work's page grid, counted from 1. It is distinct from the folio: the folio is what is printed on the page, the page index is where the page sits in the grid. The pages artifact and the `--anchor <page_index>=<folio>` fact both address pages by page index.
+- An **artifact page** is a page addressed by the position the source artifact orders it in — its page index — as opposed to the folio printed on it. It is the counterpart to the printed folio when reading: `library read --artifact-page 16` reaches the 16th page of the source artifact, `--printed 9` reaches the page whose printed folio is 9. The name generalizes past PDFs: a text artifact cut by a `separator` has artifact pages just as a PDF does.
+- A **separator** is the rule that cuts a text artifact into its page grid, since a text artifact — unlike a PDF — carries no page structure of its own: `form-feed` (the default, what `pdftotext` writes at each page boundary), `blank-lines:<n>`, or a `regex` matching each page's first line. A PDF source needs no separator; it brings its own grid.
+- An artifact also records its **provenance**: a source label, a source URL, and when it was fetched. Each push of the same role is kept in sequence, with the latest marked current.
+- **Creating an L2 work** — adding a work to the catalog as a new node, by hand or from a provider push. The plain verb is **create**: say *create an L2 work*, not *mint a work*.
+- An artifact attaches to a catalog entry that already exists; pushing content never creates the entry. Writing to the catalog is a separate door.
+- **`library chunk`** is a self-contained CLI tool braincrawl provides that partitions a stored fulltext into citation-carrying pieces, each carrying page provenance — a secondary derived artifact of a work.
+## The research graph
+The catalog is a graph and the Research Collection carries a graph; they are separate graphs, and neither owns the bare word "graph."
+
+- The **research graph** is the property graph lifted from a Research Collection's Research Documents by the tooling. A Research Document is the authoring surface; the research graph is what a parser extracts from it.
+- A **research node** (code-facing shorthand: **l3-node**) is the atomic unit of a Research Document — an id-bearing block of content. A Research Document is a collection of research nodes.
+- A **property** is a typed grouping of data on a research node, shared in format across nodes — remarks (freeform prose), catalog-references (pointers at catalog entries), tags.
+- A **link** is a typed connection in the research graph. Its two endpoints are each a research node or a catalog entry; its type is a plain word, said before the word link — a *contradicts link*, a *supports link*, a *catalog link*. A link can carry properties of its own (a why, a basis).
+- A **catalog link** is a link with a catalog entry at an endpoint — how a research node cites, uses, or disputes a work. The link always lives in the Research Collection; a catalog link never writes to the catalog.
+- A **query** obtains a subset of the research graph by filters and constraints; its result can carry order and shape (the database sense of query). The plugin interface provides the entire research graph, which a query filters.
+- A **Web UI plugin** provides views of the Web UI: its author decides what data to look for in the research graph and how the views render. The contract lives in the Web UI doc (doc01.03).
+
+## Providers
+A provider has two roles: pulling information from the provider's store, and pushing it to the user's braincrawl store.
+
+- `pulls-from(provider, source)` and `pushes-to(provider, braincrawl-store)` — the two provider facts.
+- A provider's store is usually accessed via an API.
+- What a provider pulls and pushes is **catalog entries**, **artifacts**, or both, depending on the operation.
+- The **response wrapper** is the JSON object a provider verb returns — the query echo, counts, a truncation flag, and the trimmed records (`results`).
+- A **context-only call** returns results to the caller's context without pushing them to the store (`--skip-push`).

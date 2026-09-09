@@ -1,0 +1,10 @@
+[package]
+name = "braincrawl-coord-local"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+braincrawl-core = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }

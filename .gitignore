@@ -1,0 +1,15 @@
+/target
+/.wrangler/
+/.temp/
+/CLAUDE.local.md
+/.claude/settings.local.json
+/.claude/worktrees/
+/.DS_Store
+*.swp
+apps/worker/.dev.vars
+# Holds real Cloudflare resource IDs; bootstrap from wrangler.toml.example
+apps/worker/wrangler.toml
+apps/worker/.wrangler/
+apps/worker/.wrangler-conformance-state/
+apps/worker/.wrangler-conformance.log
+apps/worker/build/

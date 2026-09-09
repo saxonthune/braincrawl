@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/core",
+  "crates/sql",
+  "crates/auth",
+  "crates/backends/blob-r2",
+  "crates/backends/blob-fs",
+  "crates/backends/blob-mem",
+  "crates/backends/store-d1",
+  "crates/backends/store-sqlite",
+  "crates/backends/store-mem",
+  "crates/backends/resolver-kv",
+  "crates/backends/resolver-mem",
+  "crates/backends/coord-local",
+  "apps/worker",
+  "apps/server",
+  "apps/server-bin",
+  "apps/cli",
+  "crates/conformance",
+  "crates/l3",
+  "crates/l3-sync",
+]
+# Exclude apps/worker from default builds; it only targets wasm32-unknown-unknown.
+# Build it explicitly: cargo build -p braincrawl-worker --target wasm32-unknown-unknown
+default-members = [
+  "crates/core",
+  "crates/sql",
+  "crates/auth",
+  "crates/backends/blob-r2",
+  "crates/backends/blob-fs",
+  "crates/backends/blob-mem",
+  "crates/backends/store-d1",
+  "crates/backends/store-sqlite",
+  "crates/backends/store-mem",
+  "crates/backends/resolver-kv",
+  "crates/backends/resolver-mem",
+  "crates/backends/coord-local",
+  "apps/server",
+  "apps/server-bin",
+  "apps/cli",
+  "crates/conformance",
+  "crates/l3",
+  "crates/l3-sync",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+braincrawl-core = { path = "crates/core", package = "braincrawl-core" }
+braincrawl-sql = { path = "crates/sql", package = "braincrawl-sql" }
+braincrawl-auth = { path = "crates/auth", package = "braincrawl-auth" }
+sha2 = "0.10"
+async-trait = "0.1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+getrandom = { version = "0.2" }
+worker = { version = "0.8" }
+notify = { version = "6" }

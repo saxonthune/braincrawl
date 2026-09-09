@@ -1,0 +1,103 @@
+use serde_json::Value;
+
+/// Build EdgeInput JSON values in the `doi` scheme for a slice of cited DOIs.
+/// Both src and dst use the "doi" scheme; `source` identifies the provider.
+pub fn doi_edges(citing_doi: &str, cited_dois: &[String], source: &str) -> Vec<Value> {
+    let fetched_at = rfc3339_now();
+    cited_dois
+        .iter()
+        .map(|cited| {
+            serde_json::json!({
+                "src": {"scheme": "doi", "value": citing_doi},
+                "dst": {"scheme": "doi", "value": cited},
+                "relation": "cites",
+                "source": source,
+                "attrs": null,
+                "fetched_at": fetched_at
+            })
+        })
+        .collect()
+}
+
+pub fn rfc3339_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600) % 24;
+    let days = secs / 86400;
+    let (year, month, day) = days_to_ymd(days);
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+    let mut year = 1970u64;
+    loop {
+        let diy = if is_leap(year) { 366 } else { 365 };
+        if days < diy {
+            break;
+        }
+        days -= diy;
+        year += 1;
+    }
+    let dims: [u64; 12] = if is_leap(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1u64;
+    for &dim in &dims {
+        if days < dim {
+            break;
+        }
+        days -= dim;
+        month += 1;
+    }
+    (year, month, days + 1)
+}
+
+fn is_leap(year: u64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doi_edges_shape_and_source_crossref() {
+        let edges = doi_edges("10.1000/citing", &["10.2000/cited".to_string()], "crossref");
+        assert_eq!(edges.len(), 1);
+        let e = &edges[0];
+        assert_eq!(e["src"]["scheme"].as_str(), Some("doi"));
+        assert_eq!(e["src"]["value"].as_str(), Some("10.1000/citing"));
+        assert_eq!(e["dst"]["scheme"].as_str(), Some("doi"));
+        assert_eq!(e["dst"]["value"].as_str(), Some("10.2000/cited"));
+        assert_eq!(e["relation"].as_str(), Some("cites"));
+        assert_eq!(e["source"].as_str(), Some("crossref"));
+        assert!(e["fetched_at"].as_str().is_some());
+        assert_eq!(e["attrs"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn doi_edges_source_opencitations() {
+        let edges = doi_edges("10.1000/citing", &["10.2000/cited".to_string()], "opencitations");
+        assert_eq!(edges[0]["source"].as_str(), Some("opencitations"));
+    }
+
+    #[test]
+    fn doi_edges_multiple_cited() {
+        let cited = vec!["10.1/a".to_string(), "10.2/b".to_string(), "10.3/c".to_string()];
+        let edges = doi_edges("10.0/src", &cited, "crossref");
+        assert_eq!(edges.len(), 3);
+        for e in &edges {
+            assert_eq!(e["src"]["value"].as_str(), Some("10.0/src"));
+            assert_eq!(e["relation"].as_str(), Some("cites"));
+        }
+        assert_eq!(edges[0]["dst"]["value"].as_str(), Some("10.1/a"));
+        assert_eq!(edges[1]["dst"]["value"].as_str(), Some("10.2/b"));
+        assert_eq!(edges[2]["dst"]["value"].as_str(), Some("10.3/c"));
+    }
+}

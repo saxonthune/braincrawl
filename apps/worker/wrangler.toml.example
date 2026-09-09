@@ -1,0 +1,72 @@
+# Wrangler configuration TEMPLATE for braincrawl-worker (doc02.02.00).
+# The real config is apps/worker/wrangler.toml (gitignored — it carries the
+# account's concrete D1/KV IDs). Bootstrap: cp wrangler.toml.example wrangler.toml
+# and fill the placeholder IDs after `wrangler d1 create` / `kv namespace create`.
+# Local-only flows (wrangler dev --local, conformance) work with placeholders as-is.
+
+name = "braincrawl-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2024-01-01"
+# Custom domain (optional): serves PWA + API on one hostname. Top-level key —
+# must stay above the first [section] or TOML assigns it to that table.
+# The zone must be on the same Cloudflare account; deploy creates DNS + cert.
+# routes = [
+#   { pattern = "bcp.example.com", custom_domain = true }
+# ]
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
+
+[assets]
+directory = "../../web/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/works", "/works/*", "/graph/*", "/stats", "/edges", "/export/*", "/health"]
+
+[[r2_buckets]]
+binding = "BLOB_BUCKET"
+bucket_name = "braincrawl-blobs"
+# preview_bucket_name = "braincrawl-blobs-preview"   # fill for wrangler dev
+
+[[d1_databases]]
+binding = "DB"
+database_name = "braincrawl-db"
+database_id = "placeholder-fill-at-deploy"
+migrations_dir = "../../migrations"
+
+[[kv_namespaces]]
+binding = "ID_RESOLVER_KV"
+id = "placeholder-fill-at-deploy"
+# preview_id = "placeholder-fill-for-dev"   # fill for wrangler dev
+
+# AUTH_KV: the sole auth allowlist — no shared secret. Every request needs a
+# bearer token that hashes to an active entry here.
+# Entries: key = SHA-256(token) hex, value = {"tenant":<t>,"status":"active"|"revoked"}.
+# Revoked/absent/malformed entries → 401.
+# Tokens come from email OTP sign-in (apps/worker/src/auth_otp.rs) or `just
+# generate-worker-token` for CLI use.
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "placeholder-fill-at-deploy"
+
+# EMAIL_FROM: the From header for OTP sign-in emails (see auth_otp module).
+# Two secrets pair with it, both optional for local dev — a missing secret
+# means "nothing sent / nobody allowlisted", not a panic:
+#   wrangler secret put ALLOWED_EMAILS   # comma-separated allowlisted addresses
+#   wrangler secret put RESEND_API_KEY   # Resend API key used to send codes
+[vars]
+EMAIL_FROM = "braincrawl <auth@example.com>"
+
+[durable_objects]
+bindings = [
+  { name = "WORK_DO", class_name = "WorkDurableObject" }
+]
+
+# OPENROUTER_API_KEY: optional secret for the /api/llm/* proxy (apps/worker/src/llm_proxy.rs).
+# Absent means the proxy answers 503 and clients must bring their own key (PWA Settings).
+#   wrangler secret put OPENROUTER_API_KEY
+
+[[migrations]]
+tag = "v1"
+# SQLite-backed: required on the free plan (API error 10097 with new_classes),
+# and this DO is an advisory-lock stub that uses no storage anyway.
+new_sqlite_classes = ["WorkDurableObject"]

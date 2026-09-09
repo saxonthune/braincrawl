@@ -1,0 +1,18 @@
+[package]
+name = "braincrawl-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+braincrawl-store-mem  = { path = "../backends/store-mem" }
+braincrawl-blob-mem   = { path = "../backends/blob-mem" }
+braincrawl-resolver-mem = { path = "../backends/resolver-mem" }
+braincrawl-coord-local  = { path = "../backends/coord-local" }
+tokio = { version = "1", features = ["rt", "macros"] }

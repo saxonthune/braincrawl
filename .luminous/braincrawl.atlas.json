@@ -1,0 +1,1825 @@
+{
+  "v": 1,
+  "legend": {
+    "accent-1": "store layer (L1 / L2 / L3)",
+    "accent-2": "external providers",
+    "accent-4": "code seams (clients, parse, use-case layer)",
+    "accent-5": "shared flag cluster",
+    "accent-6": "contracts (HTTP, config, wire frames)",
+    "accent-7": "CLI app",
+    "accent-8": "trait seams (Rust)"
+  },
+  "nodes": [
+    {
+      "id": "cli.braincrawl",
+      "name": "braincrawl CLI Surface",
+      "content": {
+        "text": "Drives desktop research sessions: gathers from providers, writes into the store, and hosts the L3 sync verbs (`collection push` / `collection pull`).",
+        "mode": "markdown"
+      },
+      "x": -4843.024678933716,
+      "y": 770.4824431947313,
+      "color": "accent-7",
+      "contentHeight": 3900.3328989546035,
+      "contentWidth": 2914.7036555522764,
+      "ports": {
+        "entry": {
+          "side": "left",
+          "offset": 0.45682730879622946
+        },
+        "exit": {
+          "side": "right",
+          "offset": 0.32525374905753807
+        }
+      }
+    },
+    {
+      "id": "cli.braincrawl.openalex.get",
+      "name": "openalex get",
+      "parent": "cli.braincrawl.openalex",
+      "content": {
+        "text": "Fetch a single OpenAlex entity by id; entity type is inferred from the id prefix.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.openalex.get"
+      },
+      "x": 30,
+      "y": 60,
+      "contentHeight": 162,
+      "contentWidth": 560
+    },
+    {
+      "id": "cli.braincrawl.openalex.search",
+      "name": "openalex search",
+      "parent": "cli.braincrawl.openalex",
+      "content": {
+        "text": "Full-text search over an OpenAlex entity collection.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.openalex.search"
+      },
+      "x": 30,
+      "y": 833.0566872322697,
+      "contentHeight": 160,
+      "contentWidth": 340
+    },
+    {
+      "id": "cli.braincrawl.semanticscholar.get",
+      "name": "semanticscholar get",
+      "parent": "cli.braincrawl.semanticscholar",
+      "content": {
+        "text": "Fetch a single paper or author by id; entity type inferred from the id prefix.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.semanticscholar.get"
+      },
+      "x": 21.569169969456198,
+      "y": 60,
+      "contentHeight": 160,
+      "contentWidth": 340
+    },
+    {
+      "id": "cli.braincrawl.semanticscholar.search",
+      "name": "semanticscholar search",
+      "parent": "cli.braincrawl.semanticscholar",
+      "content": {
+        "text": "Full-text search over papers or authors.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.semanticscholar.search"
+      },
+      "x": 380,
+      "y": 60,
+      "contentHeight": 160,
+      "contentWidth": 340
+    },
+    {
+      "id": "cli.braincrawl.crossref.refs",
+      "name": "crossref refs",
+      "parent": "cli.braincrawl.crossref",
+      "content": {
+        "text": "List works the given work references, via Crossref's deposited reference list.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.crossref.refs"
+      },
+      "x": 12.653977103313991,
+      "y": 47.144485151407025,
+      "contentHeight": 160,
+      "contentWidth": 340
+    },
+    {
+      "id": "cli.braincrawl.opencitations.refs",
+      "name": "opencitations refs",
+      "parent": "cli.braincrawl.opencitations",
+      "content": {
+        "text": "List works the given work references, via the OpenCitations COCI index.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.opencitations.refs"
+      },
+      "x": 20,
+      "y": 60,
+      "contentHeight": 160,
+      "contentWidth": 340
+    },
+    {
+      "id": "store.l1-library",
+      "name": "Library (L1)",
+      "content": {
+        "text": "The store of works keyed by a canonical id — a braincrawl-minted UUID, opaque and provider-neutral. Holds each work's artifacts: abstracts, fulltexts, and derived projections.",
+        "mode": "markdown"
+      },
+      "x": 5393.269627994308,
+      "y": 505.1732372950246,
+      "color": "accent-1",
+      "contentHeight": 225.90194958088142,
+      "contentWidth": 559.5364003035443
+    },
+    {
+      "id": "store.l2-catalog",
+      "name": "Catalog (L2)",
+      "content": {
+        "text": "The shared index over the Library: every work's metadata, which artifacts are held and where, and the citation edges between works.",
+        "mode": "markdown"
+      },
+      "x": 5331.425000597717,
+      "y": 844.6801362415208,
+      "color": "accent-1",
+      "contentHeight": 438.6042793866868
+    },
+    {
+      "id": "store.l3-research-collection",
+      "name": "Research Collection (L3)",
+      "content": {
+        "text": "A consumer's own research: Research Documents that point at works by canonical id in the Catalog rather than copying them.",
+        "mode": "markdown"
+      },
+      "x": 5315.8711459633105,
+      "y": 1483.0181856765412,
+      "color": "accent-1",
+      "contentHeight": 425.9499835268953,
+      "contentWidth": 974.2279047860343
+    },
+    {
+      "id": "catalog.canonical-id",
+      "name": "Canonical id",
+      "parent": "store.l2-catalog",
+      "content": {
+        "text": "A work's single, braincrawl-minted identity — a UUID. Every external identifier (DOI, ISBN, OpenAlex id, Semantic Scholar id) maps to exactly one canonical id.",
+        "mode": "markdown"
+      },
+      "x": 321.8407616366353,
+      "y": 64.56658215090192,
+      "contentHeight": 94,
+      "contentWidth": 560
+    },
+    {
+      "id": "catalog.citation",
+      "name": "Citation",
+      "parent": "store.l2-catalog",
+      "content": {
+        "text": "The primary edge between catalog entries: one work citing another. Forward traversal is `cited-by`, backward is `refs`.",
+        "mode": "markdown"
+      },
+      "x": 14.063303790917416,
+      "y": 197.06778566972935,
+      "contentHeight": 94,
+      "contentWidth": 560
+    },
+    {
+      "id": "box.openalex",
+      "name": "OpenAlex",
+      "parent": "module.openalex-adapter",
+      "content": {
+        "text": "Scholarly metadata provider — the broadest source: entity get, search, filter, autocomplete, and citations in both directions.",
+        "mode": "markdown"
+      },
+      "x": 25,
+      "y": 60,
+      "contentHeight": 94,
+      "contentWidth": 560
+    },
+    {
+      "id": "box.reading-agent",
+      "name": "Reading agent",
+      "content": {
+        "text": "The PWA chat client. A thin client, never a replica: it fetches the doc and page chunks it needs, edits docs via the normalizing PUT, and pushes what it gathers from OpenAlex into the Cloudflare store. Local state is only the conversation (localStorage) and per-session caches.",
+        "mode": "markdown"
+      },
+      "x": -4285.508411935726,
+      "y": -753.4704810352189,
+      "color": "accent-3",
+      "contentHeight": 168.76601631649106,
+      "contentWidth": 340.9574747968284
+    },
+    {
+      "id": "box.crossref",
+      "name": "Crossref",
+      "parent": "module.crossref-provider",
+      "content": {
+        "text": "Citation-data provider — deposited reference lists only (`refs`); no search.",
+        "mode": "markdown"
+      },
+      "x": 25,
+      "y": 60,
+      "color": "accent-3",
+      "contentHeight": 141.29662621711194,
+      "contentWidth": 257.08827474859817
+    },
+    {
+      "id": "store.l3-research-collection.doc",
+      "name": "Research Document",
+      "parent": "store.l3-research-collection",
+      "content": {
+        "text": "One `<slug>.l3.md`: frontmatter + `##` nodes with `^r-` anchors, property and link lines. Points at works by canonical id.",
+        "mode": "markdown"
+      },
+      "x": 318.0643308896115,
+      "y": 68.32060581859685
+    },
+    {
+      "id": "contract.openalex.http",
+      "name": "OpenAlex HTTP contract",
+      "parent": "module.openalex-adapter",
+      "content": {
+        "text": "The provider contract: `GET /works/{id}` and `GET /works?search=` over HTTPS, JSON. Polite pool via `mailto`; rate-limited. This is the shape both agents gather against.",
+        "mode": "markdown"
+      },
+      "x": 617.6661705941253,
+      "y": 75.62658514907434,
+      "contentHeight": 225.73355671136102,
+      "contentWidth": 457.9867969091928
+    },
+    {
+      "id": "box.providers",
+      "name": "Providers",
+      "content": {
+        "text": "Provider land: the external scholarly systems Braincrawl can gather from, their HTTP contracts, and the adapters that translate Braincrawl's shared provider protocol into each system's request and response shapes.\n\nThe shared `ProviderCmd` / `Provider` / `Envelope + Emission` protocol lives here so further adapters become sibling integrations, rather than loose nodes scattered through the CLI.",
+        "mode": "markdown"
+      },
+      "x": -453.55044820191324,
+      "y": -2412.213698006949,
+      "color": "accent-2",
+      "contentHeight": 2752.216784564968,
+      "contentWidth": 2572.7243553259914,
+      "ports": {
+        "entry": {
+          "side": "left",
+          "offset": 0.7400691793402222
+        },
+        "exit": {
+          "side": "right",
+          "offset": 0.5208807653647904
+        }
+      }
+    },
+    {
+      "id": "cli.braincrawl.global-flags",
+      "name": "global flags",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Output flags defined once at the top level in clap, available to every subcommand.",
+        "mode": "markdown",
+        "from": "cli.braincrawl"
+      },
+      "x": 43.72366489366459,
+      "y": 96.861803715875,
+      "color": "accent-5"
+    },
+    {
+      "id": "cli.braincrawl.openalex.find",
+      "name": "openalex find",
+      "parent": "cli.braincrawl.openalex",
+      "content": {
+        "text": "Filter an OpenAlex entity collection by key:value expressions.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.openalex.find"
+      },
+      "x": 30,
+      "y": 246,
+      "contentHeight": 151.05668723226995,
+      "contentWidth": 219.0239438589867
+    },
+    {
+      "id": "cli.braincrawl.openalex.autocomplete",
+      "name": "openalex autocomplete",
+      "parent": "cli.braincrawl.openalex",
+      "content": {
+        "text": "Autocomplete entity names by prefix.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.openalex.autocomplete"
+      },
+      "x": 30,
+      "y": 421.0566872322697,
+      "contentHeight": 124,
+      "contentWidth": 282.8333740234377
+    },
+    {
+      "id": "cli.braincrawl.openalex.cited-by",
+      "name": "openalex cited-by",
+      "parent": "cli.braincrawl.openalex",
+      "content": {
+        "text": "List works that cite the given work.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.openalex.cited-by"
+      },
+      "x": 30,
+      "y": 569.0566872322697,
+      "contentHeight": 108,
+      "contentWidth": 205
+    },
+    {
+      "id": "cli.braincrawl.openalex.refs",
+      "name": "openalex refs",
+      "parent": "cli.braincrawl.openalex",
+      "content": {
+        "text": "List works referenced by the given work.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.openalex.refs"
+      },
+      "x": 30,
+      "y": 701.0566872322697,
+      "contentHeight": 108,
+      "contentWidth": 235
+    },
+    {
+      "id": "cli.braincrawl.semanticscholar.cited-by",
+      "name": "semanticscholar cited-by",
+      "parent": "cli.braincrawl.semanticscholar",
+      "content": {
+        "text": "List papers that cite the given paper.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.semanticscholar.cited-by"
+      },
+      "x": 20,
+      "y": 240
+    },
+    {
+      "id": "cli.braincrawl.semanticscholar.refs",
+      "name": "semanticscholar refs",
+      "parent": "cli.braincrawl.semanticscholar",
+      "content": {
+        "text": "List papers referenced by the given paper.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.semanticscholar.refs"
+      },
+      "x": 380,
+      "y": 240,
+      "contentHeight": 129.56941944397897,
+      "contentWidth": 317.7339721943069
+    },
+    {
+      "id": "cli.braincrawl.arxiv.get",
+      "name": "arxiv get",
+      "parent": "cli.braincrawl.arxiv",
+      "content": {
+        "text": "Fetch a single arXiv work by id.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.arxiv.get"
+      },
+      "x": 33.85563009485031,
+      "y": 119.20122794433746
+    },
+    {
+      "id": "cli.braincrawl.arxiv.search",
+      "name": "arxiv search",
+      "parent": "cli.braincrawl.arxiv",
+      "content": {
+        "text": "Search arXiv by query string.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.arxiv.search"
+      },
+      "x": 368.66360053762855,
+      "y": 47.40403134931648
+    },
+    {
+      "id": "cli.braincrawl.web",
+      "name": "web",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Print the Web UI URL (`<server_url>/web`) for the configured server.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.web"
+      },
+      "x": 43.72366489366459,
+      "y": 2796.431223159854
+    },
+    {
+      "id": "cli.braincrawl.migrate-store",
+      "name": "migrate-store",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Replay the local SQLite + blob corpus into a remote store over its HTTP API.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.migrate-store"
+      },
+      "x": 645.8124055876806,
+      "y": 2624.4863673546183,
+      "contentHeight": 140,
+      "contentWidth": 460
+    },
+    {
+      "id": "cli.braincrawl.rename",
+      "name": "rename",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Rename a work file to its canonical bibliographic filename.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.rename"
+      },
+      "x": 43.72366489366459,
+      "y": 2584.431223159854,
+      "contentHeight": 188,
+      "contentWidth": 363
+    },
+    {
+      "id": "cli.braincrawl.openalex",
+      "name": "openalex",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Commands against the OpenAlex API — the broadest provider: get · search · find · autocomplete · cited-by · refs.",
+        "mode": "markdown"
+      },
+      "x": 912.708237138806,
+      "y": 867.1885867981115,
+      "contentHeight": 424.16668701171886,
+      "contentWidth": 1026.8333740234377,
+      "ports": {
+        "exit": {
+          "side": "right",
+          "offset": 0.5332068145235002
+        }
+      }
+    },
+    {
+      "id": "cli.braincrawl.semanticscholar",
+      "name": "semanticscholar",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Commands against the Semantic Scholar graph API: get · search · cited-by · refs.",
+        "mode": "markdown"
+      },
+      "x": 43.72366489366459,
+      "y": 192.861803715875
+    },
+    {
+      "id": "cli.braincrawl.arxiv",
+      "name": "arxiv",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Commands against the arXiv preprint API: get · search.",
+        "mode": "markdown"
+      },
+      "x": 199.29091289754615,
+      "y": 785.3872491717372,
+      "contentHeight": 285.4992583976067
+    },
+    {
+      "id": "cli.braincrawl.crossref",
+      "name": "crossref",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Backfill backward references from Crossref's deposited reference list.",
+        "mode": "markdown"
+      },
+      "x": 109.8379718462611,
+      "y": 1741.123336208176
+    },
+    {
+      "id": "cli.braincrawl.opencitations",
+      "name": "opencitations",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Backfill backward references from the OpenCitations COCI index.",
+        "mode": "markdown"
+      },
+      "x": 43.72366489366459,
+      "y": 1394.431223159854
+    },
+    {
+      "id": "client.store-client",
+      "name": "StoreClient",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "The CLI's HTTP client for the store API. Every store-facing command goes through it; the configured base URL decides whether it talks to the Local or the Cloudflare store.",
+        "mode": "markdown"
+      },
+      "x": 2081.8991127983472,
+      "y": 1529.506386354602,
+      "color": "accent-4",
+      "contentHeight": 94,
+      "contentWidth": 560
+    },
+    {
+      "id": "contract.store.http",
+      "name": "Store HTTP contract",
+      "content": {
+        "text": "The one HTTP surface both store implementations serve, held identical by the shared conformance suite (`crates/conformance`). Bearer-token auth on the worker.\n\n```\nPUT  /works                          upsert works + aliases → canonical ids\nPUT  /edges                          upsert citation edges\nPOST /works/have                     presence check by alias\nPOST /graph/neighborhood             bounded BFS from seed ids\nGET  /stats                          aggregate counts\nGET|PUT /works/{id}/content/{role}   artifact bytes by role\nPOST /jobs                           enqueue background fetch\nGET  /health                         liveness probe (unauthenticated)\n```",
+        "mode": "markdown"
+      },
+      "x": -1357.1007403505182,
+      "y": 1177.5175296128027,
+      "color": "accent-6",
+      "contentHeight": 236,
+      "contentWidth": 560
+    },
+    {
+      "id": "trait.artifact-store",
+      "name": "ArtifactStore (trait)",
+      "content": {
+        "text": "L1 seam: versioned artifact descriptors per (canonical id, role). Async, `Result<_, DomainError>`.\n\n```rust\ncurrent_artifact(id, role) -> Option<Artifact>\nnext_version(id, role) -> u32\nrecord(&Artifact)\n```\n\nimpls: `SqliteStore` (native) · `D1Store` (worker)",
+        "mode": "markdown"
+      },
+      "x": 528.2290171321276,
+      "y": 655.3206509064597,
+      "color": "accent-8",
+      "contentHeight": 241.1804319491779,
+      "contentWidth": 351.45766185799187
+    },
+    {
+      "id": "trait.blob-store",
+      "name": "BlobStore (trait)",
+      "content": {
+        "text": "Opaque key → bytes with mime; knows nothing of kind or version. Async, `Result<_, DomainError>`.\n\n```rust\nput(key, bytes, mime)\nget(key) -> Option<StoredBlob>\ndelete(key)\n```\n\nimpls: `FsBlobStore` (native) · `R2BlobStore` (worker) · `MemBlobStore` (test)",
+        "mode": "markdown"
+      },
+      "x": 915.1801144217056,
+      "y": 731.6255216010767,
+      "color": "accent-8",
+      "contentHeight": 211.45953705271856,
+      "contentWidth": 301.1608304256402
+    },
+    {
+      "id": "trait.metadata-store",
+      "name": "MetadataStore (trait)",
+      "content": {
+        "text": "L2 seam, the richest trait — the queryable graph facts. All methods async, returning `Result<_, DomainError>`.\n\n```rust\n// identity\nget_alias(alias) -> Option<CanonicalId>\nget_or_create_alias(alias, candidate) -> CanonicalId  // UNIQUE(ns,value); returns the winner\nresolve_live(id) -> CanonicalId   // follow merged_into chain, path-compressed\nmerge(survivor, loser)            // repoint everything, tombstone the loser\n// metadata (Option A: provider assertions verbatim, merged at read time)\ncreate_node(id, kind, created_at)\nupsert_node_assertion(id, source, attrs, fetched_at)\nread_node(id) -> Option<(kind, [(source, attrs, fetched_at)], [alias])>\n// citation graph\nput_edge(src, dst, relation, source, attrs?, fetched_at)\nread_edges(id, dir, cursor?, limit) -> ([EdgeView], next_cursor?)\n// queries\npresent_aliases([alias]) -> [alias]   // backs 'have'\nstats() -> GraphStats\n```\n\nimpls: `SqliteStore` (native) · `D1Store` (worker)",
+        "mode": "markdown"
+      },
+      "x": 568.4037955219624,
+      "y": 1004.5195045579496,
+      "color": "accent-8",
+      "contentHeight": 213.74574524637694,
+      "contentWidth": 312.5919969798656
+    },
+    {
+      "id": "trait.id-resolver",
+      "name": "IdResolver (trait)",
+      "content": {
+        "text": "Projection cache mapping (scheme, value) → canonical id. Async, `Result<_, DomainError>`.\n\n```rust\nresolve(scheme, value) -> Option<CanonicalId>\nremember(canonical, scheme, value)\n```\n\nimpls: `MemResolver` (native) · `KvResolver` (worker KV)",
+        "mode": "markdown"
+      },
+      "x": 562.6003377790821,
+      "y": 1262.4617063838548,
+      "color": "accent-8",
+      "contentHeight": 208.03024569321985,
+      "contentWidth": 305.7333305369126
+    },
+    {
+      "id": "contract.l3.http",
+      "name": "L3 HTTP contract",
+      "content": {
+        "text": "The worker's L3 surface: PUT validates the node grammar, normalizes, assigns missing `^r-` anchors, stamps `updated:`; GET serves raw markdown; `/api/l3/graph` serves the parsed graph with an ETag.",
+        "mode": "markdown"
+      },
+      "x": -1425.3742289596023,
+      "y": 1816.37679827427,
+      "color": "accent-6",
+      "contentHeight": 206.88716252737947,
+      "contentWidth": 316.02133020134204
+    },
+    {
+      "id": "schema.sql",
+      "name": "Store SQL schema (migrations/)",
+      "content": {
+        "text": "The SQLite/D1 tables behind the store traits. works, authors, venues, concepts, topics are all `node`, differing by `kind`; provider records are stored verbatim as JSON assertions and merged at read time (per-field provenance, doc02.01.01).\n\n```sql\n-- L2: identity + metadata + citation graph (0002)\nnode(canonical_id PK, kind, created_at, merged_into)\n  -- no assertions yet = stub; merged_into set = tombstone, never deleted\nalias(scheme, value, canonical_id)   PK (scheme, value)\n  -- the convergence guarantee: an external id can never fork\nnode_assertion(canonical_id, source, attrs JSON, fetched_at)   PK (id, source)\nedge(src_id, dst_id, relation)          PK (src, dst, relation)\nedge_assertion(src_id, dst_id, relation, source, attrs JSON, fetched_at)\n\n-- L1: artifact descriptors (0001; 0004 renamed payloads→artifacts, kind→role)\nartifacts(canonical_id, role, version, r2_key, content_hash, byte_size,\n          mime, source, source_url, fetched_at, is_current)\n  PK (canonical_id, role, version);  r2_key = {id}/{role}/v{version}\n\n-- jobs (0003)\nfetch_jobs(id PK, kind, target_id, params JSON, state, attempts,\n           run_after, last_error, created_at, updated_at)\n  UNIQUE (kind, target_id) WHERE state IN ('pending','running')\n```",
+        "mode": "markdown"
+      },
+      "x": 6628.193886912714,
+      "y": 781.6294596098651,
+      "contentHeight": 520,
+      "contentWidth": 560
+    },
+    {
+      "id": "usecases.store",
+      "name": "usecases::Store",
+      "content": {
+        "text": "The platform-agnostic use-case layer (`crates/core/src/usecases.rs`, doc02.01.03) — one struct assembled from seven seams; each deployment is this struct with different parts.\n\n```rust\nStore<M, B, P, R, C, Clk, Id>\n  M:   MetadataStore     B: BlobStore      P: ArtifactStore\n  R:   IdResolver        C: Coordinator    // with_lock(key) -> LockGuard\n  Clk: Clock             Id: IdGen\n```\n\nOwns the domain policy no trait signature shows:\n\n```\nlock key    highest-priority alias scheme:\n            doi > pmid > pmcid > openalex > semantic_scholar > arxiv\nread merge  newest fetched_at wins per field; tie-break = lexicographically\n            smallest source; provenance map records each winner\nnew work    unknown alias -> mint GUID (IdGen), remember (IdResolver)\n```",
+        "mode": "markdown"
+      },
+      "x": -224.2845593996757,
+      "y": 1086.5582893193355,
+      "color": "accent-4",
+      "contentHeight": 288,
+      "contentWidth": 560
+    },
+    {
+      "id": "trait.coordinator",
+      "name": "Coordinator (trait)",
+      "content": {
+        "text": "Per-work single-writer seam — only `usecases::Store` takes it, wrapping every write. Async, `Result<_, DomainError>`.\n\n```rust\nwith_lock(key) -> LockGuard   // dropping the guard releases\n```\n\nLock key = the work's highest-priority alias (policy owned by `usecases::Store`).\n\nimpls: `LocalCoordinator` (native, in-process) · `DoCoordinator` (worker, Durable Object)",
+        "mode": "markdown"
+      },
+      "x": -462.0867807877791,
+      "y": 784.1890421036716,
+      "color": "accent-8",
+      "contentHeight": 218.33334350585946,
+      "contentWidth": 563.3333740234375
+    },
+    {
+      "id": "cli.braincrawl.config",
+      "name": "config.toml",
+      "content": {
+        "text": "Resolved once at startup; precedence env > `~/.config/braincrawl/config.toml` > default. `server_url` is the switch deciding which store every command talks to.\n\n```toml\nserver_url = \"http://127.0.0.1:8787\"  # the store switch\nopenalex_api_key = \"…\"               # optional\nsemanticscholar_api_key = \"…\"        # optional\nauth_token = \"…\"                     # bearer token for the worker store\nunpaywall_email = \"…\"                # fetch-content URL resolution\ncrossref_mailto = \"…\"                # crossref polite pool\nl3_repo = \"~/…/braincrawl-l3\"        # L3 root; default ~/.local/share/braincrawl/l3\n```\n\nEvery field is env-overridable (`BRAINCRAWL_*`).",
+        "mode": "markdown"
+      },
+      "x": -4679.367561922376,
+      "y": 344.1295738714013,
+      "color": "accent-6",
+      "contentHeight": 258,
+      "contentWidth": 560
+    },
+    {
+      "id": "cli.braincrawl.parse",
+      "name": "parse (clap)",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "**Clap boundary.** `Cli::parse()` reads the process argument vector and produces the typed command tree. It may print usage/help and terminate on parse failure, so it is not literally pure; the testable form is conceptually `argv → Result<Cli, clap::Error>`.\n\n```rust\nCli { global: GlobalArgs, namespace: Namespace }\nNamespace::Openalex(OpenalexArgs {\n  cmd: OpenalexCmd::Search { entity, query }\n})\nGlobalArgs → OutputOpts\n```\n\nOnly after parsing does `run()` resolve `Config` and match on `cli.namespace`.",
+        "mode": "markdown"
+      },
+      "x": 680,
+      "y": 380
+    },
+    {
+      "id": "cli.braincrawl.provider-cmd",
+      "name": "ProviderCmd (verb)",
+      "parent": "module.provider-protocol",
+      "content": {
+        "text": "**Shared input shape.** `main.rs` locally converts the provider-specific `OpenalexCmd` into this provider-neutral enum. It is a data transformation, not a trait call and not an HTTP request.\n\n```rust\n#[serde(tag = \"verb\")]\nenum ProviderCmd {\n  Get { id }, Search { entity: Option<String>, query },\n  Find { entity, filters }, Autocomplete { entity, q },\n  CitedBy { id }, Refs { id },\n}\n```\n\nIt is the input shape accepted by `Provider::dispatch`.",
+        "mode": "markdown"
+      },
+      "x": 25,
+      "y": 60,
+      "color": "accent-6",
+      "contentHeight": 268,
+      "contentWidth": 560
+    },
+    {
+      "id": "trait.provider",
+      "name": "Provider (trait)",
+      "parent": "module.provider-protocol",
+      "content": {
+        "text": "**Dispatch contract, not an executing process.** `run_provider` holds `&dyn Provider`; calling `p.dispatch(cmd, opts)` dynamically selects the concrete implementation, here `OpenAlexProvider::dispatch`.\n\n```rust\ntrait Provider {\n  fn dispatch(&self, cmd: ProviderCmd, opts: &OutputOpts)\n    -> Result<(Envelope, Emission), ProviderError>;\n}\n```\n\nImplementations: `OpenAlexProvider`, `ArxivProvider`, `SemanticScholarProvider`, `CrossrefProvider`. OpenCitations still runs a hand-written path in `main.rs`.",
+        "mode": "markdown"
+      },
+      "x": 25,
+      "y": 410,
+      "color": "accent-8",
+      "contentHeight": 247,
+      "contentWidth": 560
+    },
+    {
+      "id": "cli.braincrawl.catalog",
+      "name": "catalog",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Commands against the Catalog (L2): work metadata, aliases, and citation edges.",
+        "mode": "markdown"
+      },
+      "x": 242.305271376752,
+      "y": 2091.3798324816435,
+      "contentHeight": 399.49659038664726,
+      "contentWidth": 2102.71990186179,
+      "ports": {
+        "exit": {
+          "side": "right",
+          "offset": 0.6036604291293746
+        }
+      }
+    },
+    {
+      "id": "cli.braincrawl.catalog.get",
+      "name": "catalog get",
+      "parent": "cli.braincrawl.catalog",
+      "content": {
+        "text": "Retrieve a work by alias (ns:value).",
+        "mode": "markdown",
+        "from": "cli.braincrawl.catalog.get"
+      }
+    },
+    {
+      "id": "cli.braincrawl.catalog.put",
+      "name": "catalog put",
+      "parent": "cli.braincrawl.catalog",
+      "content": {
+        "text": "Write works and edges from an emission frame to the catalog.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.catalog.put"
+      },
+      "contentHeight": 146,
+      "contentWidth": 420
+    },
+    {
+      "id": "cli.braincrawl.catalog.have",
+      "name": "catalog have",
+      "parent": "cli.braincrawl.catalog",
+      "content": {
+        "text": "Check which of the given aliases are present in the store.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.catalog.have"
+      },
+      "x": 715.5273269196218,
+      "y": 62.76900896824236,
+      "contentHeight": 191.13321467557913,
+      "contentWidth": 222.3132942683345
+    },
+    {
+      "id": "cli.braincrawl.catalog.stats",
+      "name": "catalog stats",
+      "parent": "cli.braincrawl.catalog",
+      "content": {
+        "text": "Show aggregate statistics about the metadata network.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.catalog.stats"
+      },
+      "x": 952.0307365329745,
+      "y": 80.25170480667657,
+      "contentHeight": 100,
+      "contentWidth": 309
+    },
+    {
+      "id": "cli.braincrawl.catalog.neighborhood",
+      "name": "catalog neighborhood",
+      "parent": "cli.braincrawl.catalog",
+      "content": {
+        "text": "Bounded neighborhood traversal from one or more seed ids.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.catalog.neighborhood"
+      },
+      "x": 1267.2064694903816,
+      "y": 71.51035688745924,
+      "contentHeight": 226,
+      "contentWidth": 560
+    },
+    {
+      "id": "cli.braincrawl.library",
+      "name": "library",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Commands against the Library (L1): the artifact bytes held against a work.",
+        "mode": "markdown"
+      },
+      "x": 43.72366489366459,
+      "y": 2892.431223159854
+    },
+    {
+      "id": "cli.braincrawl.library.get",
+      "name": "library get",
+      "parent": "cli.braincrawl.library",
+      "content": {
+        "text": "Read a stored artifact's bytes to stdout.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.library.get"
+      }
+    },
+    {
+      "id": "cli.braincrawl.library.put",
+      "name": "library put",
+      "parent": "cli.braincrawl.library",
+      "content": {
+        "text": "Store bytes from stdin or a file as an artifact of the given role.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.library.put"
+      }
+    },
+    {
+      "id": "cli.braincrawl.library.list",
+      "name": "library list",
+      "parent": "cli.braincrawl.library",
+      "content": {
+        "text": "List every artifact a work holds — role, version, size, mime, provenance.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.library.list"
+      }
+    },
+    {
+      "id": "cli.braincrawl.library.fetch",
+      "name": "library fetch",
+      "parent": "cli.braincrawl.library",
+      "content": {
+        "text": "Acquire a work's fulltext artifact from the open web into the store.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.library.fetch"
+      }
+    },
+    {
+      "id": "cli.braincrawl.library.extract-text",
+      "name": "library extract-text",
+      "parent": "cli.braincrawl.library",
+      "content": {
+        "text": "Extract text from a work's stored fulltext PDF artifact.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.library.extract-text"
+      }
+    },
+    {
+      "id": "cli.braincrawl.library.chunk",
+      "name": "library chunk",
+      "parent": "cli.braincrawl.library",
+      "content": {
+        "text": "Partition a work's stored fulltext into a citation-carrying chunks artifact.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.library.chunk"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection",
+      "name": "collection",
+      "parent": "cli.braincrawl",
+      "content": {
+        "text": "Commands against the Research Collection (L3): author docs locally, sync with the worker store.",
+        "mode": "markdown"
+      },
+      "x": 302.8686573665509,
+      "y": 3310.0636148583867,
+      "contentHeight": 471.91280283479335
+    },
+    {
+      "id": "cli.braincrawl.collection.new",
+      "name": "collection new",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Create a new L3 doc in the store; prints its absolute path.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.new"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.path",
+      "name": "collection path",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Print the absolute path of an existing L3 doc.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.path"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.list",
+      "name": "collection list",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "List all L3 docs in the store.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.list"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.check",
+      "name": "collection check",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Lint a doc against the required frontmatter; advisory, never fails.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.check"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.index",
+      "name": "collection index",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Regenerate INDEX.md from every doc's frontmatter.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.index"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.import",
+      "name": "collection import",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Adopt an existing markdown file into the store, normalizing its frontmatter.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.import"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.rm",
+      "name": "collection rm",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Delete a doc from the store and reindex.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.rm"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.assign-ids",
+      "name": "collection assign-ids",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Assign `^r-…` anchors for every `##` heading that lacks one.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.assign-ids"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.reading-list",
+      "name": "collection reading-list",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "List every node with a `reading` property and its catalog work, grouped by role.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.reading-list"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.push",
+      "name": "collection push",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Push local doc(s) to the worker's consolidated L3 store.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.push"
+      }
+    },
+    {
+      "id": "cli.braincrawl.collection.pull",
+      "name": "collection pull",
+      "parent": "cli.braincrawl.collection",
+      "content": {
+        "text": "Pull doc(s) from the worker's consolidated L3 store into the local repo.",
+        "mode": "markdown",
+        "from": "cli.braincrawl.collection.pull"
+      }
+    },
+    {
+      "id": "conceptual.braincrawl",
+      "name": "Behavioral",
+      "content": {
+        "text": "",
+        "mode": "markdown"
+      },
+      "x": -6034.040916857986,
+      "y": 931.6800131187196,
+      "color": "accent-6",
+      "contentHeight": 527.2159269777726,
+      "contentWidth": 393.08181326073526
+    },
+    {
+      "id": "behavioral.explore-research",
+      "name": "explore research from providers",
+      "parent": "conceptual.braincrawl",
+      "content": {
+        "text": "Find and inspect relevant scholarly research across the available providers.",
+        "mode": "markdown"
+      },
+      "x": 47.03974438433488,
+      "y": 69.81425447723814
+    },
+    {
+      "id": "behavioral.quote-l1",
+      "name": "quote a paragraph from an L1 artifact",
+      "parent": "conceptual.braincrawl",
+      "content": {
+        "text": "Read a paragraph from an artifact held in the Library (L1).",
+        "mode": "markdown"
+      },
+      "x": 31.65720209285064,
+      "y": 184.55398574291848
+    },
+    {
+      "id": "behavioral.add-textbook",
+      "name": "add a downloaded textbook pdf to the braincrawl store",
+      "parent": "conceptual.braincrawl",
+      "content": {
+        "text": "Put a downloaded textbook PDF into the braincrawl store as an L1 artifact.",
+        "mode": "markdown"
+      },
+      "x": 61.487368740858074,
+      "y": 294.16235694462625
+    },
+    {
+      "id": "cli.braincrawl.argv",
+      "name": "argv",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "OS argument vector\n\nbraincrawl openalex search works \"graph neural networks\"\n\nInput to Clap. This is process input, not yet a Rust command value.",
+        "mode": "code"
+      },
+      "x": 40,
+      "y": 380
+    },
+    {
+      "id": "cli.braincrawl.openalex-cmd",
+      "name": "OpenalexCmd::Search",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "OpenalexCmd::Search {\n  entity: String,\n  query: String,\n}\n\nA typed enum value selected from Cli.namespace. No network request has happened.",
+        "mode": "code"
+      },
+      "x": 1320,
+      "y": 100,
+      "color": "accent-6",
+      "contentHeight": 160,
+      "contentWidth": 514
+    },
+    {
+      "id": "cli.braincrawl.to-provider-cmd",
+      "name": "OpenalexCmd → ProviderCmd",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "match oa.cmd {\n  OpenalexCmd::Search { entity, query } =>\n    ProviderCmd::Search { entity: Some(entity), query },\n  // other OpenAlex verbs\n}\n\nLocal enum-to-enum transformation; no network, store, or stdout effect.",
+        "mode": "code"
+      },
+      "x": 1960,
+      "y": 100,
+      "color": "accent-4",
+      "contentHeight": 175,
+      "contentWidth": 460
+    },
+    {
+      "id": "cli.braincrawl.run-provider",
+      "name": "run_provider",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "fn run_provider(\n  p: &dyn Provider,\n  cmd: ProviderCmd,\n  store: &StoreClient,\n  opts: &OutputOpts,\n) -> Result<()>\n\nCalls p.dispatch; then renders its Envelope and, unless --skip-push, pushes its Emission.",
+        "mode": "code"
+      },
+      "x": 2600,
+      "y": 380,
+      "color": "accent-4",
+      "contentHeight": 205,
+      "contentWidth": 560
+    },
+    {
+      "id": "impl.openalex-provider",
+      "name": "OpenAlexProvider (impl Provider)",
+      "parent": "module.openalex-adapter",
+      "content": {
+        "text": "impl Provider for OpenAlexProvider {\n  fn dispatch(cmd, opts)\n    -> Result<(Envelope, Emission), ProviderError>\n}\n\nFor Search, it chooses the entity (works by default) and calls openalex::verbs::search(&self.client, …). This is the concrete method selected through &dyn Provider.",
+        "mode": "code"
+      },
+      "x": 157.8260005919534,
+      "y": 391.9964755306596,
+      "color": "accent-8",
+      "contentHeight": 190,
+      "contentWidth": 560
+    },
+    {
+      "id": "client.openalex-client",
+      "name": "OpenAlexClient",
+      "parent": "module.openalex-adapter",
+      "content": {
+        "text": "list(entity, ListParams) -> Result<ListPage>\n\nBuilds the query URL, then reqwest::blocking::Client sends GET to api.openalex.org. Retries HTTP 429 and 5xx responses (up to 3 retries).\n\nThis is the OpenAlex network-effect boundary.",
+        "mode": "code"
+      },
+      "x": 200.50321539027982,
+      "y": 691.5312780171498,
+      "color": "accent-4"
+    },
+    {
+      "id": "shape.provider-result",
+      "name": "Envelope + Emission",
+      "parent": "module.provider-protocol",
+      "content": {
+        "text": "Result<(Envelope, Emission), ProviderError>\n\nEnvelope: user-facing query metadata + display results.\nEmission: store-ready WorkRecord[] + EdgeInput[].\n\nThe provider produces both from the same fetched OpenAlex records; the result returns to run_provider.",
+        "mode": "code"
+      },
+      "x": 25,
+      "y": 730,
+      "color": "accent-6",
+      "contentHeight": 175,
+      "contentWidth": 560
+    },
+    {
+      "id": "effect.cli-stdout",
+      "name": "stdout",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "**Output effect.** `render(&envelope, opts)` writes the display Envelope to stdout, or `--emission` writes the store-ready Emission instead.",
+        "mode": "markdown"
+      },
+      "x": 3240,
+      "y": 380,
+      "color": "accent-6",
+      "contentHeight": 94,
+      "contentWidth": 560
+    },
+    {
+      "id": "module.openalex-adapter",
+      "name": "OpenAlex",
+      "parent": "box.providers",
+      "content": {
+        "text": "The complete OpenAlex provider: an external scholarly service, its HTTP contract, and Braincrawl's adapter that carries the shared provider protocol across that boundary.",
+        "mode": "markdown"
+      },
+      "x": 1174,
+      "y": 74.69207942084677,
+      "color": "accent-4",
+      "contentHeight": 980,
+      "contentWidth": 1100
+    },
+    {
+      "id": "module.provider-protocol",
+      "name": "Provider protocol",
+      "parent": "box.providers",
+      "content": {
+        "text": "The shared Rust vocabulary between the CLI and provider implementations: one command shape, one dispatch contract, and one paired result shape.\n\nEach provider-specific adapter enters and leaves through this protocol.",
+        "mode": "markdown"
+      },
+      "x": 221,
+      "y": 736,
+      "color": "accent-8",
+      "contentHeight": 240,
+      "contentWidth": 650
+    },
+    {
+      "id": "module.crossref-provider",
+      "name": "Crossref",
+      "parent": "box.providers",
+      "content": {
+        "text": "The Crossref provider path: it backfills reference lists through Crossref's deposited-reference HTTP surface.\n\n`CrossrefProvider` implements `Provider` and flows through `run_provider` like the other adapters. Because Crossref keys by DOI, `resolve_doi` converts the work id to a DOI before dispatch.",
+        "mode": "markdown"
+      },
+      "x": 1712.7425300504806,
+      "y": 2091.1559623837597
+    },
+    {
+      "id": "module.arxiv-adapter",
+      "name": "arXiv",
+      "parent": "box.providers",
+      "content": {
+        "text": "The keyless arXiv provider: its preprint API and Braincrawl adapter. It uses the shared `ProviderCmd` / `Provider` protocol, but supports only `get` and `search`.",
+        "mode": "markdown"
+      },
+      "x": 1174,
+      "y": 1078.6920794208468,
+      "color": "accent-4",
+      "contentHeight": 760,
+      "contentWidth": 850
+    },
+    {
+      "id": "box.arxiv",
+      "name": "arXiv API",
+      "parent": "module.arxiv-adapter",
+      "content": {
+        "text": "Public arXiv preprint API. Braincrawl queries it for individual records and Atom-feed search results; no API key is configured.",
+        "mode": "markdown"
+      },
+      "x": 79.90606781783822,
+      "y": 62.287738862408105,
+      "color": "accent-3",
+      "contentHeight": 150,
+      "contentWidth": 310
+    },
+    {
+      "id": "impl.arxiv-provider",
+      "name": "ArxivProvider (impl Provider)",
+      "parent": "module.arxiv-adapter",
+      "content": {
+        "text": "impl Provider for ArxivProvider {\n  fn dispatch(cmd, opts)\n    -> Result<(Envelope, Emission), ProviderError>\n}\n\nDispatches `Get` and `Search` to `arxiv::verbs`; all other shared verbs return `UnsupportedVerb`.",
+        "mode": "code"
+      },
+      "x": 150.82643334254954,
+      "y": 248.5612219079486,
+      "color": "accent-8",
+      "contentHeight": 210,
+      "contentWidth": 510
+    },
+    {
+      "id": "client.arxiv-client",
+      "name": "ArxivClient",
+      "parent": "module.arxiv-adapter",
+      "content": {
+        "text": "get(id) / search(query) -> Result<String>\n\nBuilds a public `export.arxiv.org/api/query` request and sends it with blocking reqwest. It returns raw Atom XML, which `arxiv::parse` lowers. This is arXiv's network-effect boundary.",
+        "mode": "code"
+      },
+      "x": 25,
+      "y": 520,
+      "color": "accent-4",
+      "contentHeight": 170,
+      "contentWidth": 510
+    },
+    {
+      "id": "cli.braincrawl.alias",
+      "name": "alias (helper)",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "`alias.rs` — the CLI's shared id-alias vocabulary.\n\n- `parse(&str) -> Option<Alias>` recognizes an id's scheme (`doi:`, `openalex:`, a DOI URL, a bare `10./…` DOI).\n- `alias_of(&Value, ns)` pulls one scheme out of a store work.\n\nConsumers: `resolve_doi` and fetch-content's Unpaywall lookup.",
+        "mode": "markdown"
+      },
+      "x": 1960,
+      "y": 620,
+      "color": "accent-4"
+    },
+    {
+      "id": "cli.braincrawl.resolve-doi",
+      "name": "resolve_doi",
+      "parent": "flow.command-execution",
+      "content": {
+        "text": "DOI-keyed providers (Crossref, OpenCitations) key by DOI, not the catalog work id. `resolve_doi` runs before dispatch:\n\n- `alias::parse` accepts an id already in DOI form — no store read.\n- otherwise `store.get_work` then `alias::alias_of(work, \"doi\")`.\n\nThe bare DOI becomes `ProviderCmd::Refs { id }`.",
+        "mode": "markdown"
+      },
+      "x": 1320,
+      "y": 620,
+      "color": "accent-4"
+    },
+    {
+      "id": "impl.crossref-provider",
+      "name": "CrossrefProvider (impl Provider)",
+      "parent": "module.crossref-provider",
+      "content": {
+        "text": "`impl Provider for CrossrefProvider`. Supports `ProviderCmd::Refs` only; every other verb returns `ProviderError::UnsupportedVerb`. `dispatch` receives an id already resolved to a DOI and returns `(Envelope, Emission)` — the emission carries `EdgeInput` citation edges, no work records.",
+        "mode": "markdown"
+      },
+      "x": 25,
+      "y": 340,
+      "color": "accent-8"
+    },
+    {
+      "id": "flow.command-execution",
+      "name": "Command execution",
+      "content": {
+        "text": "The CLI command-execution path: from the raw process argument vector, through Clap parsing and command lowering, to `run_provider` dispatch and rendered output. DOI-keyed providers resolve the work id to a DOI (`resolve_doi` → `alias`) before dispatch.\n\nThe `ProviderCmd` and `Provider` trait stages of this same path live in the Providers container.",
+        "mode": "markdown"
+      },
+      "color": "accent-7",
+      "contentHeight": 1000,
+      "contentWidth": 3820
+    },
+    {
+      "id": "trait.clock",
+      "name": "Clock (trait)",
+      "content": {
+        "text": "Time seam — `usecases::Store` stamps every write's `fetched_at` through it, so a test can freeze time.\n\n```rust\nnow_rfc3339(&self) -> String\n```\n\nimpls: `SystemClock` (native) · `WasmClock` (worker)",
+        "mode": "markdown"
+      },
+      "x": 534.2290171321276,
+      "y": 1537.3206509064598,
+      "color": "accent-8",
+      "contentHeight": 150,
+      "contentWidth": 320
+    },
+    {
+      "id": "trait.idgen",
+      "name": "IdGen (trait)",
+      "content": {
+        "text": "Identity-minting seam — on an unknown alias, `usecases::Store` mints a fresh canonical id through it.\n\n```rust\nnew_guid(&self) -> CanonicalId\n```\n\nimpls: `UuidGen` (native) · `WasmIdGen` (worker)",
+        "mode": "markdown"
+      },
+      "x": 904.2290171321276,
+      "y": 1537.3206509064598,
+      "color": "accent-8",
+      "contentHeight": 150,
+      "contentWidth": 320
+    },
+    {
+      "id": "deploy.local",
+      "name": "Local server (native)",
+      "content": {
+        "text": "The native binary `apps/server` — an axum HTTP server over a stable SQLite file + on-disk blob dir under `~/.local/share/braincrawl`, run as the `braincrawl-server` systemd user service on `127.0.0.1:8787`.\n\nIt instantiates `usecases::Store` with the native backends:\n\n```rust\npub type LocalStore = Store<\n  SqliteStore, FsBlobStore, SqliteStore,\n  MemResolver, LocalCoordinator,\n  SystemClock, UuidGen>;   // server/lib.rs:92\n```\n\nSame policy struct as the worker; only the seven parts differ.",
+        "mode": "markdown"
+      },
+      "x": 1774.9920304409366,
+      "y": 2154.270343036069,
+      "contentHeight": 1200,
+      "contentWidth": 1160
+    },
+    {
+      "id": "deploy.local.router",
+      "name": "axum router",
+      "parent": "deploy.local",
+      "content": {
+        "text": "**Serves the Store HTTP contract.** `Router::new().route(\"/works/*path\", …)` — one `.route` per path, health unauthenticated, the rest behind an optional bearer layer (disabled on localhost).\n\nserver/lib.rs:697",
+        "mode": "markdown"
+      },
+      "x": 40,
+      "y": 470,
+      "color": "accent-6",
+      "contentHeight": 190,
+      "contentWidth": 520
+    },
+    {
+      "id": "impl.sqlite-store",
+      "name": "SqliteStore",
+      "parent": "deploy.local",
+      "content": {
+        "text": "Satisfies both `MetadataStore` (L2) and `ArtifactStore` (L1) over one SQLite file — the two type params `M` and `P` are the same type here.",
+        "mode": "markdown"
+      },
+      "x": 581.2565387812351,
+      "y": 482.04940995135576,
+      "color": "accent-8",
+      "contentHeight": 150,
+      "contentWidth": 520
+    },
+    {
+      "id": "impl.fs-blob-store",
+      "name": "FsBlobStore",
+      "parent": "deploy.local",
+      "content": {
+        "text": "`BlobStore` over a directory of files under the blob root.",
+        "mode": "markdown"
+      },
+      "x": 40,
+      "y": 720,
+      "color": "accent-8",
+      "contentHeight": 120,
+      "contentWidth": 350
+    },
+    {
+      "id": "impl.mem-resolver",
+      "name": "MemResolver",
+      "parent": "deploy.local",
+      "content": {
+        "text": "`IdResolver` alias→canonical cache, in-process memory.",
+        "mode": "markdown"
+      },
+      "x": 410,
+      "y": 720,
+      "color": "accent-8",
+      "contentHeight": 120,
+      "contentWidth": 350
+    },
+    {
+      "id": "impl.local-coordinator",
+      "name": "LocalCoordinator",
+      "parent": "deploy.local",
+      "content": {
+        "text": "`Coordinator` single-writer lock, in-process.",
+        "mode": "markdown"
+      },
+      "x": 780,
+      "y": 720,
+      "color": "accent-8",
+      "contentHeight": 120,
+      "contentWidth": 340
+    },
+    {
+      "id": "impl.system-clock",
+      "name": "SystemClock",
+      "parent": "deploy.local",
+      "content": {
+        "text": "`Clock` from the OS wall clock.",
+        "mode": "markdown"
+      },
+      "x": 40,
+      "y": 900,
+      "color": "accent-8",
+      "contentHeight": 110,
+      "contentWidth": 350
+    },
+    {
+      "id": "impl.uuid-gen",
+      "name": "UuidGen",
+      "parent": "deploy.local",
+      "content": {
+        "text": "`IdGen` minting UUIDv4 canonical ids.",
+        "mode": "markdown"
+      },
+      "x": 410,
+      "y": 900,
+      "color": "accent-8",
+      "contentHeight": 110,
+      "contentWidth": 350
+    },
+    {
+      "id": "deploy.worker",
+      "name": "Cloudflare Worker",
+      "content": {
+        "text": "The Cloudflare Worker `apps/worker` — a Durable-Object `fetch` handler backed by D1 (SQL), R2 (blobs), and KV (resolver cache).\n\nIt instantiates the same `usecases::Store` with the WASM/Cloudflare backends:\n\n```rust\ntype WorkerStore = Store<\n  D1Store, R2BlobStore, D1Store,\n  KvResolver, DoCoordinator,\n  WasmClock, WasmIdGen>;   // worker/lib.rs:78\n```",
+        "mode": "markdown"
+      },
+      "x": 3074.9920304409366,
+      "y": 2154.270343036069,
+      "contentHeight": 1200,
+      "contentWidth": 1160
+    },
+    {
+      "id": "deploy.worker.fetch",
+      "name": "fetch handler (hand-rolled)",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "**Serves the identical Store HTTP contract** — no axum. A `match method { … }` over `(method, path)` inside the Durable Object's `fetch`.\n\nworker/lib.rs:666",
+        "mode": "markdown"
+      },
+      "x": 40,
+      "y": 470,
+      "color": "accent-6",
+      "contentHeight": 190,
+      "contentWidth": 520
+    },
+    {
+      "id": "impl.d1-store",
+      "name": "D1Store",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "Satisfies both `MetadataStore` (L2) and `ArtifactStore` (L1) over Cloudflare D1 — the same type fills `M` and `P`, as SqliteStore does natively.",
+        "mode": "markdown"
+      },
+      "x": 600,
+      "y": 470,
+      "color": "accent-8",
+      "contentHeight": 150,
+      "contentWidth": 520
+    },
+    {
+      "id": "impl.r2-blob-store",
+      "name": "R2BlobStore",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "`BlobStore` over a Cloudflare R2 bucket.",
+        "mode": "markdown"
+      },
+      "x": 40,
+      "y": 720,
+      "color": "accent-8",
+      "contentHeight": 120,
+      "contentWidth": 350
+    },
+    {
+      "id": "impl.kv-resolver",
+      "name": "KvResolver",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "`IdResolver` alias→canonical cache, backed by Workers KV.",
+        "mode": "markdown"
+      },
+      "x": 410,
+      "y": 720,
+      "color": "accent-8",
+      "contentHeight": 120,
+      "contentWidth": 350
+    },
+    {
+      "id": "impl.do-coordinator",
+      "name": "DoCoordinator",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "`Coordinator` single-writer lock routed through a `WorkDurableObject` keyed by lock key.",
+        "mode": "markdown"
+      },
+      "x": 780,
+      "y": 720,
+      "color": "accent-8",
+      "contentHeight": 120,
+      "contentWidth": 340
+    },
+    {
+      "id": "impl.wasm-clock",
+      "name": "WasmClock",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "`Clock` from the Worker runtime clock.",
+        "mode": "markdown"
+      },
+      "x": 40,
+      "y": 900,
+      "color": "accent-8",
+      "contentHeight": 110,
+      "contentWidth": 350
+    },
+    {
+      "id": "impl.wasm-idgen",
+      "name": "WasmIdGen",
+      "parent": "deploy.worker",
+      "content": {
+        "text": "`IdGen` minting canonical ids in the WASM runtime.",
+        "mode": "markdown"
+      },
+      "x": 410,
+      "y": 900,
+      "color": "accent-8",
+      "contentHeight": 110,
+      "contentWidth": 350
+    },
+    {
+      "id": "conformance",
+      "name": "Conformance suite",
+      "content": {
+        "text": "**`crates/conformance` — what keeps the two servers serving the *same* REST API.**\n\n```rust\nrun_all(base_url, token) -> Result<(), String>  // lib.rs:5\n```\n\nOne suite of API assertions, run against BOTH deployments: the native server in-process, and the worker under wrangler via `scripts/worker-conformance.sh`. If a route drifts on one side, this fails — so the Store HTTP contract is enforced, not merely documented.",
+        "mode": "markdown"
+      },
+      "x": 2324.9920304409366,
+      "y": 3504.270343036069,
+      "color": "accent-6",
+      "contentHeight": 240,
+      "contentWidth": 1260
+    }
+  ],
+  "edges": [
+    {
+      "from": "box.openalex",
+      "to": "box.reading-agent"
+    },
+    {
+      "from": "box.reading-agent",
+      "to": "store.l2-catalog"
+    },
+    {
+      "from": "box.openalex",
+      "to": "contract.openalex.http"
+    },
+    {
+      "from": "client.store-client",
+      "to": "contract.store.http"
+    },
+    {
+      "from": "trait.metadata-store",
+      "to": "store.l2-catalog"
+    },
+    {
+      "from": "trait.id-resolver",
+      "to": "catalog.canonical-id"
+    },
+    {
+      "from": "trait.artifact-store",
+      "to": "store.l1-library"
+    },
+    {
+      "from": "contract.l3.http",
+      "to": "store.l3-research-collection"
+    },
+    {
+      "from": "trait.metadata-store",
+      "to": "schema.sql"
+    },
+    {
+      "from": "trait.artifact-store",
+      "to": "schema.sql"
+    },
+    {
+      "from": "usecases.store",
+      "to": "trait.metadata-store"
+    },
+    {
+      "from": "usecases.store",
+      "to": "trait.artifact-store"
+    },
+    {
+      "from": "usecases.store",
+      "to": "trait.blob-store"
+    },
+    {
+      "from": "usecases.store",
+      "to": "trait.id-resolver"
+    },
+    {
+      "from": "trait.blob-store",
+      "to": "store.l1-library"
+    },
+    {
+      "from": "contract.store.http",
+      "to": "usecases.store"
+    },
+    {
+      "from": "box.reading-agent",
+      "to": "contract.store.http"
+    },
+    {
+      "from": "box.reading-agent",
+      "to": "contract.l3.http"
+    },
+    {
+      "from": "trait.coordinator",
+      "to": "usecases.store"
+    },
+    {
+      "from": "cli.braincrawl.catalog.stats",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.catalog.get",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.catalog.put",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.catalog.have",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.catalog.neighborhood",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.library.get",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.library.put",
+      "to": "client.store-client"
+    },
+    {
+      "from": "cli.braincrawl.catalog.stats",
+      "to": "store.l2-catalog"
+    },
+    {
+      "from": "cli.braincrawl.catalog.neighborhood",
+      "to": "catalog.citation"
+    },
+    {
+      "from": "cli.braincrawl.collection.push",
+      "to": "contract.l3.http"
+    },
+    {
+      "from": "cli.braincrawl.collection.pull",
+      "to": "contract.l3.http"
+    },
+    {
+      "from": "behavioral.explore-research",
+      "to": "cli.braincrawl.openalex.search"
+    },
+    {
+      "from": "behavioral.explore-research",
+      "to": "cli.braincrawl.semanticscholar.search"
+    },
+    {
+      "from": "behavioral.explore-research",
+      "to": "cli.braincrawl.arxiv.search"
+    },
+    {
+      "from": "behavioral.quote-l1",
+      "to": "cli.braincrawl.library.get"
+    },
+    {
+      "from": "behavioral.add-textbook",
+      "to": "cli.braincrawl.library.put"
+    },
+    {
+      "from": "cli.braincrawl.argv",
+      "to": "cli.braincrawl.parse"
+    },
+    {
+      "from": "cli.braincrawl.parse",
+      "to": "cli.braincrawl.openalex-cmd"
+    },
+    {
+      "from": "cli.braincrawl.openalex-cmd",
+      "to": "cli.braincrawl.to-provider-cmd"
+    },
+    {
+      "from": "cli.braincrawl.to-provider-cmd",
+      "to": "cli.braincrawl.provider-cmd"
+    },
+    {
+      "from": "cli.braincrawl.provider-cmd",
+      "to": "cli.braincrawl.run-provider"
+    },
+    {
+      "from": "cli.braincrawl.run-provider",
+      "to": "trait.provider"
+    },
+    {
+      "from": "trait.provider",
+      "to": "impl.openalex-provider"
+    },
+    {
+      "from": "impl.openalex-provider",
+      "to": "client.openalex-client"
+    },
+    {
+      "from": "client.openalex-client",
+      "to": "contract.openalex.http"
+    },
+    {
+      "from": "impl.openalex-provider",
+      "to": "shape.provider-result"
+    },
+    {
+      "from": "shape.provider-result",
+      "to": "cli.braincrawl.run-provider"
+    },
+    {
+      "from": "cli.braincrawl.run-provider",
+      "to": "effect.cli-stdout"
+    },
+    {
+      "from": "cli.braincrawl.run-provider",
+      "to": "client.store-client"
+    },
+    {
+      "from": "trait.provider",
+      "to": "impl.arxiv-provider"
+    },
+    {
+      "from": "impl.arxiv-provider",
+      "to": "client.arxiv-client"
+    },
+    {
+      "from": "client.arxiv-client",
+      "to": "box.arxiv"
+    },
+    {
+      "from": "cli.braincrawl.crossref.refs",
+      "to": "cli.braincrawl.resolve-doi"
+    },
+    {
+      "from": "cli.braincrawl.resolve-doi",
+      "to": "cli.braincrawl.alias"
+    },
+    {
+      "from": "cli.braincrawl.resolve-doi",
+      "to": "cli.braincrawl.run-provider"
+    },
+    {
+      "from": "trait.provider",
+      "to": "impl.crossref-provider"
+    },
+    {
+      "from": "impl.crossref-provider",
+      "to": "box.crossref"
+    },
+    {
+      "from": "usecases.store",
+      "to": "trait.clock"
+    },
+    {
+      "from": "usecases.store",
+      "to": "trait.idgen"
+    },
+    {
+      "from": "deploy.local.router",
+      "to": "contract.store.http"
+    },
+    {
+      "from": "deploy.worker.fetch",
+      "to": "contract.store.http"
+    },
+    {
+      "from": "deploy.local",
+      "to": "usecases.store"
+    },
+    {
+      "from": "deploy.worker",
+      "to": "usecases.store"
+    },
+    {
+      "from": "conformance",
+      "to": "contract.store.http"
+    },
+    {
+      "from": "conformance",
+      "to": "deploy.local.router"
+    },
+    {
+      "from": "conformance",
+      "to": "deploy.worker.fetch"
+    },
+    {
+      "from": "impl.sqlite-store",
+      "to": "trait.metadata-store"
+    },
+    {
+      "from": "impl.sqlite-store",
+      "to": "trait.artifact-store"
+    },
+    {
+      "from": "impl.fs-blob-store",
+      "to": "trait.blob-store"
+    },
+    {
+      "from": "impl.mem-resolver",
+      "to": "trait.id-resolver"
+    },
+    {
+      "from": "impl.local-coordinator",
+      "to": "trait.coordinator"
+    },
+    {
+      "from": "impl.system-clock",
+      "to": "trait.clock"
+    },
+    {
+      "from": "impl.uuid-gen",
+      "to": "trait.idgen"
+    },
+    {
+      "from": "impl.d1-store",
+      "to": "trait.metadata-store"
+    },
+    {
+      "from": "impl.d1-store",
+      "to": "trait.artifact-store"
+    },
+    {
+      "from": "impl.r2-blob-store",
+      "to": "trait.blob-store"
+    },
+    {
+      "from": "impl.kv-resolver",
+      "to": "trait.id-resolver"
+    },
+    {
+      "from": "impl.do-coordinator",
+      "to": "trait.coordinator"
+    },
+    {
+      "from": "impl.wasm-clock",
+      "to": "trait.clock"
+    },
+    {
+      "from": "impl.wasm-idgen",
+      "to": "trait.idgen"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "braincrawl-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "tsc -b && vp build",
+    "preview": "vp preview",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "@solidjs/router": "^0.16.1",
+    "solid-js": "^1.9.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "jsdom": "^29.1.1",
+    "playwright-core": "^1.61.1",
+    "typescript": "~6.0.2",
+    "vite": "catalog:",
+    "vite-plugin-solid": "^2.11.12",
+    "vite-plus": "catalog:",
+    "vitest": "^4.1.10"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.12.0",
+      "onFail": "download"
+    }
+  }
+}

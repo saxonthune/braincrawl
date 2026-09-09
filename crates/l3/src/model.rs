@@ -1,0 +1,209 @@
+//! The research graph's types — see glossary §"The research graph".
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+use braincrawl_core::types::Alias;
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{Map, Value};
+
+/// A research node's anchor, without the leading `^` (e.g. `"r-x7k2m"`) — unique
+/// across the whole store, so it names its node from any doc. A doc-level forward
+/// reference (bare `[[slug]]`, no anchor) is `"doc:slug"`.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct NodeId(pub String);
+
+/// One endpoint of a link: either a research node or a catalog entry.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Endpoint {
+    Node(NodeId),
+    Catalog(Alias),
+}
+
+/// Splits `"scheme:value"` into an `Alias`, or `None` if there's no `:` or the
+/// scheme/value don't fit the reserved shape. Any scheme is accepted —
+/// `uuid:` is not special-cased here; the convention that its value is the work's
+/// canonical id belongs to alias resolution (a later phase), not to parsing.
+fn parse_alias(s: &str) -> Option<Alias> {
+    let (ns, value) = s.split_once(':')?;
+    if value.is_empty() || !ns.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')) {
+        return None;
+    }
+    Some(Alias { scheme: ns.to_string(), value: value.to_string() })
+}
+
+impl Endpoint {
+    /// `^r-…` → a research node, resolved by its store-global anchor from any doc;
+    /// any `scheme:value` → a catalog reference (an unresolved external alias,
+    /// e.g. `openalex:`/`doi:`/`isbn:`/…, or `uuid:` for a work referenced by its
+    /// canonical id directly); a bare `slug` → that doc's intro node. Never fails —
+    /// an unrecognized string still resolves to a doc-level id. `^anchor` is
+    /// checked first so an anchor never parses as an alias.
+    pub fn resolve(target: &str) -> Endpoint {
+        if let Some(anchor) = target.strip_prefix('^') {
+            return Endpoint::Node(NodeId(anchor.to_string()));
+        }
+        if let Some(alias) = parse_alias(target) {
+            return Endpoint::Catalog(alias);
+        }
+        Endpoint::Node(NodeId(format!("doc:{target}")))
+    }
+}
+
+impl Serialize for Endpoint {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let s = match self {
+            Endpoint::Node(id) => format!("node:{}", id.0),
+            Endpoint::Catalog(a) => format!("{}:{}", a.scheme, a.value),
+        };
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> Deserialize<'de> for Endpoint {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.strip_prefix("node:") {
+            Some(rest) => Endpoint::Node(NodeId(rest.to_string())),
+            None => match parse_alias(&s) {
+                Some(alias) => Endpoint::Catalog(alias),
+                None => Endpoint::Catalog(Alias { scheme: String::new(), value: s }),
+            },
+        })
+    }
+}
+
+/// Where a node came from — only `doc` is serialized (the wire format is `id`/`doc`/`labels`/`properties`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Provenance {
+    pub doc: String,
+    pub path: PathBuf,
+    /// Position of this node among the nodes of its file (0-based).
+    pub order: usize,
+    /// 1-based line number of the `##` heading.
+    pub heading_line: usize,
+}
+
+/// A research node — an id-bearing block lifted from a `##` heading.
+/// `id` is `None` until assign-ids has run (a later phase assigns anchors).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node {
+    pub id: Option<NodeId>,
+    pub labels: Vec<String>,
+    pub properties: Map<String, Value>,
+    pub provenance: Provenance,
+}
+
+impl Serialize for Node {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut s = serializer.serialize_struct("Node", 4)?;
+        s.serialize_field("id", &self.id)?;
+        s.serialize_field("doc", &self.provenance.doc)?;
+        s.serialize_field("labels", &self.labels)?;
+        s.serialize_field("properties", &self.properties)?;
+        s.end()
+    }
+}
+
+/// A typed connection in the research graph. `recorded_in` (the node whose body
+/// held the link line) is bookkeeping, not part of the wire format.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Link {
+    pub source: Endpoint,
+    pub kind: String,
+    pub target: Endpoint,
+    pub properties: Map<String, Value>,
+    pub recorded_in: Option<NodeId>,
+}
+
+impl Serialize for Link {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut s = serializer.serialize_struct("Link", 4)?;
+        s.serialize_field("source", &self.source)?;
+        s.serialize_field("target", &self.target)?;
+        s.serialize_field("type", &self.kind)?;
+        s.serialize_field("properties", &self.properties)?;
+        s.end()
+    }
+}
+
+/// The research graph: nodes and links, plus private indexes rebuilt in `build()`.
+pub struct Graph {
+    pub nodes: Vec<Node>,
+    pub links: Vec<Link>,
+    by_id: BTreeMap<String, usize>,
+    by_label: BTreeMap<String, Vec<usize>>,
+    adjacency: BTreeMap<String, Vec<usize>>,
+}
+
+impl Graph {
+    /// Sorts nodes by (doc, order) and rebuilds the id/label/adjacency indexes.
+    pub fn build(mut nodes: Vec<Node>, links: Vec<Link>) -> Graph {
+        nodes.sort_by(|a, b| {
+            a.provenance
+                .doc
+                .cmp(&b.provenance.doc)
+                .then(a.provenance.order.cmp(&b.provenance.order))
+        });
+
+        let mut by_id = BTreeMap::new();
+        let mut by_label: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (i, node) in nodes.iter().enumerate() {
+            if let Some(id) = &node.id {
+                by_id.insert(id.0.clone(), i);
+            }
+            for label in &node.labels {
+                by_label.entry(label.clone()).or_default().push(i);
+            }
+        }
+
+        let mut adjacency: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (i, link) in links.iter().enumerate() {
+            if let Endpoint::Node(id) = &link.source {
+                adjacency.entry(id.0.clone()).or_default().push(i);
+            }
+            if let Endpoint::Node(id) = &link.target {
+                adjacency.entry(id.0.clone()).or_default().push(i);
+            }
+        }
+
+        Graph { nodes, links, by_id, by_label, adjacency }
+    }
+
+    pub fn node_by_id(&self, id: &str) -> Option<&Node> {
+        self.by_id.get(id).map(|&i| &self.nodes[i])
+    }
+
+    pub fn nodes_by_label(&self, label: &str) -> Vec<&Node> {
+        self.by_label
+            .get(label)
+            .map(|idxs| idxs.iter().map(|&i| &self.nodes[i]).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn links_touching(&self, id: &str) -> Vec<&Link> {
+        self.adjacency
+            .get(id)
+            .map(|idxs| idxs.iter().map(|&i| &self.links[i]).collect())
+            .unwrap_or_default()
+    }
+}
+
+impl Serialize for Graph {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut s = serializer.serialize_struct("Graph", 2)?;
+        s.serialize_field("nodes", &self.nodes)?;
+        s.serialize_field("links", &self.links)?;
+        s.end()
+    }
+}
+
+/// A non-fatal issue found while parsing — malformed input still produces a graph.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Warning {
+    pub doc: String,
+    pub path: PathBuf,
+    pub line: usize,
+    pub message: String,
+}

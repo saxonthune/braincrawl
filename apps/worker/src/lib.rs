@@ -1,0 +1,766 @@
+//! Wasm entry point for the Cloudflare Worker.
+//!
+//! Wires R2 + D1 + KV + Durable Object bindings into the core use-case `Store`
+//! and routes the same OpenAPI surface as `apps/server` (doc02.02.00).
+//!
+//! ## Routing
+//!
+//! Mirrors `apps/server` exactly:
+//! - `POST /works/have`
+//! - `PUT /works`
+//! - `PUT /edges`
+//! - `POST /graph/neighborhood`
+//! - `GET /stats`
+//! - `GET /export/nodes` · `GET /export/edges` · `GET /export/artifacts`
+//!   (paginated store enumeration for `store diff` / `store sync`)
+//! - `GET /works/*id`                   → get_work
+//! - `GET /works/*id/edges`             → get_edges
+//! - `GET /works/*id/artifacts`         → list_artifacts
+//! - `GET /works/*id/content/{kind}`    → get_content
+//! - `PUT /works/*id/content/{kind}`    → put_content
+//!
+//! Plus Research Collection doc routes, served by both deployments — R2-backed
+//! here, filesystem-backed on the native server (see `l3` module):
+//! - `GET /api/l3/docs`
+//! - `GET /api/l3/docs/{slug}`
+//! - `PUT /api/l3/docs/{slug}`
+//! - `GET /api/l3/graph`
+//!
+//! Plus opaque agent context-file routes (unparsed markdown, excluded from
+//! the above — see `.todo-tasks/tasks/worker-l3-agent-files.md`):
+//! - `GET /api/l3/agent`
+//! - `GET /api/l3/agent/{name}`
+//! - `PUT /api/l3/agent/{name}`
+//!
+//! Plus unauthenticated email OTP sign-in routes (see `auth_otp` module),
+//! mounted before the auth gate like `/health`:
+//! - `POST /api/auth/request-code`
+//! - `POST /api/auth/verify`
+//!
+//! Plus an OpenRouter LLM proxy (see `llm_proxy` module) so devices never
+//! hold the LLM key — allowlisted paths only, POST only:
+//! - `POST /api/llm/v1/messages`
+//! - `POST /api/llm/v1/chat/completions`
+//!
+//! ## Coordinator note
+//!
+//! `DoCoordinator::with_lock` routes through a `WorkDurableObject` stub keyed by the
+//! work's alias.  With the current `LockGuard` design (unit struct, no async drop),
+//! true cross-request serialization would require routing the *entire* critical
+//! section inside a single DO fetch handler.  The current implementation sends a
+//! "heartbeat" request to the DO (ensuring the DO is reachable and properly keyed)
+//! but the actual lock semantics are advisory: within a single Worker isolate,
+//! the single-threaded Wasm event loop prevents data races already.
+//! Full per-work serialization across concurrent Worker instances is a design
+//! evolution that requires restructuring the `Coordinator` trait (out of scope here).
+
+mod auth_otp;
+mod l3;
+mod llm_proxy;
+
+use async_trait::async_trait;
+use braincrawl_blob_r2::R2BlobStore;
+use braincrawl_core::{
+    traits::{Clock, Coordinator, IdGen, LockGuard},
+    types::{
+        Alias, Artifact, CanonicalId, ContentOutcome, DomainError, EdgeDir, EdgeInput,
+        ArtifactRole, WorkRecord, WorkSearchFilter,
+    },
+    usecases::Store,
+};
+use braincrawl_resolver_kv::KvResolver;
+use braincrawl_store_d1::D1Store;
+use serde::Deserialize;
+use worker::*;
+
+// ── Type alias ───────────────────────────────────────────────────────────────
+
+type WorkerStore = Store<D1Store, R2BlobStore, D1Store, KvResolver, DoCoordinator, WasmClock, WasmIdGen>;
+
+// ── WasmClock ─────────────────────────────────────────────────────────────────
+
+pub struct WasmClock;
+
+impl Clock for WasmClock {
+    fn now_rfc3339(&self) -> String {
+        let ms = js_sys::Date::now() as u64;
+        secs_to_rfc3339(ms / 1000)
+    }
+}
+
+pub(crate) fn secs_to_rfc3339(secs: u64) -> String {
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600) % 24;
+    let days = secs / 86400;
+    let (y, mo, d) = days_to_ymd(days);
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
+    let mut year = 1970u32;
+    loop {
+        let dy = if is_leap(year) { 366 } else { 365 };
+        if days < dy { break; }
+        days -= dy;
+        year += 1;
+    }
+    let months: [u32; 12] = if is_leap(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1u32;
+    for &dm in &months {
+        if days < dm as u64 { break; }
+        days -= dm as u64;
+        month += 1;
+    }
+    (year, month, days as u32 + 1)
+}
+
+fn is_leap(year: u32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+// ── WasmIdGen ────────────────────────────────────────────────────────────────
+
+pub struct WasmIdGen;
+
+impl IdGen for WasmIdGen {
+    fn new_guid(&self) -> CanonicalId {
+        CanonicalId(uuid::Uuid::new_v4().to_string())
+    }
+}
+
+// ── DoCoordinator ─────────────────────────────────────────────────────────────
+
+/// `Coordinator` backed by Cloudflare Durable Objects.
+///
+/// Keyed by work alias: each unique alias maps to one DO instance.
+/// The DO's single-threaded event loop serializes concurrent requests for the
+/// same key.  See the module-level note about `LockGuard` limitations.
+pub struct DoCoordinator {
+    namespace: ObjectNamespace,
+}
+
+impl DoCoordinator {
+    pub fn new(namespace: ObjectNamespace) -> Self {
+        Self { namespace }
+    }
+}
+
+#[async_trait(?Send)]
+impl Coordinator for DoCoordinator {
+    async fn with_lock(&self, key: &str) -> std::result::Result<LockGuard, DomainError> {
+        // Route to the DO instance for this key.  The DO's single-thread queue
+        // ensures only one request at a time is processed per key, providing
+        // advisory serialization for the critical section that follows.
+        // `map_err` converts worker::Error → DomainError so the ? operator
+        // propagates into std::result::Result<LockGuard, DomainError>.
+        let id = self
+            .namespace
+            .id_from_name(key)
+            .map_err(|e| DomainError::Backend(e.to_string()))?;
+        let stub = id
+            .get_stub()
+            .map_err(|e| DomainError::Backend(e.to_string()))?;
+        let req = Request::new("http://do/lock", Method::Post)
+            .map_err(|e| DomainError::Backend(e.to_string()))?;
+        stub.fetch_with_request(req)
+            .await
+            .map_err(|e| DomainError::Backend(e.to_string()))?;
+        Ok(LockGuard)
+    }
+}
+
+// ── WorkDurableObject ─────────────────────────────────────────────────────────
+
+/// Durable Object keyed by work id (alias string).
+///
+/// The DO's single-threaded event loop serializes concurrent `put_work` / merge
+/// requests for the same work, preventing thundering-herd races on cache misses.
+///
+/// Rate-budget enforcement is stubbed: `POST /lock` simply acknowledges the
+/// request.  Full rate-limiting (token-bucket per work) is a later evolution
+/// (doc02.02.00 "later").
+#[durable_object]
+#[allow(dead_code)]
+pub struct WorkDurableObject {
+    state: State,
+    env: Env,
+}
+
+impl DurableObject for WorkDurableObject {
+    fn new(state: State, env: Env) -> Self {
+        Self { state, env }
+    }
+
+    async fn fetch(&self, _req: Request) -> worker::Result<Response> {
+        // Single-threaded; concurrent requests for the same key queue here.
+        // Stub: acknowledge immediately. Rate-budget hook: not yet implemented.
+        Response::ok("ok")
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn parse_alias(id_str: &str) -> Option<Alias> {
+    let pos = id_str.find(':')?;
+    Some(Alias {
+        scheme: id_str[..pos].to_string(),
+        value: id_str[pos + 1..].to_string(),
+    })
+}
+
+fn parse_artifact_role(s: &str) -> Option<ArtifactRole> {
+    ArtifactRole::parse(s)
+}
+
+/// Parse the optional `derived_from_role` / `derived_from_version` query params.
+/// Both present → `Some((role, version))`; both absent → `None`. An invalid role
+/// or a non-numeric version is an `Err` naming the problem, for a 400 response.
+/// Must match `apps/server`'s shape exactly.
+fn parse_derived_from(
+    params: &std::collections::HashMap<String, String>,
+) -> Result<Option<(ArtifactRole, u32)>, &'static str> {
+    match (params.get("derived_from_role"), params.get("derived_from_version")) {
+        (None, None) => Ok(None),
+        (Some(role_str), Some(version_str)) => {
+            let role = parse_artifact_role(role_str).ok_or("invalid derived_from_role")?;
+            let version: u32 = version_str.parse().map_err(|_| "invalid derived_from_version")?;
+            Ok(Some((role, version)))
+        }
+        _ => Err("derived_from_role and derived_from_version must be given together"),
+    }
+}
+
+/// `Artifact` has no `Serialize` impl in `crates/core`, so the HTTP surface
+/// projects its fields into JSON here. Must match `apps/server`'s shape exactly.
+fn artifact_json(a: &Artifact) -> serde_json::Value {
+    let (derived_from_role, derived_from_version) = match &a.derived_from {
+        Some((role, version)) => (Some(role.as_str()), Some(*version)),
+        None => (None, None),
+    };
+    serde_json::json!({
+        "canonical_id": a.canonical_id.0,
+        "role": a.role.as_str(),
+        "version": a.version,
+        "r2_key": a.r2_key,
+        "content_hash": a.content_hash,
+        "byte_size": a.byte_size,
+        "mime": a.mime,
+        "source": a.source,
+        "source_url": a.source_url,
+        "fetched_at": a.fetched_at,
+        "is_current": a.is_current,
+        "derived_from_role": derived_from_role,
+        "derived_from_version": derived_from_version,
+    })
+}
+
+fn domain_status(e: &DomainError) -> u16 {
+    match e {
+        DomainError::NotFound => 404,
+        DomainError::Conflict => 409,
+        _ => 500,
+    }
+}
+
+fn err_response(e: &DomainError) -> worker::Result<Response> {
+    Response::error(e.to_string(), domain_status(e))
+}
+
+fn bad_request(msg: &str) -> worker::Result<Response> {
+    Response::error(msg, 400)
+}
+
+// ── Store construction ────────────────────────────────────────────────────────
+
+fn build_store(env: &Env) -> worker::Result<WorkerStore> {
+    let bucket = env.bucket("BLOB_BUCKET")?;
+    let meta_db = env.d1("DB")?;
+    let artifact_db = env.d1("DB")?;
+    let kv = env.kv("ID_RESOLVER_KV")?;
+    let do_ns = env.durable_object("WORK_DO")?;
+
+    Ok(Store {
+        meta: D1Store::new(meta_db),
+        blob: R2BlobStore::new(bucket),
+        artifacts: D1Store::new(artifact_db),
+        resolver: KvResolver::new(kv),
+        coord: DoCoordinator::new(do_ns),
+        clock: WasmClock,
+        id_gen: WasmIdGen,
+    })
+}
+
+// ── Route handlers ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct NeighborhoodHttpRequest {
+    seeds: Vec<String>,
+    dir: String,
+    depth: u32,
+    max_nodes: u32,
+}
+
+async fn handle_neighborhood(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
+    let body: NeighborhoodHttpRequest = req.json().await?;
+    let dir = match body.dir.as_str() {
+        "forward" => EdgeDir::Forward,
+        "backward" => EdgeDir::Backward,
+        _ => return bad_request("dir must be forward or backward"),
+    };
+    let seeds: Vec<Alias> = body.seeds.iter().filter_map(|s| parse_alias(s)).collect();
+    match store.neighborhood(seeds, dir, body.depth, body.max_nodes).await {
+        Ok(neighborhood) => Response::from_json(&neighborhood),
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_stats(store: &WorkerStore) -> worker::Result<Response> {
+    match store.stats().await {
+        Ok(stats) => Response::from_json(&stats),
+        Err(e) => err_response(&e),
+    }
+}
+
+/// Read the shared `cursor` / `limit` params for the `/export/*` routes.
+/// Limit defaults to 100 and is capped at 200 per page — must match `apps/server`.
+fn export_page_params(url: &Url) -> (Option<String>, u32) {
+    let params: std::collections::HashMap<String, String> =
+        url.query_pairs().into_owned().collect();
+    let cursor = params.get("cursor").cloned();
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(100)
+        .clamp(1, 200);
+    (cursor, limit)
+}
+
+async fn handle_export_nodes(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let (cursor, limit) = export_page_params(url);
+    match store.export_nodes(cursor.as_deref(), limit).await {
+        Ok((items, cursor)) => {
+            Response::from_json(&serde_json::json!({ "items": items, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_export_edges(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let (cursor, limit) = export_page_params(url);
+    match store.export_edge_assertions(cursor.as_deref(), limit).await {
+        Ok((items, cursor)) => {
+            Response::from_json(&serde_json::json!({ "items": items, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_export_artifacts(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let (cursor, limit) = export_page_params(url);
+    match store.export_artifacts(cursor.as_deref(), limit).await {
+        Ok((items, cursor)) => {
+            let items: Vec<_> = items.iter().map(artifact_json).collect();
+            Response::from_json(&serde_json::json!({ "items": items, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_have(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
+    #[derive(Deserialize)]
+    struct HaveRequest { ids: Vec<String> }
+    let body: HaveRequest = req.json().await?;
+    let aliases: Vec<Alias> = body.ids.iter().filter_map(|s| parse_alias(s)).collect();
+    match store.have(aliases).await {
+        Ok(present) => {
+            let ids: Vec<String> = present
+                .iter()
+                .map(|a| format!("{}:{}", a.scheme, a.value))
+                .collect();
+            Response::from_json(&ids)
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_put_work(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
+    let record: WorkRecord = req.json().await?;
+    match store.put_work(record).await {
+        Ok(id) => Response::from_json(&serde_json::json!({"id": format!("guid:{}", id.0)})),
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_put_edges(mut req: Request, store: &WorkerStore) -> worker::Result<Response> {
+    let edges: Vec<EdgeInput> = req.json().await?;
+    match store.put_edges(edges).await {
+        Ok(count) => Response::from_json(&serde_json::json!({"count": count})),
+        Err(e) => err_response(&e),
+    }
+}
+
+/// GET /works — same contract as the native server's handler_search_works:
+/// `author`/`title`/`year`/`with_artifact`/`limit` query params, at least one
+/// filter required; each result is a merged work view plus its artifacts.
+async fn handle_search_works(url: &Url, store: &WorkerStore) -> worker::Result<Response> {
+    let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let filter = WorkSearchFilter {
+        author: params.get("author").cloned(),
+        title: params.get("title").cloned(),
+        year: params.get("year").and_then(|s| s.parse::<u32>().ok()),
+    };
+    let with_artifact = match params.get("with_artifact").map(|s| parse_artifact_role(s)) {
+        Some(Some(k)) => Some(k),
+        Some(None) => return bad_request("invalid with_artifact role"),
+        None => None,
+    };
+    if filter.is_empty() && with_artifact.is_none() {
+        return bad_request("at least one of author, title, year, with_artifact is required");
+    }
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(25)
+        .min(200);
+    let views = match store.search_works(&filter, with_artifact, limit).await {
+        Ok(v) => v,
+        Err(e) => return err_response(&e),
+    };
+    let mut works = Vec::with_capacity(views.len());
+    for view in views {
+        let artifacts = match store
+            .list_artifacts_by_id(view.canonical_id.clone(), None, false)
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => return err_response(&e),
+        };
+        let mut body = serde_json::to_value(&view)
+            .map_err(|e| worker::Error::RustError(e.to_string()))?;
+        body["artifacts"] =
+            serde_json::Value::Array(artifacts.iter().map(artifact_json).collect());
+        works.push(body);
+    }
+    Response::from_json(&serde_json::json!({ "works": works }))
+}
+
+async fn handle_get_work(id_str: &str, store: &WorkerStore) -> worker::Result<Response> {
+    let a = match parse_alias(id_str) {
+        Some(a) => a,
+        None => return bad_request("expected scheme:value"),
+    };
+    match store.get_work(a).await {
+        Ok(Some(view)) => Response::from_json(&view),
+        Ok(None) => Response::error("not found", 404),
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_get_edges(
+    id_str: &str,
+    url: &Url,
+    store: &WorkerStore,
+) -> worker::Result<Response> {
+    let a = match parse_alias(id_str) {
+        Some(a) => a,
+        None => return bad_request("expected scheme:value"),
+    };
+    let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let dir = match params.get("dir").map(|s| s.as_str()) {
+        Some("forward") => EdgeDir::Forward,
+        Some("backward") => EdgeDir::Backward,
+        _ => return bad_request("dir must be forward or backward"),
+    };
+    let cursor = params.get("cursor").cloned();
+    let limit = params
+        .get("limit")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(20)
+        .min(200);
+    match store.get_edges(a, dir, cursor, limit).await {
+        Ok((edges, cursor)) => {
+            Response::from_json(&serde_json::json!({ "edges": edges, "cursor": cursor }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_list_artifacts(
+    id_str: &str,
+    url: &Url,
+    store: &WorkerStore,
+) -> worker::Result<Response> {
+    let a = match parse_alias(id_str) {
+        Some(a) => a,
+        None => return bad_request("expected scheme:value"),
+    };
+    let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let role = match params.get("role").map(|s| parse_artifact_role(s)) {
+        Some(Some(k)) => Some(k),
+        Some(None) => return bad_request("invalid role"),
+        None => None,
+    };
+    let all_versions = params
+        .get("all_versions")
+        .map(|s| s == "true")
+        .unwrap_or(false);
+    match store.list_artifacts(a, role, all_versions).await {
+        Ok(artifacts) => {
+            let artifacts: Vec<_> = artifacts.iter().map(artifact_json).collect();
+            Response::from_json(&serde_json::json!({ "artifacts": artifacts }))
+        }
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_get_content(
+    id_str: &str,
+    role_str: &str,
+    store: &WorkerStore,
+) -> worker::Result<Response> {
+    let a = match parse_alias(id_str) {
+        Some(a) => a,
+        None => return bad_request("expected scheme:value"),
+    };
+    let kind = match parse_artifact_role(role_str) {
+        Some(k) => k,
+        None => return bad_request("invalid kind"),
+    };
+    match store.get_content(a, kind).await {
+        Ok(ContentOutcome::Bytes { bytes, mime, content_hash: _ }) => {
+            let headers = Headers::new();
+            headers.set("Content-Type", &mime)?;
+            Ok(Response::from_bytes(bytes)?.with_headers(headers))
+        }
+        Ok(ContentOutcome::Pending) => Ok(Response::empty()?.with_status(202)),
+        Ok(ContentOutcome::Absent) => Response::error("not found", 404),
+        Err(e) => err_response(&e),
+    }
+}
+
+async fn handle_put_content(
+    id_str: &str,
+    role_str: &str,
+    url: &Url,
+    mut req: Request,
+    store: &WorkerStore,
+) -> worker::Result<Response> {
+    let a = match parse_alias(id_str) {
+        Some(a) => a,
+        None => return bad_request("expected scheme:value"),
+    };
+    let kind = match parse_artifact_role(role_str) {
+        Some(k) => k,
+        None => return bad_request("invalid kind"),
+    };
+    let params: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let mime = match params.get("mime").cloned() {
+        Some(m) => m,
+        None => return bad_request("missing mime"),
+    };
+    let source = params.get("source").cloned();
+    let source_url = params.get("source_url").cloned();
+    let fetched_at = params
+        .get("fetched_at")
+        .cloned()
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+    let derived_from = match parse_derived_from(&params) {
+        Ok(d) => d,
+        Err(msg) => return bad_request(msg),
+    };
+    let bytes = req.bytes().await?;
+    match store
+        .put_content(a, kind, bytes, mime, source, source_url, fetched_at, derived_from)
+        .await
+    {
+        Ok(_) => Response::empty(),
+        Err(e) => err_response(&e),
+    }
+}
+
+// ── Main fetch handler ────────────────────────────────────────────────────────
+
+/// Stamp `Access-Control-Allow-Origin: *` onto any response — success or
+/// error — since the PWA client authenticates via bearer header, not cookies,
+/// making a wildcard origin safe.
+fn with_cors(resp: worker::Result<Response>) -> worker::Result<Response> {
+    let resp = resp?;
+    resp.headers().set("Access-Control-Allow-Origin", "*")?;
+    Ok(resp)
+}
+
+fn cors_preflight_response() -> worker::Result<Response> {
+    let headers = Headers::new();
+    headers.set("Access-Control-Allow-Origin", "*")?;
+    headers.set("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS")?;
+    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type")?;
+    headers.set("Access-Control-Max-Age", "86400")?;
+    Ok(Response::empty()?.with_status(204).with_headers(headers))
+}
+
+#[event(fetch)]
+async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+    if req.method() == Method::Options {
+        return cors_preflight_response();
+    }
+    with_cors(route(req, env).await)
+}
+
+async fn route(req: Request, env: Env) -> worker::Result<Response> {
+    let url = req.url()?;
+    let path = url.path();
+    let method = req.method();
+
+    // GET /health — unauthenticated liveness probe.
+    if method == Method::Get && path == "/health" {
+        return Response::from_json(&serde_json::json!({"status": "ok", "service": "braincrawl"}));
+    }
+
+    // POST /api/auth/request-code, POST /api/auth/verify — unauthenticated;
+    // these ARE the way in. Mounted before the gate.
+    if method == Method::Post && path == "/api/auth/request-code" {
+        return auth_otp::handle_request_code(req, &env).await;
+    }
+    if method == Method::Post && path == "/api/auth/verify" {
+        return auth_otp::handle_verify(req, &env).await;
+    }
+
+    // ── Auth gate — AUTH_KV allowlist only (email-OTP sessions and minted tokens) ──
+    let auth_header: Option<String> = req.headers().get("Authorization").ok().flatten();
+    let kv_authenticated = match braincrawl_auth::parse_bearer(auth_header.as_deref()) {
+        Some(token) => {
+            let hash = braincrawl_auth::hash_token(token);
+            let kv = env.kv("AUTH_KV")?;
+            let text = kv.get(&hash).text().await?;
+            text.as_deref()
+                .and_then(braincrawl_auth::parse_kv_entry)
+                .is_some_and(|entry| entry.is_active())
+        }
+        None => false,
+    };
+    if !kv_authenticated {
+        return Response::error("unauthorized", 401);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── /api/llm/* ────────────────────────────────────────────────────────────
+    if let Some(remainder) = path.strip_prefix("/api/llm/") {
+        return llm_proxy::handle(req, &env, remainder).await;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    let store = build_store(&env)?;
+
+    // ── /api/l3/* ─────────────────────────────────────────────────────────────
+    if let Some(rest) = path.strip_prefix("/api/l3/") {
+        let bucket = env.bucket("BLOB_BUCKET")?;
+        if method == Method::Get && rest == "agent" {
+            return l3::handle_list_agent_files(&bucket).await;
+        }
+        if let Some(name) = rest.strip_prefix("agent/") {
+            match method {
+                Method::Get => return l3::handle_get_agent_file(name, &bucket).await,
+                Method::Put => return l3::handle_put_agent_file(name, req, &bucket).await,
+                _ => {}
+            }
+            return Response::error("not found", 404);
+        }
+        if method == Method::Get && rest == "graph" {
+            return l3::handle_graph(&req, &bucket).await;
+        }
+        if method == Method::Get && rest == "docs" {
+            return l3::handle_list_docs(&bucket).await;
+        }
+        if let Some(slug) = rest.strip_prefix("docs/") {
+            match method {
+                Method::Get => return l3::handle_get_doc(slug, &url, &bucket).await,
+                Method::Put => return l3::handle_put_doc(slug, &url, req, &bucket).await,
+                _ => {}
+            }
+        }
+        return Response::error("not found", 404);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // POST /works/have
+    if method == Method::Post && path == "/works/have" {
+        return handle_have(req, &store).await;
+    }
+
+    // PUT /works  (no trailing path segment)
+    if method == Method::Put && path == "/works" {
+        return handle_put_work(req, &store).await;
+    }
+
+    // GET /works  — store-side work search by query params
+    if method == Method::Get && path == "/works" {
+        return handle_search_works(&url, &store).await;
+    }
+
+    // PUT /edges
+    if method == Method::Put && path == "/edges" {
+        return handle_put_edges(req, &store).await;
+    }
+
+    // POST /graph/neighborhood
+    if method == Method::Post && path == "/graph/neighborhood" {
+        return handle_neighborhood(req, &store).await;
+    }
+
+    // GET /stats
+    if method == Method::Get && path == "/stats" {
+        return handle_stats(&store).await;
+    }
+
+    // GET /export/{nodes,edges,artifacts}
+    if method == Method::Get && path == "/export/nodes" {
+        return handle_export_nodes(&url, &store).await;
+    }
+    if method == Method::Get && path == "/export/edges" {
+        return handle_export_edges(&url, &store).await;
+    }
+    if method == Method::Get && path == "/export/artifacts" {
+        return handle_export_artifacts(&url, &store).await;
+    }
+
+    // /works/*path
+    if let Some(rest) = path.strip_prefix("/works/") {
+        match method {
+            Method::Get => {
+                // GET /works/*id/edges
+                if let Some(id_str) = rest.strip_suffix("/edges") {
+                    return handle_get_edges(id_str, &url, &store).await;
+                }
+                // GET /works/*id/artifacts
+                if let Some(id_str) = rest.strip_suffix("/artifacts") {
+                    return handle_list_artifacts(id_str, &url, &store).await;
+                }
+                // GET /works/*id/content/{kind}
+                if let Some(pos) = rest.rfind("/content/") {
+                    let id_str = &rest[..pos];
+                    let role_str = &rest[pos + "/content/".len()..];
+                    return handle_get_content(id_str, role_str, &store).await;
+                }
+                // GET /works/*id  — plain work lookup
+                return handle_get_work(rest, &store).await;
+            }
+            Method::Put => {
+                // PUT /works/*id/content/{kind}
+                if let Some(pos) = rest.rfind("/content/") {
+                    let id_str = &rest[..pos];
+                    let role_str = &rest[pos + "/content/".len()..];
+                    return handle_put_content(id_str, role_str, &url, req, &store).await;
+                }
+                return Response::error("not found", 404);
+            }
+            _ => {}
+        }
+    }
+
+    Response::error("not found", 404)
+}

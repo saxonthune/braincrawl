@@ -1,0 +1,9 @@
+[package]
+name = "braincrawl-blob-fs"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+braincrawl-core = { workspace = true }
+async-trait = { workspace = true }

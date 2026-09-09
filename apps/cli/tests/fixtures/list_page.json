@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "count": 42,
+    "db_response_time_ms": 28,
+    "page": 1,
+    "per_page": 25,
+    "next_cursor": "IlsxMzk3NzQ2MzYsICJodHRwczovL29wZW5hbGV4Lm9yZy9XMTk3Nzc0NjM2Il0i"
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W2741809807",
+      "doi": "https://doi.org/10.7717/peerj.4375",
+      "title": "The state of OA",
+      "display_name": "The state of OA",
+      "publication_year": 2018,
+      "cited_by_count": 1234,
+      "open_access": {"is_oa": true, "oa_status": "gold"},
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {"id": "https://openalex.org/A5023888391", "display_name": "Heather Piwowar", "orcid": null},
+          "institutions": []
+        }
+      ],
+      "primary_location": {"is_oa": true},
+      "language": "en",
+      "type": "article",
+      "ids": {"openalex": "https://openalex.org/W2741809807"}
+    }
+  ],
+  "group_by": []
+}

@@ -1,0 +1,26 @@
+[Unit]
+Description=braincrawl shared local L1/L2 server
+Documentation=https://github.com/saxonthune/braincrawl
+After=network.target
+
+[Service]
+# ExecStart is filled in with this repo's release binary path by `just systemd-install`.
+ExecStart=@EXEC@
+Environment=BRAINCRAWL_AUTH_DISABLED=1
+Environment=BRAINCRAWL_BIND=127.0.0.1:8787
+Environment=BRAINCRAWL_DB=%h/.local/share/braincrawl/braincrawl.db
+Environment=BRAINCRAWL_BLOB_ROOT=%h/.local/share/braincrawl/blobs
+Environment=BRAINCRAWL_L3_ROOT=%h/.local/share/braincrawl/l3
+# @WEBUI@ Filled in with this repo's web/dist by `just systemd-install`; serves the UI at /web.
+# @WEBUI@ `just systemd-install-cli` drops these lines and the one below, so the variable
+# @WEBUI@ stays unset — which is how the server knows to disable /web.
+Environment=BRAINCRAWL_WEB_ROOT=@WEBROOT@
+# Personal overrides (gitignored, per-machine). Read AFTER the defaults above, so any
+# variable it sets wins. Optional (`-`): the service still starts if the file is absent.
+# Scaffolded from scripts/server.env.example by `just systemd-install`.
+EnvironmentFile=-%h/.config/braincrawl/server.env
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

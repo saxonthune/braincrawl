@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '=== braincrawl glossary (doc01.01) — the controlled vocabulary and identity model; read before touching the code ===\\n\\n'; cat \"$CLAUDE_PROJECT_DIR/.rhidoc/01-product/01-glossary.md\"",
+            "statusMessage": "Loading glossary into context"
+          }
+        ]
+      }
+    ]
+  }
+}

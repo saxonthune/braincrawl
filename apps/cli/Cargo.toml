@@ -1,0 +1,38 @@
+[package]
+name = "braincrawl-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+name = "braincrawl_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "braincrawl"
+path = "src/main.rs"
+
+[dependencies]
+l3 = { path = "../../crates/l3" }
+braincrawl-l3-sync = { path = "../../crates/l3-sync" }
+clap = { version = "4", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+thiserror = { workspace = true }
+quick-xml = { version = "0.36", features = ["serialize"] }
+toml = "0.8"
+pdf-extract = "0.7"
+regex = "1"
+text-splitter = { version = "0.32", features = ["tiktoken-rs"] }
+tiktoken-rs = "0.12"
+sha2 = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
+deunicode = "1"
+
+[dev-dependencies]
+braincrawl-server = { path = "../server", package = "braincrawl-server-lib" }
+braincrawl-auth = { workspace = true }
+axum = "0.7"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "time"] }

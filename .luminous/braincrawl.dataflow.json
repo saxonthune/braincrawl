@@ -1,0 +1,78 @@
+{
+  "v": 1,
+  "boxes": [
+    {
+      "id": "openalex",
+      "name": "OpenAlex",
+      "description": "Scholarly metadata provider. Both agents gather from it directly; whatever they find is pushed into the store their client points at. This is why the two Library+Catalog stores converge without ever syncing with each other.",
+      "group": "Provider"
+    },
+    {
+      "id": "desktop-cli",
+      "name": "Desktop CLI",
+      "description": "The `braincrawl` CLI: drives desktop research sessions, gathers from OpenAlex, and hosts the sync verbs (`l3 push` / `l3 pull`). Sync is a client operation — the CLI reaches both research-doc stores; the stores never know about each other.",
+      "group": "Desktop"
+    },
+    {
+      "id": "local-store",
+      "name": "Local store",
+      "description": "Library (L1 blobs) + Catalog (L2 works and citation edges) on the desktop: SQLite plus filesystem blobs behind the native server. Currently holds the accumulated corpus. After migration and cutover it becomes an archive — there is no ongoing L1/L2 sync.",
+      "contract": {
+        "format": "prose",
+        "text": "HTTP surface: PUT /works, PUT /edges, POST /works/have, POST /graph/neighborhood, GET /stats, GET|PUT /works/{id}/content/{role}. Conformance-tested identical to the Cloudflare store."
+      },
+      "group": "Desktop"
+    },
+    {
+      "id": "research-docs-desktop",
+      "name": "Research docs (desktop)",
+      "description": "The Research Collection as markdown files in the braincrawl-l3 git repo — one `<slug>.l3.md` per doc, plus `_agent/` context files. Git here is the canonical history. Edited directly by desktop sessions.",
+      "contract": {
+        "format": "prose",
+        "text": "L3 node grammar: frontmatter (doc, updated), `##` nodes with `^r-` anchors, property and link lines. `_agent/*.md` are opaque markdown."
+      },
+      "group": "Desktop"
+    },
+    {
+      "id": "cloudflare-store",
+      "name": "Cloudflare store",
+      "description": "Library + Catalog on the worker: D1 (works, edges, artifacts) + R2 (blobs) + KV (id aliases). Empty until the migration replay lands; afterwards the single live corpus both agents write into.",
+      "contract": {
+        "format": "prose",
+        "text": "Same HTTP surface as the Local store (shared conformance suite). Bearer-token auth; CORS open for the browser client."
+      },
+      "group": "Cloudflare"
+    },
+    {
+      "id": "research-docs-cloudflare",
+      "name": "Research docs (Cloudflare)",
+      "description": "The worker-held copy of the Research Collection: one R2 object per doc, plus the agent context files (principles, memory). Canonical for phone-made edits between syncs. Every write is normalized server-side.",
+      "contract": {
+        "format": "prose",
+        "text": "R2 keys l3/<slug>.l3.md and l3-agent/<name>.md. PUT validates the node grammar (400 + warnings on failure), assigns missing ^r- anchors store-globally, stamps updated:, returns the normalized markdown. GET serves raw markdown; /api/l3/graph serves the parsed graph with an ETag."
+      },
+      "group": "Cloudflare"
+    },
+    {
+      "id": "reading-agent",
+      "name": "Reading agent",
+      "description": "The PWA chat client. A thin client, never a replica: it fetches the doc and page chunks it needs, edits docs via the normalizing PUT, and pushes what it gathers from OpenAlex into the Cloudflare store. Local state is only the conversation (localStorage) and per-session caches.",
+      "group": "Phone"
+    }
+  ],
+  "flows": [
+    { "from": "openalex", "to": "desktop-cli" },
+    { "from": "desktop-cli", "to": "local-store" },
+    { "from": "local-store", "to": "desktop-cli" },
+    { "from": "local-store", "to": "cloudflare-store" },
+    { "from": "research-docs-desktop", "to": "desktop-cli" },
+    { "from": "desktop-cli", "to": "research-docs-desktop" },
+    { "from": "desktop-cli", "to": "research-docs-cloudflare" },
+    { "from": "research-docs-cloudflare", "to": "desktop-cli" },
+    { "from": "openalex", "to": "reading-agent" },
+    { "from": "reading-agent", "to": "cloudflare-store" },
+    { "from": "cloudflare-store", "to": "reading-agent" },
+    { "from": "reading-agent", "to": "research-docs-cloudflare" },
+    { "from": "research-docs-cloudflare", "to": "reading-agent" }
+  ]
+}

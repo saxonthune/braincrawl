@@ -1,0 +1,13 @@
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.4
+  vite-plus: 0.2.4
+overrides:
+  vite: "catalog:"
+  # 8.5.18 tripped vp's minimum-release-age supply-chain gate (published too recently);
+  # pin to the prior release so resolution stays inside policy.
+  postcss: "8.5.17"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"

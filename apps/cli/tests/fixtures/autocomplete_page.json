@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "count": 5,
+    "db_response_time_ms": 12
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W2741809807",
+      "display_name": "The state of OA",
+      "hint": "Heather Piwowar et al., 2018, PeerJ",
+      "cited_by_count": 1234,
+      "entity_type": "work",
+      "external_id": "https://doi.org/10.7717/peerj.4375",
+      "works_count": null
+    },
+    {
+      "id": "https://openalex.org/W2000000001",
+      "display_name": "Open access publishing trends",
+      "hint": "Jane Smith et al., 2020, Nature",
+      "cited_by_count": 456,
+      "entity_type": "work",
+      "external_id": "https://doi.org/10.1038/test.2020",
+      "works_count": null
+    }
+  ]
+}

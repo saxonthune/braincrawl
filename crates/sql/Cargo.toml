@@ -1,0 +1,8 @@
+[package]
+name = "braincrawl-sql"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
